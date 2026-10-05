@@ -9,7 +9,7 @@ Nederland. Bron: de N-Triples-dump van data.muziekweb.nl (~38 miljoen triples), 
 
 ```bash
 pip install -r requirements.txt
-python muziekweb_import.py all      # download (~420 MB) + laden + opbouwen, ca. 15 min
+python muziekweb_import.py all      # download (~420 MB) + laden + opbouwen, ca. 10 min, resultaat ~1,2 GB
 python muziekweb_import.py export-csv albums.csv
 ```
 
@@ -46,3 +46,5 @@ Codes zijn de Muziekweb-codes: album `JE29798` staat op `https://www.muziekweb.n
 
 De toelichting (recensietekst), objectstatus/uitleenstatus, TIP-markering en tracklijsten van
 de website zitten niet in de Linked Open Data en staan dus niet in deze database.
+
+Ook in de bron ontbreekt bij 143 albums de titel; 16 daarvan zijn alleen verwijzingen zonder verdere gegevens.
