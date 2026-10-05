@@ -1,50 +1,46 @@
 # fonos – Muziekweb-database
 
-Haalt albumgegevens op van [Muziekweb](https://www.muziekweb.nl) en slaat ze op in een SQLite-database (`muziekweb.db`).
-
-Per album: catalogusnummer, titel, artiest(en), product, label en barcode, genres, objectstatus,
-releasedatum, totale speelduur, gemiddelde waardering, TIP-markering, toelichting en cover-URL's.
+Importeert albumgegevens uit de Linked Open Data van [Muziekweb](https://data.muziekweb.nl)
+via SPARQL en slaat ze op in een SQLite-database (`muziekweb.db`).
 
 ## Installatie
 
 ```bash
 pip install -r requirements.txt
-python muziekweb_scraper.py init
 ```
 
 ## Gebruik
 
 ```bash
-# Specifieke albums (catalogusnummers, URL's of een .txt met één per regel)
-python muziekweb_scraper.py add JK278043 lijst.txt
+# 1. Verkennen: welke klassen en eigenschappen heeft de dataset?
+python muziekweb_lod.py inspect
+python muziekweb_lod.py inspect --class <IRI van de albumklasse>
 
-# Of de hele catalogus via de sitemap(s) van Muziekweb
-python muziekweb_scraper.py discover
+# 2. Proefrun met 100 albums, daarna alles (hervat automatisch na onderbreking)
+python muziekweb_lod.py harvest --limit 100
+python muziekweb_lod.py harvest
 
-# Ophalen en parsen (beleefd: standaard 2 s tussen verzoeken, hervatbaar)
-python muziekweb_scraper.py crawl --delay 2
-python muziekweb_scraper.py crawl --retry-errors
-
-# Export
-python muziekweb_scraper.py export-csv albums.csv
+# 3. Export
+python muziekweb_lod.py export-csv albums.csv
 ```
 
-De ruwe HTML wordt bewaard in `raw_pages`. Pas je de parser aan, dan zet `reparse` alles opnieuw
-in de database zonder opnieuw te downloaden. `parse-file pagina.html` toont het resultaat voor één
-opgeslagen pagina, handig om de parser te controleren.
+Zonder `--class` kiest `harvest` de klasse met "Album" in de naam die de meeste instanties heeft.
+Werkt het standaard-endpoint niet, geef dan `--endpoint <URL>` op.
 
 ## Database
 
-Zie `schema.sql`. Tabellen: `albums`, `artists` + `album_artists`, `genres` + `album_genres`,
-`labels`, `raw_pages` en `queue`. De view `album_overview` geeft één platte rij per album.
+Zie `schema.sql`.
+
+- `triples`: alle ruwe RDF-gegevens per album, inclusief de namen van gekoppelde artiesten, genres
+  en labels. Er gaat dus niets verloren.
+- `albums`, `artists` + `album_artists`, `genres` + `album_genres`, `labels`: genormaliseerd,
+  opgebouwd uit `triples` met `build`.
+- View `album_overview`: één platte rij per album.
+
+Welke RDF-eigenschap in welke kolom komt, staat in `FIELD_MAP` en de `*_PREDICATES`-lijsten in
+`muziekweb_lod.py` (op lokale naam, bv. `name`, `byArtist`, `genre`, `gtin13`). Pas die zo nodig aan
+na `inspect --class` en draai `python muziekweb_lod.py build`, zonder opnieuw te downloaden.
 
 ```sql
-SELECT title, artists, genres, release_date FROM album_overview WHERE genres LIKE '%Folk%';
+SELECT title, artists, genres, release_year FROM album_overview WHERE genres LIKE '%Folk%';
 ```
-
-## Let op
-
-- De parser is gebouwd naar de opbouw van de albumpagina (label/waarde-paren zoals `Catalogusnr.:`).
-  Controleer na de eerste crawl met `parse-file` of alle velden goed gevuld worden.
-- Muziekweb biedt ook open linked data aan (https://data.muziekweb.nl); voor de complete
-  catalogus kan dat een betere bron zijn dan scrapen.
