@@ -42,9 +42,32 @@ SELECT code, title, performers, labels, main_genres, styles, release_year, durat
 
 Codes zijn de Muziekweb-codes: album `JE29798` staat op `https://www.muziekweb.nl/Link/JE29798`.
 
-## Niet in de open data
+## Aanvulling van de website (muziekweb_scrape.py)
 
-De toelichting (recensietekst), objectstatus/uitleenstatus, TIP-markering en tracklijsten van
-de website zitten niet in de Linked Open Data en staan dus niet in deze database.
+Tracklijsten, toelichting, opmerkingen, opname-info, TIP-markering, gemiddelde waardering en
+gerelateerde artikelen staan niet in de open data. `muziekweb_scrape.py` haalt die van de
+albumpagina's op www.muziekweb.nl en schrijft ze in dezelfde database:
+
+```bash
+python muziekweb_scrape.py enqueue --newest     # alle albums (behalve e-albums), nieuwste eerst
+python muziekweb_scrape.py crawl                # hervat automatisch; Ctrl-C mag altijd
+python muziekweb_scrape.py status
+```
+
+Standaard 1 pagina tegelijk met 1 s pauze (~0,65 pagina/s): de hele catalogus duurt dan
+~13 dagen. `--workers 2` halveert dat; ga niet veel hoger, het is een publieke dienst.
+
+| tabel | inhoud |
+|---|---|
+| `album_pages` | toelichting (+ auteur), opmerking, opname, TIP, gemiddelde waardering, hoes voor/achter, gecomprimeerde HTML |
+| `tracks` | per track: positie, titel, speelduur, werk-code, Spotify-link |
+| `track_performers` | uitvoerenden per track, met rol (dirigent, piano, sopraan, …) |
+| `works`, `work_composers`, `work_alt_titles` | liedjes/composities met componisten en alternatieve titels |
+| `album_page_labels`, `album_page_genres`, `album_articles` | bestel-info, genres en artikelen zoals op de pagina |
+
+`reparse` verwerkt de opgeslagen HTML opnieuw zonder te downloaden.
+
+Niet opgehaald: de objectstatus (uitleenstatus). Die komt van `/Muziekweb/DUIT/`, dat in
+robots.txt voor crawlers is uitgesloten. E-albums (`JKE…`) geven HTTP 403 en worden overgeslagen.
 
 Ook in de bron ontbreekt bij 143 albums de titel; 16 daarvan zijn alleen verwijzingen zonder verdere gegevens.
