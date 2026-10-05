@@ -332,8 +332,10 @@ def crawl(conn: sqlite3.Connection, limit: int | None, workers: int, delay: floa
                 state = "missing"
             conn.execute("UPDATE scrape_queue SET status=?, http_status=?, error=?, fetched_at=? "
                          "WHERE album_code=?", (state, status, err, _now(), code))
+            # Per pagina committen: zo houdt de crawl de schrijflock maar milliseconden vast
+            # en kan `export` tussendoor schrijven.
+            conn.commit()
             if n % 50 == 0 or n == total:
-                conn.commit()
                 rate = n / (time.time() - t0)
                 eta = (total - n) / rate / 3600 if rate else 0
                 print(f"  {n}/{total}  {rate:.2f} p/s  nog ~{eta:.1f} uur", file=sys.stderr)
