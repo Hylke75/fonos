@@ -1,4 +1,6 @@
 *.db
+*.db-journal
+data/
 __pycache__/
 .pytest_cache/
 *.csv

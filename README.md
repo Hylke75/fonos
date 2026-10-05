@@ -1,46 +1,48 @@
 # fonos – Muziekweb-database
 
-Importeert albumgegevens uit de Linked Open Data van [Muziekweb](https://data.muziekweb.nl)
-via SPARQL en slaat ze op in een SQLite-database (`muziekweb.db`).
-
-## Installatie
-
-```bash
-pip install -r requirements.txt
-```
+Bouwt een SQLite-database (`muziekweb.db`) uit de volledige Linked Open Data van
+[Muziekweb](https://data.muziekweb.nl/MuziekwebOrganization/Muziekweb), de muziekbibliotheek van
+Nederland. Bron: de N-Triples-dump van data.muziekweb.nl (~38 miljoen triples), licentie
+**ODC-By** (naamsvermelding Muziekweb verplicht).
 
 ## Gebruik
 
 ```bash
-# 1. Verkennen: welke klassen en eigenschappen heeft de dataset?
-python muziekweb_lod.py inspect
-python muziekweb_lod.py inspect --class <IRI van de albumklasse>
-
-# 2. Proefrun met 100 albums, daarna alles (hervat automatisch na onderbreking)
-python muziekweb_lod.py harvest --limit 100
-python muziekweb_lod.py harvest
-
-# 3. Export
-python muziekweb_lod.py export-csv albums.csv
+pip install -r requirements.txt
+python muziekweb_import.py all      # download (~420 MB) + laden + opbouwen, ca. 15 min
+python muziekweb_import.py export-csv albums.csv
 ```
 
-Zonder `--class` kiest `harvest` de klasse met "Album" in de naam die de meeste instanties heeft.
-Werkt het standaard-endpoint niet, geef dan `--endpoint <URL>` op.
+Of in stappen: `download`, `load` (dump → staging-tabel `triples`), `build` (staging → tabellen,
+via `build.sql`). Met `--keep-triples` blijft de ruwe staging-tabel staan (ruim 3 GB extra).
 
-## Database
+## Inhoud
 
-Zie `schema.sql`.
+| tabel | inhoud |
+|---|---|
+| `albums` | titel, dragerbeschrijving ("1 compact disc"), aantal discs, releasedatum/-jaar, speelduur, EAN, hoes-URL, waardering, uitleen-/beschikbaarheidsvlaggen, type (pop/klassiek/verzamel/best-of/soundtrack), DVD-gegevens |
+| `performers` | naam, sorteernaam, beschrijving, begin-/eindjaar, persoon/groep/componist |
+| `album_performers` | koppeling album ↔ uitvoerende |
+| `genres` | hoofdgenres (HFD), stijlen (T) en categorieën (CAT), in nl/en/de/fr, met hiërarchie |
+| `album_genres` | koppeling album ↔ genre |
+| `labels` | platenlabels (volledige en korte naam) |
+| `album_releases` | bestel-info: label, labelnummer, EAN, leverancier |
+| `album_eans`, `album_media` | alle EAN's; dragers (CD, LP, Digital, …) en digitale formaten |
+| `external_links` | Spotify, Allmusic, Wikipedia, iTunes, … |
+| `same_as` | Discogs, MusicBrainz, Wikidata, AllMusic |
+| `relations` | verwante albums en uitvoerenden |
+| `performer_keywords`, `performer_aliases`, `media_types` | instrument/rol, aliassen, dragernamen |
 
-- `triples`: alle ruwe RDF-gegevens per album, inclusief de namen van gekoppelde artiesten, genres
-  en labels. Er gaat dus niets verloren.
-- `albums`, `artists` + `album_artists`, `genres` + `album_genres`, `labels`: genormaliseerd,
-  opgebouwd uit `triples` met `build`.
-- View `album_overview`: één platte rij per album.
-
-Welke RDF-eigenschap in welke kolom komt, staat in `FIELD_MAP` en de `*_PREDICATES`-lijsten in
-`muziekweb_lod.py` (op lokale naam, bv. `name`, `byArtist`, `genre`, `gtin13`). Pas die zo nodig aan
-na `inspect --class` en draai `python muziekweb_lod.py build`, zonder opnieuw te downloaden.
+De view `album_overview` geeft één platte rij per album:
 
 ```sql
-SELECT title, artists, genres, release_year FROM album_overview WHERE genres LIKE '%Folk%';
+SELECT code, title, performers, labels, main_genres, styles, release_year, duration
+  FROM album_overview WHERE performers LIKE '%Rhiannon Giddens%';
 ```
+
+Codes zijn de Muziekweb-codes: album `JE29798` staat op `https://www.muziekweb.nl/Link/JE29798`.
+
+## Niet in de open data
+
+De toelichting (recensietekst), objectstatus/uitleenstatus, TIP-markering en tracklijsten van
+de website zitten niet in de Linked Open Data en staan dus niet in deze database.
