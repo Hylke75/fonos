@@ -138,3 +138,32 @@ def test_save_and_reparse(tmp_path):
 
 def test_no_album_page():
     assert ms.parse_page("<html><h1>Niet gevonden</h1></html>", "X") is None
+
+
+def test_export_restore_roundtrip(tmp_path):
+    src = ms.connect(tmp_path / "a.db")
+    for code, tracks in (("AAX10308", CLASSICAL), ("JK278043", POP)):
+        p = page(code, tracks)
+        p["url"], p["fetched_at"] = "u", "t"
+        ms.save_page(src, p)
+        src.execute("INSERT INTO scrape_queue (album_code, status) VALUES (?, 'done')", (code,))
+    src.execute("INSERT INTO scrape_queue (album_code, status) VALUES ('JKE1', 'missing')")
+    src.commit()
+    out = tmp_path / "exports"
+    assert ms.export(src, out).name == "part-0001"
+    assert ms.export(src, out) is None          # niets nieuws
+    p = page("HAX2728", COMPILATION)
+    p["url"], p["fetched_at"] = "u", "t"
+    ms.save_page(src, p)
+    src.execute("INSERT INTO scrape_queue (album_code, status) VALUES ('HAX2728', 'done')")
+    src.commit()
+    assert ms.export(src, out).name == "part-0002"
+
+    dst = ms.connect(tmp_path / "b.db")
+    ms.restore(dst, out)
+    for t in ("tracks", "track_performers", "works", "work_composers", "album_page_labels"):
+        q = f"SELECT * FROM {t} ORDER BY 1, 2"
+        assert dst.execute(q).fetchall() == src.execute(q).fetchall(), t
+    assert dst.execute("SELECT album_code, status FROM scrape_queue ORDER BY 1").fetchall() == [
+        ("AAX10308", "done"), ("HAX2728", "done"), ("JK278043", "done"), ("JKE1", "missing")]
+    assert dst.execute("SELECT content_z FROM album_pages").fetchall()[0] == (None,)

@@ -351,6 +351,73 @@ def reparse(conn: sqlite3.Connection) -> None:
     print(f"{len(rows)} pagina's opnieuw verwerkt")
 
 
+# --------------------------------------------------------------------------- export / restore
+# Incrementele back-up: elk deel bevat alleen albums die sinds het vorige deel zijn opgehaald,
+# als JSON Lines (gz) per tabel. Zonder de opgeslagen HTML (content_z), om de omvang te beperken.
+
+EXPORT_TABLES = {  # tabel -> WHERE-clausule op de te exporteren albumcodes (temp.export_codes)
+    "scrape_queue": "album_code IN (SELECT code FROM export_codes)",
+    "album_pages": "album_code IN (SELECT code FROM export_codes)",
+    "album_page_labels": "album_code IN (SELECT code FROM export_codes)",
+    "album_page_genres": "album_code IN (SELECT code FROM export_codes)",
+    "album_articles": "album_code IN (SELECT code FROM export_codes)",
+    "tracks": "album_code IN (SELECT code FROM export_codes)",
+    "track_performers": "track_id IN (SELECT track_id FROM tracks WHERE album_code IN (SELECT code FROM export_codes))",
+    "works": "code IN (SELECT work_code FROM tracks WHERE album_code IN (SELECT code FROM export_codes))",
+    "work_composers": "work_code IN (SELECT work_code FROM tracks WHERE album_code IN (SELECT code FROM export_codes))",
+    "work_alt_titles": "work_code IN (SELECT work_code FROM tracks WHERE album_code IN (SELECT code FROM export_codes))",
+}
+
+
+def export(conn: sqlite3.Connection, out_dir: Path) -> Path | None:
+    import gzip
+    import json
+
+    conn.execute("CREATE TABLE IF NOT EXISTS export_log (album_code TEXT PRIMARY KEY, part INTEGER NOT NULL)")
+    conn.execute("DROP TABLE IF EXISTS temp.export_codes")
+    conn.execute("CREATE TEMP TABLE export_codes AS SELECT album_code AS code FROM scrape_queue "
+                 "WHERE status IN ('done', 'missing') AND album_code NOT IN (SELECT album_code FROM export_log)")
+    n = conn.execute("SELECT COUNT(*) FROM export_codes").fetchone()[0]
+    if n == 0:
+        print("niets nieuws om te exporteren")
+        return None
+    out_dir.mkdir(parents=True, exist_ok=True)
+    part = 1 + max([int(p.name.split("-")[1]) for p in out_dir.glob("part-*")] or [0])
+    part_dir = out_dir / f"part-{part:04d}"
+    part_dir.mkdir()
+    for table, where in EXPORT_TABLES.items():
+        cur = conn.execute(f"SELECT * FROM {table} WHERE {where}")
+        cols = [d[0] for d in cur.description]
+        with gzip.open(part_dir / f"{table}.jsonl.gz", "wt", encoding="utf-8", compresslevel=9) as f:
+            for row in cur:
+                rec = {c: v for c, v in zip(cols, row) if c != "content_z"}
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    conn.execute("INSERT INTO export_log SELECT code, ? FROM export_codes", (part,))
+    conn.commit()
+    size = sum(f.stat().st_size for f in part_dir.iterdir())
+    print(f"{part_dir}: {n} albums, {size / 1e6:.1f} MB")
+    return part_dir
+
+
+def restore(conn: sqlite3.Connection, in_dir: Path) -> None:
+    import gzip
+    import json
+
+    parts = sorted(in_dir.glob("part-*"))
+    for part_dir in parts:
+        for table in EXPORT_TABLES:
+            path = part_dir / f"{table}.jsonl.gz"
+            if not path.exists():
+                continue
+            with gzip.open(path, "rt", encoding="utf-8") as f:
+                for line in f:
+                    rec = json.loads(line)
+                    conn.execute(f"INSERT OR REPLACE INTO {table} ({','.join(rec)}) "
+                                 f"VALUES ({','.join('?' * len(rec))})", list(rec.values()))
+        conn.commit()
+    print(f"{len(parts)} delen teruggezet; `crawl` gaat verder met de rest")
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--db", type=Path, default=DEFAULT_DB)
@@ -366,6 +433,10 @@ def main(argv: list[str] | None = None) -> None:
     c.add_argument("--retry-errors", action="store_true")
     sub.add_parser("reparse")
     sub.add_parser("status")
+    x = sub.add_parser("export", help="nieuwe albums sinds de vorige export naar een nieuw deel")
+    x.add_argument("--out", type=Path, default=HERE / "exports")
+    r = sub.add_parser("restore", help="alle export-delen terugzetten in de database")
+    r.add_argument("--in", dest="in_dir", type=Path, default=HERE / "exports")
     args = p.parse_args(argv)
 
     conn = connect(args.db)
@@ -389,6 +460,10 @@ def main(argv: list[str] | None = None) -> None:
         crawl(conn, args.limit, args.workers, args.delay)
     elif args.cmd == "reparse":
         reparse(conn)
+    elif args.cmd == "export":
+        export(conn, args.out)
+    elif args.cmd == "restore":
+        restore(conn, args.in_dir)
     elif args.cmd == "status":
         for s, n in conn.execute("SELECT status, COUNT(*) FROM scrape_queue GROUP BY status"):
             print(f"{s:<8} {n:>8}")
