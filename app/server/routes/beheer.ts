@@ -88,6 +88,7 @@ async function titelDetail(id: number) {
     mw: json(t.mw_data, {}), fonos: json(t.fonos_data, {}), getoond: getoond(t), conflicten: json(t.conflicten, {}),
     zichtbaar: !!t.zichtbaar, uitgelicht: !!t.uitgelicht, fonos_verhaal: t.fonos_verhaal, ai_tekst: !!t.ai_tekst,
     in_dump: !!dumpRij, aangemaakt: t.aangemaakt, gewijzigd: t.gewijzigd,
+    spotify_aan: !!(await instellingen()).spotify_aan,
     spotify: { status: t.spotify_status, album_id: t.spotify_album_id, score: t.spotify_score == null ? null : Number(t.spotify_score), kandidaten: json(t.spotify_kandidaat, []), gecontroleerd_op: t.spotify_gecontroleerd_op },
     exemplaren: (await exemplarenVan(id)).map((e) => ({ ...e, vindcode_getoond: vindcode(e) })),
     geschiedenis: await all<any>("SELECT * FROM wijzigingslog WHERE record_type = 'titel' AND record_id = ? ORDER BY id DESC LIMIT 200", String(id)),
@@ -917,6 +918,9 @@ beheer.get('/ontbrekende-titelnummers.csv', vereist('redacteur'), async (c) => {
   const csv = '\ufeff' + ['titelnummer;exemplaren;bron', ...rijen.map((r) => `${r.titelnummer};${r.exemplaren};"${String(r.bron ?? '').replace(/"/g, '""')}"`)].join('\r\n')
   return new Response(csv, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="ontbrekende-titelnummers-${new Date().toISOString().slice(0, 10)}.csv"` } })
 })
+
+/** Welke onderdelen aan staan (voor het menu van de beheeromgeving). */
+beheer.get('/functies', async (c) => c.json({ spotify: !!(await instellingen()).spotify_aan }))
 
 beheer.get('/opslag', (c) => c.json({ blob: !!process.env.BLOB_READ_WRITE_TOKEN, toegang: BLOB_TOEGANG }))
 

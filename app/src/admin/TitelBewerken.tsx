@@ -77,7 +77,7 @@ export function TitelBewerken({ beheerder: _ }: { beheerder: boolean }) {
               <p className="dim tekst-klein">Een titel is zichtbaar als dit aan staat én er minstens één exemplaar in de collectie is.</p>
             </div>
             <FonosVerhaal waarde={d.fonos_verhaal} opslaan={(w) => bewaar({ eigen: { fonos_verhaal: w } })} />
-            <SpotifyKoppeling id={d.id} spotify={d.spotify} bijgewerkt={laad} />
+            {d.spotify_aan && <SpotifyKoppeling id={d.id} spotify={d.spotify} bijgewerkt={laad} />}
             {!d.titelnummer && <KoppelTitelnummer koppel={(tn) => post('koppel', { titelnummer: tn })} />}
             <div className="card paneel tekst-klein muted">
               Toegevoegd {datumTijd(d.aangemaakt)}<br />Laatst gewijzigd {datumTijd(d.gewijzigd)}
