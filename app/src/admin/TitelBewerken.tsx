@@ -77,6 +77,7 @@ export function TitelBewerken({ beheerder: _ }: { beheerder: boolean }) {
               <p className="dim tekst-klein">Een titel is zichtbaar als dit aan staat én er minstens één exemplaar in de collectie is.</p>
             </div>
             <FonosVerhaal waarde={d.fonos_verhaal} opslaan={(w) => bewaar({ eigen: { fonos_verhaal: w } })} />
+            <SpotifyKoppeling id={d.id} spotify={d.spotify} bijgewerkt={laad} />
             {!d.titelnummer && <KoppelTitelnummer koppel={(tn) => post('koppel', { titelnummer: tn })} />}
             <div className="card paneel tekst-klein muted">
               Toegevoegd {datumTijd(d.aangemaakt)}<br />Laatst gewijzigd {datumTijd(d.gewijzigd)}
@@ -214,6 +215,33 @@ function FonosVerhaal({ waarde, opslaan }: { waarde: string | null; opslaan: (w:
       <h2 style={{ marginTop: 0 }}>Fonos-verhaal</h2>
       <textarea className="invoer" rows={6} value={w} onChange={(e) => setW(e.target.value)} placeholder="Eigen tekst van Fonos, los van de Muziekweb-toelichting" style={{ minHeight: 140 }} />
       {w !== (waarde ?? '') && <button className="btn btn-cyan btn-s" style={{ marginTop: 10 }} onClick={() => opslaan(w)}>Opslaan</button>}
+    </div>
+  )
+}
+
+const SPOTIFY_STATUS: Record<string, string> = { nog_niet: 'Nog niet gezocht', auto_goed: 'Automatisch gekoppeld', twijfel: 'Twijfel: controleren', geen: 'Geen match', handmatig: 'Handmatig gekoppeld', uitgesloten: 'Uitgesloten' }
+
+/** Spotify-koppeling: link of URI plakken (status wordt "handmatig") of de koppeling verwijderen. */
+function SpotifyKoppeling({ id, spotify, bijgewerkt }: { id: number; spotify: any; bijgewerkt: () => void }) {
+  const [link, setLink] = useState('')
+  const [fout, setFout] = useState<string | null>(null)
+  const doe = async (body: any) => {
+    setFout(null)
+    try { await api(`/beheer/spotify/${id}`, { body }); setLink(''); bijgewerkt() } catch (e) { setFout((e as ApiFout).message) }
+  }
+  return (
+    <div className="card paneel">
+      <h2 style={{ marginTop: 0 }}>Spotify</h2>
+      <p className="tekst-klein" style={{ margin: '0 0 10px' }}>
+        <span className={`mini-label ${spotify?.album_id ? '' : 'conflict'}`}>{SPOTIFY_STATUS[spotify?.status] ?? spotify?.status}</span>
+        {spotify?.album_id && <> <a href={`https://open.spotify.com/album/${spotify.album_id}`} target="_blank" rel="noreferrer">open.spotify.com/album/{spotify.album_id}</a></>}
+      </p>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <input className="invoer" value={link} onChange={(e) => { setLink(e.target.value); setFout(null) }} placeholder="Plak een Spotify-albumlink of spotify:album:…" />
+        <button className="btn btn-ghost btn-s" disabled={!link.trim()} onClick={() => doe({ actie: 'link', link })}>Koppel</button>
+      </div>
+      {fout && <div className="fout-tekst" role="alert">{fout}</div>}
+      {spotify?.album_id && <button className="btn btn-ghost btn-s" style={{ marginTop: 10 }} onClick={() => { if (confirm('Spotify-koppeling verwijderen?')) doe({ actie: 'verwijderen' }) }}>Koppeling verwijderen</button>}
     </div>
   )
 }

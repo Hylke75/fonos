@@ -8,3 +8,9 @@ __pycache__/
 *.csv
 !collectie/*.csv
 .vercel/
+
+# Sleutels en lokale rapporten: nooit committen
+.env
+.env.*
+!.env.example
+spotify-rapport*.json

@@ -49,11 +49,13 @@ async function excel(data: Awaited<ReturnType<typeof backupData>>): Promise<Buff
     for (const r of rijen) ws.addRow(r)
   }
   const t = data.tabellen
-  blad('Titels', ['ID', 'Titelnummer', 'Soort', 'Titel', 'Artiest(en)', 'Jaar', 'Drager', 'Label', 'Genres', 'Zichtbaar', 'Uitgelicht', 'Aangepast door Fonos (velden)', 'Fonos-verhaal', 'AI-tekst'],
+  blad('Titels', ['ID', 'Titelnummer', 'Soort', 'Titel', 'Artiest(en)', 'Jaar', 'Drager', 'Label', 'Genres', 'Zichtbaar', 'Uitgelicht', 'Aangepast door Fonos (velden)', 'Fonos-verhaal', 'AI-tekst',
+    'Spotify-album', 'Spotify-status', 'Spotify-score', 'Spotify gecontroleerd op'],
     t.titels.map((r) => {
       const v = getoond(r)
       return [r.id, r.titelnummer, r.soort, v.titel, (v.artiesten ?? []).join(', '), r.d_jaar, v.drager, v.label, (v.genres ?? []).join(', '),
-        r.zichtbaar ? 'ja' : 'nee', r.uitgelicht ? 'ja' : 'nee', Object.keys(json(r.fonos_data, {})).join(', '), r.fonos_verhaal, r.ai_tekst ? 'ja' : 'nee']
+        r.zichtbaar ? 'ja' : 'nee', r.uitgelicht ? 'ja' : 'nee', Object.keys(json(r.fonos_data, {})).join(', '), r.fonos_verhaal, r.ai_tekst ? 'ja' : 'nee',
+        r.spotify_album_id, r.spotify_status, r.spotify_score == null ? null : Number(r.spotify_score), r.spotify_gecontroleerd_op]
     }))
   blad('Exemplaren', ['ID', 'Objectnummer', 'Titel-ID', 'Titelnummer', 'Vindcode', 'Status', 'Reden afvoer', 'Toelichting'],
     t.exemplaren.map((e) => [e.id, e.objectnummer, e.titel_id, e.titelnummer, e.vindcode, e.status, e.reden_afvoer, e.toelichting_afvoer]))
@@ -196,6 +198,8 @@ export async function vergelijk(k: Kandidaat) {
 }
 
 async function vul(tabel: string, rijen: any[]) {
+  // Oudere back-ups kennen de Spotify-velden nog niet: dan geldt "nog niet gekoppeld".
+  if (tabel === 'titels') rijen = rijen.map((r) => ({ ...r, spotify_status: r.spotify_status ?? 'nog_niet' }))
   for (let i = 0; i < rijen.length; i += 2000) {
     await run(`INSERT INTO ${tabel} SELECT * FROM jsonb_populate_recordset(null::${tabel}, ?::jsonb)`, JSON.stringify(rijen.slice(i, i + 2000)))
   }

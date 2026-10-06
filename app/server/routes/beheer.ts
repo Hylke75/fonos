@@ -20,6 +20,7 @@ import { backupAdres, leesBackup, maakBackup, maakZip, vergelijk, zetTerug } fro
 import { beschikbaarheidGewijzigd, catalogusVersieOmhoog } from '../events.ts'
 import { bewaar, lees, BLOB_TOEGANG } from '../opslag.ts'
 import { stuurMail } from '../mail.ts'
+import { albumIdUit } from '../spotify/normaliseer.ts'
 
 export const beheer = new Hono()
 beheer.use('*', vereist('redacteur', 'beheerder'))
@@ -87,6 +88,7 @@ async function titelDetail(id: number) {
     mw: json(t.mw_data, {}), fonos: json(t.fonos_data, {}), getoond: getoond(t), conflicten: json(t.conflicten, {}),
     zichtbaar: !!t.zichtbaar, uitgelicht: !!t.uitgelicht, fonos_verhaal: t.fonos_verhaal, ai_tekst: !!t.ai_tekst,
     in_dump: !!dumpRij, aangemaakt: t.aangemaakt, gewijzigd: t.gewijzigd,
+    spotify: { status: t.spotify_status, album_id: t.spotify_album_id, score: t.spotify_score == null ? null : Number(t.spotify_score), kandidaten: json(t.spotify_kandidaat, []), gecontroleerd_op: t.spotify_gecontroleerd_op },
     exemplaren: (await exemplarenVan(id)).map((e) => ({ ...e, vindcode_getoond: vindcode(e) })),
     geschiedenis: await all<any>("SELECT * FROM wijzigingslog WHERE record_type = 'titel' AND record_id = ? ORDER BY id DESC LIMIT 200", String(id)),
   }
@@ -812,6 +814,63 @@ beheer.post('/nieuwsbrief/verwijder-geexporteerd', alleenBeheerder, async (c) =>
   const r = await run('DELETE FROM nieuwsbrief_aanmeldingen WHERE geexporteerd_op IS NOT NULL')
   await log(wie(c), 'nieuwsbriefaanmeldingen verwijderd', { type: 'nieuwsbrief', nieuw: `${r.changes} geëxporteerde aanmelding(en)` })
   return c.json({ verwijderd: r.changes })
+})
+
+// ---------- Spotify-koppelingen: controlelijst en handmatig koppelen ----------
+const SPOTIFY_STATUSSEN = ['nog_niet', 'auto_goed', 'twijfel', 'geen', 'handmatig', 'uitgesloten'] as const
+
+beheer.get('/spotify', async (c) => {
+  const status = (c.req.query('status') ?? 'twijfel') as string
+  const pagina = Math.max(1, Number(c.req.query('pagina') ?? 1))
+  const zoek = (c.req.query('zoek') ?? '').trim().toLowerCase()
+  const per = 25
+  const w: string[] = [ZICHTBAAR_SQL]
+  const p: unknown[] = []
+  if ((SPOTIFY_STATUSSEN as readonly string[]).includes(status)) { w.push('t.spotify_status = ?'); p.push(status) }
+  if (zoek) { w.push("(lower(t.d_titel) LIKE ? OR lower(COALESCE(t.d_artiesten, '')) LIKE ?)"); p.push(`%${zoek}%`, `%${zoek}%`) }
+  // Twijfel: hoogste score eerst; automatisch goed en handmatig: meest recent eerst.
+  const volgorde = status === 'twijfel' ? 't.spotify_score DESC NULLS LAST, t.id' : 't.spotify_gecontroleerd_op DESC NULLS LAST, t.id DESC'
+  const totaal = (await get<any>(`SELECT COUNT(*)::int AS n FROM titels t WHERE ${w.join(' AND ')}`, ...p))!.n
+  const rijen = await all<any>(`SELECT t.id, t.d_titel AS titel, t.d_artiesten AS artiesten, t.d_jaar AS jaar, t.d_hoes AS hoes, t.d_label AS label, t.titelnummer,
+      t.spotify_status, t.spotify_album_id, t.spotify_score, t.spotify_kandidaat, t.spotify_gecontroleerd_op
+    FROM titels t WHERE ${w.join(' AND ')} ORDER BY ${volgorde} LIMIT ${per} OFFSET ${(pagina - 1) * per}`, ...p)
+  const tel = await all<any>(`SELECT t.spotify_status AS status, COUNT(*)::int AS n FROM titels t WHERE ${ZICHTBAAR_SQL} GROUP BY 1`)
+  return c.json({
+    status, pagina, per, totaal,
+    tellingen: Object.fromEntries(tel.map((r) => [r.status, r.n])),
+    rijen: rijen.map((r) => ({ ...r, spotify_score: r.spotify_score == null ? null : Number(r.spotify_score), kandidaten: json(r.spotify_kandidaat, []), spotify_kandidaat: undefined })),
+  })
+})
+
+/** Acties: goedkeuren, kies (andere kandidaat), geen, uitsluiten, link (plakken), verwijderen. Alles gelogd. */
+beheer.post('/spotify/:id', async (c) => {
+  const id = Number(c.req.param('id'))
+  const b = await c.req.json<{ actie: string; album_id?: string; link?: string }>()
+  const t = await get<any>('SELECT id, d_titel, spotify_status, spotify_album_id, spotify_kandidaat FROM titels WHERE id = ?', id)
+  if (!t) return fout(c, 'Titel niet gevonden', 404)
+  const kandidaten = json<any[]>(t.spotify_kandidaat, [])
+  let status: string
+  let album: string | null
+  if (b.actie === 'goedkeuren') {
+    album = t.spotify_album_id ?? kandidaten[0]?.id ?? null
+    if (!album) return fout(c, 'Er is geen kandidaat om goed te keuren.')
+    status = 'handmatig'
+  } else if (b.actie === 'kies') {
+    if (!kandidaten.some((k) => k.id === b.album_id)) return fout(c, 'Onbekende kandidaat.')
+    album = b.album_id!; status = 'handmatig'
+  } else if (b.actie === 'link') {
+    album = albumIdUit(b.link ?? '')
+    if (!album) return fout(c, 'Geen geldige Spotify-albumlink. Plak een link als https://open.spotify.com/album/… of spotify:album:…')
+    status = 'handmatig'
+  } else if (b.actie === 'geen' || b.actie === 'verwijderen') { album = null; status = 'geen' }
+  else if (b.actie === 'uitsluiten') { album = null; status = 'uitgesloten' }
+  else return fout(c, 'Onbekende actie.')
+  await run('UPDATE titels SET spotify_status = ?, spotify_album_id = ?, spotify_gecontroleerd_op = nu() WHERE id = ?', status, album, id)
+  await log(wie(c), b.actie === 'verwijderen' ? 'Spotify-koppeling verwijderd' : 'Spotify-koppeling aangepast', {
+    type: 'titel', id, label: t.d_titel, veld: 'spotify',
+    oud: { status: t.spotify_status, album: t.spotify_album_id }, nieuw: { status, album },
+  })
+  return c.json({ id, spotify_status: status, spotify_album_id: album })
 })
 
 // ---------- Status (verbetering 18): build, data, back-up, cron, database en kiosks ----------

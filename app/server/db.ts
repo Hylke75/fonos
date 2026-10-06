@@ -150,6 +150,7 @@ export const STANDAARD_INSTELLINGEN = {
   backup_bewaar_dagelijks: 30, // open punt O-8
   backup_bewaar_maandelijks: 12,
   backup_bewaar_handmatig_dagen: 90, // handmatige back-ups en back-ups vóór terugzetten
+  spotify_generieke_artiesten: ['Reggae', 'Geluidseffecten', 'Disco Samba', 'Diverse artiesten', 'Various Artists'], // nooit automatisch koppelen
   nieuwsbrief_bewaar_dagen: 30, // aanmeldingen zoveel dagen na export automatisch verwijderen (0 = nooit)
   bumper_video_url: '', // rustscherm: de bumper (B&G-logo wordt Fonos-logo)
   geluid_aan: true,
