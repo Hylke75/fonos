@@ -24,7 +24,7 @@ export function Zoeken() {
   const [laden, setLaden] = useState(true)
   const nav = useNavigate()
   const weergave = p.get('weergave') === 'lijst' ? 'lijst' : 'raster'
-  const sleutel = ['q', 'knop', 'sub', 'drager', 'decennium', 'jaar', 'nl', 'sort', 'selectie'].map((k) => `${k}=${p.get(k) ?? ''}`).join('&')
+  const sleutel = ['q', 'knop', 'sub', 'drager', 'decennium', 'jaar', 'nl', 'beschikbaar', 'sort', 'selectie'].map((k) => `${k}=${p.get(k) ?? ''}`).join('&')
 
   const zet = (k: string, v?: string | null, wis: string[] = []) => {
     const n = new URLSearchParams(p)
@@ -81,6 +81,7 @@ export function Zoeken() {
               {d === 'LP' ? "Lp's" : "Cd's"}
             </button>
           ))}
+          <button className={`chip ${p.get('beschikbaar') === '1' ? 'aan' : ''}`} onClick={() => zet('beschikbaar', p.get('beschikbaar') === '1' ? null : '1')} aria-pressed={p.get('beschikbaar') === '1'}>Nu beschikbaar</button>
           {config.instellingen.nl_weergave === 'schakelaar' && (
             <button className={`chip ${p.get('nl') === '1' ? 'aan' : ''}`} onClick={() => zet('nl', p.get('nl') === '1' ? null : '1')} aria-pressed={p.get('nl') === '1'}>Alleen Nederlands</button>
           )}

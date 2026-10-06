@@ -9,7 +9,7 @@ import { KioskKopTerug } from './Kop'
 import { EMAIL_RE, NieuwsbriefBlok, type NieuwsbriefKeuze } from './Nieuwsbrief'
 
 export function Aanvraag() {
-  const { mand, verwijder, leegMand, config, beschikbaar, speler: gekozen, spelerKwijt } = useKiosk()
+  const { mand, verwijder, leegMand, config, beschikbaar, speler: gekozen, spelerKwijt, bewaard, vergeet, voegToe } = useKiosk()
   const speler = gekozen?.nummer ?? null
   const [bezig, setBezig] = useState(false)
   const [fout, setFout] = useState<string | null>(null)
@@ -58,6 +58,7 @@ export function Aanvraag() {
         </div>
 
         <div className="aanvraag-grid">
+          <div className="aanvraag-links">
           <div className="card aanvraag-lijst">
             {mand.length === 0 && (
               <div className="leeg" style={{ padding: 48 }}>
@@ -81,6 +82,20 @@ export function Aanvraag() {
                 <button className="x" onClick={() => { verwijder(m.titel_id); setNietBeschikbaar((n) => n.filter((x) => x !== m.titel_id)); setFout(null) }} aria-label={`Haal ${m.titel} uit je aanvraag`}><X size={26} /></button>
               </div>
             ))}
+          </div>
+            {bewaard.length > 0 && (
+              <div className="card aanvraag-lijst bewaard-lijst">
+                <h2>Bewaard voor later</h2>
+                {bewaard.map((b) => (
+                  <div key={b.titel_id} className="aanvraag-regel">
+                    <Hoes src={b.hoes} />
+                    <div className="namen"><div>{b.artiesten || 'Diverse artiesten'}</div><div>{b.titel}</div></div>
+                    <div className="info"><button className="btn btn-pink btn-s" disabled={mand.length >= config.instellingen.max_titels} onClick={() => voegToe(b)}>Toevoegen</button></div>
+                    <button className="x" onClick={() => vergeet(b.titel_id)} aria-label={`Haal ${b.titel} uit je bewaarde platen`}><X size={26} /></button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="card spelers-paneel">

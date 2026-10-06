@@ -548,3 +548,41 @@ pre.rapport { background: #07111f; border: 1px solid var(--line); border-radius:
 .speler-knop b { color: var(--pink); font-size: 18px; }
 .mijn-speler { text-align: center; padding: 8px 0 20px; }
 .mijn-speler .nr { width: 96px; height: 96px; border-radius: 50%; display: grid; place-items: center; margin: 8px auto; background: var(--pink); color: #2a0020; font-size: 40px; font-weight: 800; box-shadow: 0 0 24px var(--pink-glow); }
+.aanvraag-links { display: flex; flex-direction: column; gap: 20px; }
+.bewaard-lijst h2 { margin: 18px 22px 4px; font-size: 18px; }
+.aanvraag-mini.bewaar { background: var(--surface-2); color: var(--text); border: 1px solid var(--line-2); }
+.aanvraag-status { display: inline-flex; align-items: center; gap: 8px; height: 48px; padding: 0 16px; border-radius: 999px; border: 0; font-size: 16px; font-weight: 700; white-space: nowrap; background: var(--pink); color: #fff; }
+.aanvraag-status.st-bezig { background: #e3a21a; color: #2a1a00; }
+.aanvraag-status.st-klaar { background: #1fbf7a; color: #002a17; }
+.status-paneel { position: absolute; right: 24px; top: 84px; z-index: 30; width: min(440px, 92vw); padding: 20px; }
+.status-paneel h3 { margin: 0 0 12px; font-size: 20px; }
+.status-paneel .regel { display: grid; grid-template-columns: 56px 1fr; gap: 12px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+.status-paneel .regel.weg { opacity: .6; }
+.status-paneel .regel .cover { width: 56px; height: 56px; }
+.stappen { display: flex; gap: 10px; justify-content: center; list-style: none; padding: 0; margin: 8px 0 0; flex-wrap: wrap; }
+.stappen li { display: flex; align-items: center; gap: 8px; font-size: 15px; color: var(--muted); padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); }
+.stappen li span { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-3); color: var(--text); font-weight: 700; font-size: 13px; }
+.stappen li.nu { color: var(--text); border-color: var(--pink); }
+.stappen li.nu span { background: var(--pink); color: #fff; }
+.speler-kiezen .spelers-paneel .btn { margin: 4px auto 0; }
+.scanner { position: relative; max-width: 640px; }
+.scanner video { width: 100%; border-radius: 14px; background: #000; aspect-ratio: 4 / 3; object-fit: cover; }
+.scanner .sluit { position: absolute; right: 14px; top: 14px; }
+.tabel.looplijst tr { cursor: pointer; }
+.tabel.looplijst tr.gepakt td { opacity: .45; text-decoration: line-through; }
+.status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 20px; }
+.status-grid h2 { margin-top: 0; font-size: 18px; }
+.status-regel { display: flex; justify-content: space-between; gap: 16px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.status-regel b { text-align: right; font-weight: 600; }
+.status-regel b.slecht { color: var(--amber); }
+.status-grid .btn { margin-top: 12px; }
+.qr-blad { display: none; }
+@media print {
+  body, .beheer, .beheer main { background: #fff !important; color: #000 !important; }
+  .zijbalk, .beheer-top, .niet-afdrukken { display: none !important; }
+  .qr-blad { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; }
+  .qr-kaart { border: 1px solid #000; border-radius: 12px; padding: 16px; text-align: center; break-inside: avoid; }
+  .qr-kaart svg { width: 60mm; height: 60mm; }
+  .qr-nr { font-size: 28px; font-weight: 800; margin-top: 8px; }
+  .qr-uitleg { font-size: 13px; }
+}

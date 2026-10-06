@@ -12,7 +12,7 @@ import { Artiest } from './Artiest'
 import { Aanvraag } from './Aanvraag'
 import { Verstuurd } from './Verstuurd'
 import { Lezen } from './Lezen'
-import { SpelerKiezen } from './SpelerKiezen'
+import { SpelerKiezen, SpelerViaLink } from './SpelerKiezen'
 import { Laden } from '../components/Iconen'
 
 export type Item = { titel_id: number; exemplaar_id?: number | null; titel: string; artiesten: string; drager?: string | null; jaar?: number | null; hoes?: string | null; vindcode?: string | null }
@@ -34,11 +34,16 @@ type Ctx = {
   toast: (t: string) => void
   versie: number // telt op bij elke beschikbaarheidswijziging
   speler: Speler | null
+  mijnAanvraag: MijnAanvraag | null
+  bewaard: Item[]
+  bewaar: (i: Item) => void
+  vergeet: (titelId: number) => void
   kiesSpeler: (nummer: number) => Promise<void>
   vraagVrijgeven: () => void
   spelerKwijt: () => void
 }
 export type Speler = { nummer: number; sessie: string }
+export type MijnAanvraag = { id: number; bestelnummer: number; status: string; items: { id: number; titel_id: number; titel: string; artiesten: string | null; hoes: string | null; verwijderd: number; reden: string | null }[] }
 const SPELER_SLEUTEL = 'fonos-speler'
 const leesSpeler = (): Speler | null => { try { return JSON.parse(sessionStorage.getItem(SPELER_SLEUTEL) ?? 'null') } catch { return null } }
 const KioskCtx = createContext<Ctx>(null as any)
@@ -57,12 +62,20 @@ export function KioskApp() {
   const spelerRef = useRef(speler)
   spelerRef.current = speler
   const laatsteHartslag = useRef(0)
+  const [mijnAanvraag, setMijnAanvraag] = useState<MijnAanvraag | null>(null)
+  const [bewaard, setBewaard] = useState<Item[]>([])
+  const gemeld = useRef(new Set<number>())
   const nav = useNavigate()
   const loc = useLocation()
   const laatste = useRef(Date.now())
   const mandRef = useRef(mand)
   mandRef.current = mand
 
+  // Tabletnaam eenmalig instellen met ?tablet=Bar%20links (blijft bewaard op deze tablet).
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get('tablet')
+    if (t != null) try { t ? localStorage.setItem('fonos-tablet', t) : localStorage.removeItem('fonos-tablet') } catch { /* niets */ }
+  }, [])
   const [onbereikbaar, setOnbereikbaar] = useState(false)
   const laadConfig = useCallback(() => api<Config>('/kiosk/config').then((c) => { setConfig(c); setOnbereikbaar(false) }).catch(() => setOnbereikbaar(true)), [])
   useEffect(() => { laadConfig() }, [laadConfig])
@@ -85,18 +98,31 @@ export function KioskApp() {
     try { s ? sessionStorage.setItem(SPELER_SLEUTEL, JSON.stringify(s)) : sessionStorage.removeItem(SPELER_SLEUTEL) } catch { /* niets */ }
   }
 
-  /** Laat de server weten dat de speler nog in gebruik is. Is hij intussen vrijgegeven (medewerker, sluitingstijd), dan opnieuw beginnen. */
-  const hartslag = useCallback(async (nu = false) => {
+  /** Status van de eigen aanvraag verwerken; een titel die de medewerker eruit haalde, wordt gemeld (verbetering 3). */
+  const verwerkStatus = useCallback((a: MijnAanvraag | null | undefined) => {
+    setMijnAanvraag(a ?? null)
+    for (const i of a?.items ?? []) {
+      if (!i.verwijderd || gemeld.current.has(i.id)) continue
+      gemeld.current.add(i.id)
+      setMelding(`"${i.titel}" is helaas niet beschikbaar${i.reden ? ` (${i.reden})` : ''}. Kies gerust iets anders.`)
+      setTimeout(() => setMelding(null), 8000)
+    }
+  }, [])
+
+  /** Gebruik (vasthouden = true) of alleen de status opvragen. Is de speler intussen vrijgegeven (medewerker, sluitingstijd), dan opnieuw beginnen. */
+  const hartslag = useCallback(async (nu = false, alleenStatus = false) => {
     const s = spelerRef.current
     if (!s || (!nu && Date.now() - laatsteHartslag.current < 60_000)) return
-    laatsteHartslag.current = Date.now()
-    const r = await api<{ ok: boolean }>('/kiosk/speler/vasthouden', { body: { platenspeler: s.nummer, sessie: s.sessie } }).catch(() => null)
+    if (!alleenStatus) laatsteHartslag.current = Date.now()
+    const r = await api<{ ok: boolean; aanvraag?: MijnAanvraag | null }>('/kiosk/speler/vasthouden', { body: { platenspeler: s.nummer, sessie: s.sessie, alleen_status: alleenStatus } }).catch(() => null)
     if (r && !r.ok) kwijtRef.current()
-  }, [])
+    else if (r) verwerkStatus(r.aanvraag)
+  }, [verwerkStatus])
   const kwijtRef = useRef(() => {})
 
   // Realtime: andere bezoekers vragen platen aan; spelers worden (in)actief of vrijgegeven.
-  useVersies(() => { setVersie((v) => v + 1); controleerMand(); laadConfig(); hartslag(true) }, 5000)
+  useVersies(() => { setVersie((v) => v + 1); controleerMand(); laadConfig(); hartslag(true, true) }, 5000)
+  useEffect(() => { if (speler) hartslag(true, true) }, [speler, hartslag])
 
   const toast = useCallback((t: string) => {
     setMelding(t)
@@ -111,6 +137,9 @@ export function KioskApp() {
     setSpelerVraag(null)
     setVrijgevenVraag(false)
     setSpelerState(null)
+    setMijnAanvraag(null)
+    setBewaard([])
+    gemeld.current.clear()
     try { sessionStorage.clear() } catch { /* niets */ }
     nav(naar, { replace: true })
     window.scrollTo(0, 0)
@@ -158,7 +187,9 @@ export function KioskApp() {
   useEffect(() => { laatste.current = Date.now() }, [loc.pathname])
 
   const ctx = useMemo<Ctx | null>(() => config && {
-    config, mand, beschikbaar, versie, toast, wisSessie, speler,
+    config, mand, beschikbaar, versie, toast, wisSessie, speler, mijnAanvraag, bewaard,
+    bewaar: (i) => { setBewaard((b) => (b.some((x) => x.titel_id === i.titel_id) ? b : [...b, i])); toast(`${i.titel} bewaard voor later`) },
+    vergeet: (id) => setBewaard((b) => b.filter((x) => x.titel_id !== id)),
     kiesSpeler: async (nummer) => {
       const r = await api<{ platenspeler: number; sessie: string }>('/kiosk/speler', { body: { platenspeler: nummer } })
       zetSpeler({ nummer: r.platenspeler ?? nummer, sessie: r.sessie })
@@ -175,11 +206,12 @@ export function KioskApp() {
         return false
       }
       setMand((m) => [...m, i])
+      setBewaard((b) => b.filter((x) => x.titel_id !== i.titel_id))
       return true
     },
     verwijder: (id) => setMand((m) => m.filter((x) => x.titel_id !== id)),
     leegMand: () => setMand([]),
-  }, [config, mand, beschikbaar, versie, toast, wisSessie, speler, laadConfig])
+  }, [config, mand, beschikbaar, versie, toast, wisSessie, speler, laadConfig, mijnAanvraag, bewaard])
 
   if (!ctx) return <div className="kiosk"><Laden tekst={onbereikbaar ? 'De Fonotheek is even niet bereikbaar. We proberen het zo opnieuw…' : 'De Fonotheek wordt geladen…'} /></div>
 
@@ -191,12 +223,14 @@ export function KioskApp() {
           <Routes>
             <Route path="/" element={<Rust />} />
             <Route path="/speler" element={<SpelerKiezen />} />
+            <Route path="/speler/:nr" element={<SpelerViaLink />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         ) : (
           <Routes>
             <Route path="/" element={<Rust />} />
             <Route path="/speler" element={<Navigate to="/home" replace />} />
+            <Route path="/speler/:nr" element={<Navigate to="/home" replace />} />
             <Route path="/home" element={<Home />} />
             <Route path="/zoeken" element={<Zoeken />} />
             <Route path="/album/:id" element={<Album />} />

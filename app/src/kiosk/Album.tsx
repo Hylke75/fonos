@@ -72,7 +72,7 @@ export function AlbumWeergave({ a, voorbeeld = false }: { a: AlbumData; voorbeel
   return (
     <div className="album-grid">
       <div>
-        <div className="album-hoes"><Hoes src={achter ? v.hoes_achter : v.hoes_voor} alt={achter ? 'Achterzijde van de hoes' : 'Hoes'} /></div>
+        <div className="album-hoes"><Hoes src={achter ? v.hoes_achter : v.hoes_voor} alt={achter ? 'Achterzijde van de hoes' : 'Hoes'} groot /></div>
         {v.hoes_achter && (
           <button className="btn btn-ghost btn-s" style={{ marginTop: 14, minHeight: 44 }} onClick={() => setAchter(!achter)}>
             <RotateCw size={16} /> {achter ? 'Toon voorzijde' : 'Toon achterzijde'}
@@ -158,7 +158,15 @@ export function AlbumWeergave({ a, voorbeeld = false }: { a: AlbumData; voorbeel
             <button className="btn btn-pink btn-l btn-block" disabled={!gekozen || inMand || !!vol} onClick={voegToe}>
               {inMand ? 'Staat in je aanvraag' : gekozen ? 'Voeg toe aan aanvraag' : 'Nu in gebruik'}
             </button>
-            {vol && <p className="melding">Je aanvraag is vol: maximaal {kiosk!.config.instellingen.max_titels} titels. Haal er eerst een uit je aanvraag.</p>}
+            {vol && gekozen && (
+              <>
+                <button className="btn btn-ghost btn-l btn-block" style={{ marginTop: 10 }} disabled={kiosk!.bewaard.some((b) => b.titel_id === gekozen.titel_id)}
+                  onClick={() => kiosk!.bewaar({ titel_id: gekozen.titel_id, exemplaar_id: gekozen.exemplaar_id, titel: v.titel ?? '', artiesten: (v.artiesten ?? []).join(', '), drager: gekozen.drager, jaar: gekozen.jaar, hoes: v.hoes_voor, vindcode: gekozen.vindcode })}>
+                  {kiosk!.bewaard.some((b) => b.titel_id === gekozen.titel_id) ? 'Bewaard voor later' : 'Bewaar voor later'}
+                </button>
+                <p className="melding">Je aanvraag is vol: maximaal {kiosk!.config.instellingen.max_titels} titels. Bewaar deze plaat voor je volgende aanvraag.</p>
+              </>
+            )}
             {inMand && <p className="melding"><button className="link-terug" style={{ margin: '0 auto', color: 'var(--cyan)' }} onClick={() => nav('/aanvraag')}>Naar je aanvraag</button></p>}
           </div>
         )}

@@ -11,6 +11,7 @@ const GROEPEN: { naam: string; velden: Veld[] }[] = [
     { k: 'aantal_platenspelers', label: 'Aantal platenspelers', soort: 'getal' },
     { k: 'max_titels', label: 'Maximum titels per aanvraag', soort: 'getal', uitleg: 'Open punt O-5: 3 of 5.' },
     { k: 'sluitingstijd', label: 'Sluitingstijd (open aanvragen automatisch afsluiten)', soort: 'tijd', uitleg: 'Vul de openingstijden van Fonos in.' },
+    ...(['ma', 'di', 'wo', 'do', 'vr', 'za', 'zo'] as const).map((d) => ({ k: `sluitingstijd_${d}`, label: `Sluitingstijd ${{ ma: 'maandag', di: 'dinsdag', wo: 'woensdag', do: 'donderdag', vr: 'vrijdag', za: 'zaterdag', zo: 'zondag' }[d]}`, soort: 'tijd' as const, uitleg: 'Leeg = de algemene sluitingstijd.' })),
     { k: 'markering_min', label: 'Markering lang openstaande aanvraag (minuten)', soort: 'getal' },
     { k: 'geluid_aan', label: 'Geluidssignaal bij nieuwe aanvraag', soort: 'bool' },
     { k: 'vindcode_bron', label: 'Vindcode', soort: 'keuze', opties: [['titelnummer', 'Catalogusnummer Muziekweb (titelnummer)'], ['objectnummer', 'Objectnummer'], ['veld', 'Apart veld vindcode']], uitleg: 'Open punt O-1: met welke code vindt de medewerker de plaat in het archief?' },
@@ -30,6 +31,7 @@ const GROEPEN: { naam: string; velden: Veld[] }[] = [
     { k: 'nieuwsbrief_koppeling', label: 'Nieuwsbriefsysteem', soort: 'keuze', opties: [['beheer', 'Bewaren in de beheeromgeving (menu Nieuwsbrief)'], ['webhook', 'Webhook (POST met e-mail, naam, bron)'], ['geen', 'Geen aanmelding in de kiosk']], uitleg: 'Open punt O-4. Bij "bewaren" exporteert een beheerder de aanmeldingen als CSV naar het nieuwsbriefsysteem.' },
     { k: 'nieuwsbrief_url', label: 'Webhook-adres', soort: 'tekst' },
     { k: 'nieuwsbrief_bron', label: 'Bron die wordt meegegeven', soort: 'tekst' },
+    { k: 'nieuwsbrief_bewaar_dagen', label: 'Aanmeldingen verwijderen na export (dagen)', soort: 'getal', uitleg: '0 = niet automatisch verwijderen.' },
   ] },
   { naam: 'Meldingen', velden: [
     { k: 'melding_email_aan', label: 'E-mail bij elke nieuwe aanvraag', soort: 'bool', uitleg: 'Open punt O-9, standaard uit.' },
@@ -39,6 +41,7 @@ const GROEPEN: { naam: string; velden: Veld[] }[] = [
     { k: 'backup_tijd', label: 'Tijdstip nachtelijke back-up', soort: 'tijd' },
     { k: 'backup_bewaar_dagelijks', label: 'Aantal dagelijkse back-ups bewaren', soort: 'getal', uitleg: 'Open punt O-8: aan te passen aan het IT-beleid van B&G.' },
     { k: 'backup_bewaar_maandelijks', label: 'Aantal maanden één back-up per maand bewaren', soort: 'getal' },
+    { k: 'backup_bewaar_handmatig_dagen', label: 'Handmatige back-ups bewaren (dagen)', soort: 'getal', uitleg: 'Ook back-ups vóór terugzetten. Downloadbestanden worden na een dag verwijderd.' },
   ] },
 ]
 

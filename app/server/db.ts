@@ -129,13 +129,15 @@ export const STANDAARD_INSTELLINGEN = {
   waarschuwing_sec: 15,
   bevestiging_sec: 8,
   sluitingstijd: '17:00', // invullen met de openingstijden van Fonos
+  // Afwijkende sluitingstijd per weekdag; leeg = de algemene sluitingstijd.
+  sluitingstijd_ma: '', sluitingstijd_di: '', sluitingstijd_wo: '', sluitingstijd_do: '', sluitingstijd_vr: '', sluitingstijd_za: '', sluitingstijd_zo: '',
   markering_min: 10,
   fonos_paginas: [
     { naam: 'Agenda', url: 'https://www.fonos.nl/agenda' },
     { naam: 'Verhalen', url: 'https://www.fonos.nl/verhalen' },
   ],
   vaak_periode_dagen: 90,
-  privacy_tekst: 'We gebruiken je e-mailadres alleen voor de nieuwsbrief van Fonos. Je kunt je altijd weer afmelden.',
+  privacy_tekst: 'We gebruiken je naam en e-mailadres alleen om je aan te melden voor de nieuwsbrief van Fonos en verwijderen ze daarna uit deze app. Je kunt je altijd weer afmelden.',
   privacy_url: 'https://www.beeldengeluid.nl/privacy',
   nl_weergave: 'knop', // open punt O-7: 'knop' of 'schakelaar'
   vindcode_bron: 'titelnummer', // O-1: het Muziekweb-catalogusnummer (bv. JK278045) volstaat om de plaat in het archief te vinden
@@ -147,6 +149,8 @@ export const STANDAARD_INSTELLINGEN = {
   backup_tijd: '03:00',
   backup_bewaar_dagelijks: 30, // open punt O-8
   backup_bewaar_maandelijks: 12,
+  backup_bewaar_handmatig_dagen: 90, // handmatige back-ups en back-ups vóór terugzetten
+  nieuwsbrief_bewaar_dagen: 30, // aanmeldingen zoveel dagen na export automatisch verwijderen (0 = nooit)
   bumper_video_url: '', // rustscherm: de bumper (B&G-logo wordt Fonos-logo)
   geluid_aan: true,
 }

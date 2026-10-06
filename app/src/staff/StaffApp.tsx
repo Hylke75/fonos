@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Route, Routes, useNavigate, useParams } from 'react-router-dom'
 import { AlertTriangle, ArrowLeft, Clock, LogOut, X } from 'lucide-react'
-import { api, ApiFout, tijd } from '../api'
+import { api, ApiFout, bestelnr, tijd } from '../api'
 import { useVersies } from '../versies'
 import { Logo } from '../components/Logo'
 import { Hoes } from '../components/Hoes'
@@ -12,9 +12,25 @@ import { Afgeschermd, initialen, type Ik } from '../Login'
 const STATUS: Record<string, string> = { nieuw: 'Nieuw', bezig: 'Bezig', klaar: 'Klaar', afgesloten: 'Afgesloten', geannuleerd: 'Geannuleerd' }
 
 /** Kort geluidssignaal bij een nieuwe aanvraag. */
+// Eén geluidscontext, ontgrendeld bij de eerste aanraking: telefoons blokkeren geluid tot de gebruiker tikt (verbetering 9).
+let geluid: AudioContext | null = null
+function geluidContext() {
+  if (!geluid) geluid = new (window.AudioContext || (window as any).webkitAudioContext)()
+  return geluid
+}
+export function useGeluidAan() {
+  const [aan, setAan] = useState(() => { try { return geluidContext().state === 'running' } catch { return false } })
+  useEffect(() => {
+    const ontgrendel = () => { try { geluidContext().resume().then(() => setAan(true)) } catch { /* niets */ } }
+    window.addEventListener('pointerdown', ontgrendel)
+    return () => window.removeEventListener('pointerdown', ontgrendel)
+  }, [])
+  return aan
+}
+
 function piep() {
   try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+    const ctx = geluidContext()
     for (const [f, t] of [[880, 0], [1320, 0.18]] as const) {
       const o = ctx.createOscillator(), g = ctx.createGain()
       o.frequency.value = f; o.type = 'sine'
@@ -66,7 +82,9 @@ function StafKop({ ik, uit }: { ik: Ik; uit: () => void }) {
 const minutenOpen = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000))
 
 function Lijst() {
-  const [tab, setTab] = useState<'spelers' | 'afgerond'>('spelers')
+  const [tab, setTab] = useState<'spelers' | 'looplijst' | 'terugzetten' | 'vandaag' | 'afgerond'>('spelers')
+  const [terug, setTerug] = useState<number>(0)
+  const geluidAan = useGeluidAan()
   const [d, setD] = useState<any>(null)
   const [afgerond, setAfgerond] = useState<any>(null)
   const [spelers, setSpelers] = useState<any[] | null>(null)
@@ -77,6 +95,7 @@ function Lijst() {
     api('/medewerker/platenspelers').then(setSpelers)
     api('/medewerker/aanvragen?tab=actief').then(setD)
     if (tab === 'afgerond') api('/medewerker/aanvragen?tab=afgerond').then(setAfgerond)
+    api<any[]>('/medewerker/terugzetten').then((l) => setTerug(l.length)).catch(() => {})
   }, [tab])
   useEffect(() => { laad() }, [laad])
   useEffect(() => { const i = setInterval(laad, 30_000); return () => clearInterval(i) }, [laad]) // "hoelang al open" bijwerken
@@ -99,8 +118,16 @@ function Lijst() {
         <button role="tab" aria-selected={tab === 'spelers'} className={`tab ${tab === 'spelers' ? 'aan' : ''}`} onClick={() => setTab('spelers')}>
           Platenspelers {d && d.actief > 0 && <span className="teller">{d.actief}</span>}
         </button>
+        <button role="tab" aria-selected={tab === 'looplijst'} className={`tab ${tab === 'looplijst' ? 'aan' : ''}`} onClick={() => setTab('looplijst')}>Looplijst</button>
+        <button role="tab" aria-selected={tab === 'terugzetten'} className={`tab ${tab === 'terugzetten' ? 'aan' : ''}`} onClick={() => setTab('terugzetten')}>
+          Terugzetten {terug > 0 && <span className="teller">{terug}</span>}
+        </button>
+        <button role="tab" aria-selected={tab === 'vandaag'} className={`tab ${tab === 'vandaag' ? 'aan' : ''}`} onClick={() => setTab('vandaag')}>Vandaag</button>
         <button role="tab" aria-selected={tab === 'afgerond'} className={`tab ${tab === 'afgerond' ? 'aan' : ''}`} onClick={() => setTab('afgerond')}>Afgerond</button>
       </div>
+      {d?.geluid !== false && !geluidAan && <div className="melding-blok" role="status">Het geluidssignaal staat nog uit. Tik ergens op het scherm om het aan te zetten.</div>}
+
+      {tab === 'looplijst' ? <Looplijst versie={terug + (d?.actief ?? 0)} /> : tab === 'terugzetten' ? <Terugzetten bijgewerkt={laad} /> : tab === 'vandaag' ? <Vandaag /> : <>
 
       {tab === 'spelers' ? (
         !spelers || !d ? <Laden /> : (
@@ -115,8 +142,8 @@ function Lijst() {
                     <span className={`tegel-status tegel-${status.toLowerCase()}`}>{status}</span>
                   </div>
                   {a ? (
-                    <button className="speler-aanvraag" onClick={() => nav(`/medewerker/aanvraag/${a.id}`)} aria-label={`Aanvraag #${a.bestelnummer} openen`}>
-                      <span className="bestelnr">#{a.bestelnummer}</span>
+                    <button className="speler-aanvraag" onClick={() => nav(`/medewerker/aanvraag/${a.id}`)} aria-label={`Aanvraag ${bestelnr(a.bestelnummer)} openen`}>
+                      <span className="bestelnr">{bestelnr(a.bestelnummer)}</span>
                       <span className="muted">{minutenOpen(a.ingediend_op)} min open · {a.aantal} {a.aantal === 1 ? 'titel' : 'titels'}</span>
                       {a.lang_open && <span className="lang-label"><Clock size={13} /> &gt; {d.markering_min} min</span>}
                       <span className="duimen">{a.hoezen.map((h: string, i: number) => <Hoes key={i} src={h} />)}</span>
@@ -143,7 +170,7 @@ function Lijst() {
               {afgerond.aanvragen.length === 0 && <tr><td colSpan={6} className="muted" style={{ textAlign: 'center', padding: 40 }}>Nog niets afgerond in de afgelopen twee dagen.</td></tr>}
               {afgerond.aanvragen.map((a: any) => (
                 <tr key={a.id} className="klikbaar" onClick={() => nav(`/medewerker/aanvraag/${a.id}`)}>
-                  <td className="bestelnr">#{a.bestelnummer}</td>
+                  <td className="bestelnr">{bestelnr(a.bestelnummer)}</td>
                   <td>{tijd(a.ingediend_op)}</td>
                   <td><span className="nr-bol">{a.platenspeler}</span></td>
                   <td><div className="duimen">{a.hoezen.map((h: string, i: number) => <Hoes key={i} src={h} />)}<span style={{ marginLeft: 6 }}>{a.aantal} {a.aantal === 1 ? 'titel' : 'titels'}</span></div></td>
@@ -155,7 +182,101 @@ function Lijst() {
           </table>
         </div>
       )}
+      </>}
     </>
+  )
+}
+
+/** Looplijst (verbetering 7): alle titels van ingediende aanvragen op catalogusnummer, voor één ronde door het archief. */
+function Looplijst({ versie }: { versie: number }) {
+  const [l, setL] = useState<any[] | null>(null)
+  const [gepakt, setGepakt] = useState<Set<number>>(new Set())
+  useEffect(() => { api<any[]>('/medewerker/looplijst').then(setL) }, [versie])
+  useRealtime(() => api<any[]>('/medewerker/looplijst').then(setL))
+  if (!l) return <Laden />
+  if (!l.length) return <p className="muted" style={{ padding: 32, textAlign: 'center' }}>Er staan geen platen klaar om op te halen.</p>
+  return (
+    <div className="tabel-kaart">
+      <table className="tabel looplijst">
+        <thead><tr><th style={{ width: 48 }} /><th>Catalogusnr.</th><th>Titel</th><th>Drager</th><th>Speler</th><th>Aanvraag</th></tr></thead>
+        <tbody>
+          {l.map((r) => (
+            <tr key={r.id} className={gepakt.has(r.id) ? 'gepakt' : ''} onClick={() => setGepakt((g) => { const n = new Set(g); n.has(r.id) ? n.delete(r.id) : n.add(r.id); return n })}>
+              <td><input type="checkbox" checked={gepakt.has(r.id)} readOnly aria-label="Gepakt" /></td>
+              <td className="bestelnr">{r.vindcode ?? '–'}</td>
+              <td><div className="duimen"><Hoes src={r.hoes} /><span style={{ marginLeft: 8 }}>{r.artiesten}<br /><span className="muted">{r.titel}</span></span></div></td>
+              <td>{r.drager}</td>
+              <td><span className="nr-bol">{r.platenspeler}</span></td>
+              <td>{bestelnr(r.bestelnummer)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="muted tekst-klein" style={{ padding: '8px 16px' }}>Vink af wat je gepakt hebt (alleen op dit scherm). Breng de platen daarna per speler en zet de aanvraag op "Uitgegeven".</p>
+    </div>
+  )
+}
+
+/** Terugzetten (verbetering 8): platen van afgesloten aanvragen die nog terug in het archief moeten. */
+function Terugzetten({ bijgewerkt }: { bijgewerkt: () => void }) {
+  const [l, setL] = useState<any[] | null>(null)
+  const laad = () => api<any[]>('/medewerker/terugzetten').then(setL)
+  useEffect(() => { laad() }, [])
+  useRealtime(() => laad())
+  const zet = async (ids: number[]) => { setL(await api('/medewerker/terugzetten', { body: { ids } })); bijgewerkt() }
+  if (!l) return <Laden />
+  if (!l.length) return <p className="muted" style={{ padding: 32, textAlign: 'center' }}>Alles staat weer in het archief.</p>
+  return (
+    <div className="tabel-kaart">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px' }}>
+        <span className="muted">{l.length} {l.length === 1 ? 'plaat' : 'platen'} terug te zetten, op volgorde van catalogusnummer</span>
+        <button className="btn btn-gray" onClick={() => { if (confirm('Alle platen als teruggezet markeren?')) zet(l.map((r) => r.id)) }}>Alles teruggezet</button>
+      </div>
+      <table className="tabel">
+        <thead><tr><th>Catalogusnr.</th><th>Titel</th><th>Drager</th><th>Speler</th><th>Aanvraag</th><th /></tr></thead>
+        <tbody>
+          {l.map((r) => (
+            <tr key={r.id}>
+              <td className="bestelnr">{r.vindcode ?? '–'}</td>
+              <td><div className="duimen"><Hoes src={r.hoes} /><span style={{ marginLeft: 8 }}>{r.artiesten}<br /><span className="muted">{r.titel}</span></span></div></td>
+              <td>{r.drager}</td>
+              <td><span className="nr-bol">{r.platenspeler}</span></td>
+              <td>{bestelnr(r.bestelnummer)}</td>
+              <td style={{ textAlign: 'right' }}><button className="btn btn-gray btn-s" onClick={() => zet([r.id])}>Teruggezet</button></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/** Overzicht van vandaag (verbetering 10). */
+function Vandaag() {
+  const [v, setV] = useState<any>(null)
+  useEffect(() => { api('/medewerker/vandaag').then(setV) }, [])
+  useRealtime(() => api('/medewerker/vandaag').then(setV))
+  if (!v) return <Laden />
+  const blok = (w: any, l: string) => <div className="card teller-blok"><div className="w">{w ?? '–'}</div><div className="muted tekst-klein">{l}</div></div>
+  return (
+    <div className="vandaag">
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
+        {blok(v.aanvragen, 'aanvragen')}{blok(v.titels, 'platen aangevraagd')}{blok(v.open, 'nu open')}
+        {blok(v.min_tot_uitgifte != null ? `${v.min_tot_uitgifte} min` : null, 'gemiddeld tot uitgifte')}{blok(v.niet_gevonden, 'niet gevonden')}{blok(v.geannuleerd, 'geannuleerd')}
+      </div>
+      <div className="twee-kol" style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 20 }}>
+        <div className="card" style={{ padding: 16 }}>
+          <h3 style={{ marginTop: 0 }}>Per platenspeler</h3>
+          {v.spelers.length === 0 && <p className="muted">Nog geen aanvragen vandaag.</p>}
+          {v.spelers.map((s: any) => <div key={s.platenspeler} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0' }}><span>Speler {s.platenspeler}</span><b>{s.aantal}</b></div>)}
+        </div>
+        <div className="card" style={{ padding: 16 }}>
+          <h3 style={{ marginTop: 0 }}>Meest aangevraagd</h3>
+          {v.top.length === 0 && <p className="muted">Nog niets aangevraagd vandaag.</p>}
+          {v.top.map((t: any) => <div key={t.id} className="duimen" style={{ padding: '6px 0' }}><Hoes src={t.hoes} /><span style={{ marginLeft: 8, flex: 1 }}>{t.artiesten}<br /><span className="muted">{t.titel}</span></span><b>{t.aantal}×</b></div>)}
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -179,7 +300,7 @@ function Detail() {
     <>
       <button className="link-terug" onClick={() => nav('/medewerker')}><ArrowLeft size={20} /> Terug</button>
       <div className="detail-kop">
-        <h1>Aanvraag #{a.bestelnummer}</h1>
+        <h1>Aanvraag {bestelnr(a.bestelnummer)}</h1>
         <span className={`status status-${a.weergave_status}`} style={{ height: 40, minWidth: 110, fontSize: 16 }}>{STATUS[a.weergave_status]}</span>
         <span className="speler-label">Platenspeler<b>{a.platenspeler}</b></span>
         <span className="tijd">{tijd(a.ingediend_op)}{open && <span className="dim tekst-klein"> · {minutenOpen(a.ingediend_op)} min open</span>}</span>

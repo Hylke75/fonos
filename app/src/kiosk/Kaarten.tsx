@@ -1,6 +1,6 @@
 // Albumkaart (hoes met artiest en titel) en de knop "Aanvragen".
 import { useNavigate } from 'react-router-dom'
-import { Check, Plus } from 'lucide-react'
+import { Bookmark, Check, Plus } from 'lucide-react'
 import { Hoes } from '../components/Hoes'
 import { Beschikbaarheid } from '../components/Iconen'
 import { useKiosk } from './KioskApp'
@@ -28,10 +28,19 @@ export function AlbumKaart({ k, voet = false }: { k: Kaart; voet?: boolean }) {
 }
 
 export function AanvraagMini({ k }: { k: Kaart }) {
-  const { mand, voegToe, toast, config } = useKiosk()
+  const { mand, voegToe, toast, config, bewaard, bewaar } = useKiosk()
   const in_ = mand.some((m) => m.titel_id === k.id)
-  // Bij het maximum: uitgeschakeld, met uitleg bij aantikken (7.8).
+  // Bij het maximum: bewaren voor later in plaats van aanvragen (7.8, verbetering 4).
   const vol = !in_ && mand.length >= config.instellingen.max_titels
+  if (vol && k.beschikbaar) {
+    const al = bewaard.some((b) => b.titel_id === k.id)
+    return (
+      <button className={`aanvraag-mini bewaar ${al ? 'in' : ''}`} disabled={al} aria-label={al ? 'Bewaard voor later' : `Bewaar ${k.titel} voor later`}
+        onClick={() => bewaar({ titel_id: k.id, titel: k.titel, artiesten: k.artiesten, drager: k.drager, jaar: k.jaar, hoes: k.hoes })}>
+        {al ? <><Check size={16} /> Bewaard</> : <><Bookmark size={16} /> Bewaar</>}
+      </button>
+    )
+  }
   return (
     <button
       className={`aanvraag-mini ${in_ ? 'in' : ''}`} disabled={!k.beschikbaar && !in_}

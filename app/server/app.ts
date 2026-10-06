@@ -9,11 +9,25 @@ import { versies } from './events.ts'
 import { COOKIE, gebruikerBijToken } from './auth.ts'
 import { tik, tikTerloops } from './planner.ts'
 import { openBlob } from './opslag.ts'
+import { run } from './db.ts'
 
 export const app = new Hono()
 
+/** Kiosktablets met een naam (header X-Fonos-Tablet): hooguit eens per 30 s "laatst gezien" bijwerken. */
+const gezien = new Map<string, number>()
+function kioskGezien(naam: string | undefined, pagina: string | undefined) {
+  if (!naam) return
+  const n = naam.trim().slice(0, 60)
+  if (!n || Date.now() - (gezien.get(n) ?? 0) < 30_000) return
+  gezien.set(n, Date.now())
+  run('INSERT INTO kiosks (naam, laatst_gezien, pagina) VALUES (?, nu(), ?) ON CONFLICT (naam) DO UPDATE SET laatst_gezien = nu(), pagina = excluded.pagina',
+    n, pagina?.slice(0, 120) ?? null).catch(() => {})
+}
+
 app.use('*', async (c, next) => {
   tikTerloops()
+  const dec = (v?: string) => { try { return v ? decodeURIComponent(v) : undefined } catch { return undefined } }
+  kioskGezien(dec(c.req.header('x-fonos-tablet')), dec(c.req.header('x-fonos-pagina')))
   await next()
   c.header('X-Content-Type-Options', 'nosniff')
   c.header('Referrer-Policy', 'same-origin')
@@ -42,6 +56,7 @@ app.get('/api/versies', async (c) => {
 app.get('/api/cron', async (c) => {
   const geheim = process.env.CRON_SECRET
   if (geheim && c.req.header('authorization') !== `Bearer ${geheim}`) return c.json({ fout: 'Niet toegestaan' }, 401)
+  await run("INSERT INTO planner (taak, datum) VALUES ('cron:laatst', nu()) ON CONFLICT (taak) DO UPDATE SET datum = excluded.datum")
   await tik({ backup: true, cron: true })
   return c.json({ ok: true })
 })

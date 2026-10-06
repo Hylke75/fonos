@@ -21,11 +21,18 @@ async function claim(taak: string): Promise<boolean> {
 
 let laatsteTik = 0
 
+/** Sluitingstijd van vandaag: per weekdag instelbaar, anders de algemene sluitingstijd (10.10). */
+export function sluitingVandaag(inst: Record<string, any>, nu = new Date()) {
+  const weekdag = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Amsterdam', weekday: 'short' }).format(nu)
+  const dag = { Sun: 'zo', Mon: 'ma', Tue: 'di', Wed: 'wo', Thu: 'do', Fri: 'vr', Sat: 'za' }[weekdag] ?? ''
+  return (inst[`sluitingstijd_${dag}`] || inst.sluitingstijd) as string
+}
+
 /** cron: aangeroepen door Vercel Cron; dat moment is de nachtelijke back-up, ongeacht het ingestelde tijdstip. */
 export async function tik(opts: { backup?: boolean; cron?: boolean } = {}) {
   const inst = await instellingen()
   const tijd = nuHHMM()
-  if (tijd >= inst.sluitingstijd && (await claim('sluiten'))) {
+  if (tijd >= sluitingVandaag(inst) && (await claim('sluiten'))) {
     const n = await sluitAllesAf('sluitingstijd', { ...SYSTEEM, naam: 'Automatisch (sluitingstijd)' })
     if (n) console.log(`[planner] ${n} open aanvragen afgesloten bij sluitingstijd`)
   }
@@ -44,6 +51,9 @@ export async function tik(opts: { backup?: boolean; cron?: boolean } = {}) {
     }
   }
   await probeerWachtrij().catch(() => {})
+  // Nieuwsbriefaanmeldingen na de bewaartermijn verwijderen (alleen geëxporteerde).
+  const bewaar = Number(inst.nieuwsbrief_bewaar_dagen)
+  if (bewaar > 0) await run("DELETE FROM nieuwsbrief_aanmeldingen WHERE geexporteerd_op IS NOT NULL AND geexporteerd_op < nu(?::interval)", `-${bewaar} days`).catch(() => {})
 }
 
 /** Hooguit eens per minuut, niet-blokkerend, vanuit gewone verzoeken. */

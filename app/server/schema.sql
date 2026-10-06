@@ -92,7 +92,7 @@ ALTER TABLE platenspelers ADD COLUMN IF NOT EXISTS laatst_actief text;
 
 CREATE TABLE IF NOT EXISTS aanvragen (
   id            serial PRIMARY KEY,
-  bestelnummer  integer NOT NULL UNIQUE,
+  bestelnummer  integer NOT NULL,
   platenspeler  integer NOT NULL,
   status        text NOT NULL DEFAULT 'ingediend',
   ingediend_op  text NOT NULL DEFAULT nu(),
@@ -104,6 +104,11 @@ CREATE TABLE IF NOT EXISTS aanvragen (
   afgesloten_door text
 );
 CREATE INDEX IF NOT EXISTS idx_aanvragen_status ON aanvragen(status);
+-- Bestelnummers beginnen elke dag opnieuw (6.5): uniek per dag (Amsterdamse datum).
+ALTER TABLE aanvragen ADD COLUMN IF NOT EXISTS dag text;
+UPDATE aanvragen SET dag = to_char(((ingediend_op || '+00')::timestamptz AT TIME ZONE 'Europe/Amsterdam'), 'YYYY-MM-DD') WHERE dag IS NULL;
+ALTER TABLE aanvragen DROP CONSTRAINT IF EXISTS aanvragen_bestelnummer_key;
+CREATE UNIQUE INDEX IF NOT EXISTS aanvragen_dag_bestelnummer ON aanvragen(dag, bestelnummer);
 
 CREATE TABLE IF NOT EXISTS aanvraag_items (
   id           serial PRIMARY KEY,
@@ -113,6 +118,9 @@ CREATE TABLE IF NOT EXISTS aanvraag_items (
   verwijderd   integer NOT NULL DEFAULT 0,
   reden        text
 );
+-- Terugzetten in het archief na afloop, door de medewerker afgevinkt.
+ALTER TABLE aanvraag_items ADD COLUMN IF NOT EXISTS teruggezet_op text;
+ALTER TABLE aanvraag_items ADD COLUMN IF NOT EXISTS teruggezet_door text;
 CREATE INDEX IF NOT EXISTS idx_items_aanvraag ON aanvraag_items(aanvraag_id);
 CREATE INDEX IF NOT EXISTS idx_items_exemplaar ON aanvraag_items(exemplaar_id);
 
@@ -244,6 +252,13 @@ CREATE TABLE IF NOT EXISTS nieuwsbrief_aanmeldingen (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS nieuwsbrief_aanmeldingen_email ON nieuwsbrief_aanmeldingen (lower(email));
 
+-- Kiosktablets met een eigen naam (bv. "Bar links"): laatst gezien, voor de statuspagina.
+CREATE TABLE IF NOT EXISTS kiosks (
+  naam          text PRIMARY KEY,
+  laatst_gezien text NOT NULL DEFAULT nu(),
+  pagina        text
+);
+
 -- Kortlevende status van imports en back-ups die meerdere verzoeken beslaan.
 CREATE TABLE IF NOT EXISTS taken (
   id     text PRIMARY KEY,
@@ -258,7 +273,7 @@ DECLARE t text;
 BEGIN
   FOREACH t IN ARRAY ARRAY['titels','zoekwoorden','mw_dump','exemplaren','import_issues','platenspelers','aanvragen',
     'aanvraag_items','genreknoppen','genre_koppelingen','selecties','selectie_titels','instellingen','gebruikers','sessies',
-    'wijzigingslog','imports','backups','versies','planner','nieuwsbrief_wachtrij','nieuwsbrief_aanmeldingen','taken'] LOOP
+    'wijzigingslog','imports','backups','versies','planner','nieuwsbrief_wachtrij','nieuwsbrief_aanmeldingen','kiosks','taken'] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
   END LOOP;
 END $$;

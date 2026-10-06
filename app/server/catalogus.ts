@@ -125,7 +125,7 @@ export async function home() {
 // ------------------------------------------------------------------ zoeken en bladeren (7.5)
 
 export type Filters = {
-  q?: string; knop?: number; sub?: string; drager?: string; decennium?: number; jaar?: number; nl?: boolean; selectie?: number
+  q?: string; knop?: number; sub?: string; drager?: string; decennium?: number; jaar?: number; nl?: boolean; selectie?: number; beschikbaar?: boolean
   sort?: 'relevantie' | 'artiest' | 'album' | 'jaar'; pagina?: number; per?: number
 }
 
@@ -149,6 +149,8 @@ export async function zoekCatalogus(f: Filters) {
     const nl = ks.find((k) => k.nederlands) ?? (await knoppen(false)).find((k) => k.nederlands)
     if (nl) w.push({ sql: GENRES_IN, p: [JSON.stringify(nl.genres)] })
   }
+  // Alleen wat nu beschikbaar is: minstens één exemplaar in de collectie dat niet in een open aanvraag zit.
+  if (f.beschikbaar) w.push({ sql: `EXISTS (SELECT 1 FROM exemplaren e WHERE e.titel_id = t.id AND e.status = 'in_collectie' AND e.id NOT IN (${OPEN_ITEMS_SQL}))`, p: [] })
   const waar = (lijst: Voorwaarde[]) => ({ sql: lijst.map((x) => `(${x.sql})`).join(' AND '), p: lijst.flatMap((x) => x.p) })
 
   // Subfilters tellen binnen de gekozen knop, vóór het subfilter zelf.

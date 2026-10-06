@@ -3,7 +3,7 @@ import { Hono } from 'hono'
 import { vereist, wie } from '../auth.ts'
 import { instellingen, run, get } from '../db.ts'
 import { log } from '../log.ts'
-import { AanvraagFout, aanvraagDetail, geefSpelerVrij, annuleren, lijstAanvragen, minutenOpen, ophalen, platenspelers, uitgeven, verwijderItem, vrijgeven } from '../aanvragen.ts'
+import { AanvraagFout, aanvraagDetail, geefSpelerVrij, looplijst, terugTeZetten, vandaagOverzicht, zetTerugInArchief, annuleren, lijstAanvragen, minutenOpen, ophalen, platenspelers, uitgeven, verwijderItem, vrijgeven } from '../aanvragen.ts'
 import { aanvragenGewijzigd, beschikbaarheidGewijzigd } from '../events.ts'
 
 export const medewerker = new Hono()
@@ -39,6 +39,14 @@ medewerker.post('/aanvraag/:id/annuleren', actie(async (id, b, c) => await annul
 medewerker.post('/aanvraag/:id/item/:item/verwijder', actie(async (id, b, c) => await verwijderItem(id, Number(c.req.param('item')), b.reden?.trim() || null, wie(c))))
 
 medewerker.get('/platenspelers', async (c) => c.json(await platenspelers()))
+medewerker.get('/looplijst', async (c) => c.json(await looplijst()))
+medewerker.get('/terugzetten', async (c) => c.json(await terugTeZetten()))
+medewerker.post('/terugzetten', async (c) => {
+  const { ids } = await c.req.json<{ ids: number[] }>()
+  await zetTerugInArchief(ids ?? [], wie(c))
+  return c.json(await terugTeZetten())
+})
+medewerker.get('/vandaag', async (c) => c.json(await vandaagOverzicht()))
 medewerker.post('/platenspeler/:nr/vrijgeven', async (c) => {
   await geefSpelerVrij(Number(c.req.param('nr')), 'medewerker', wie(c))
   return c.json(await platenspelers())

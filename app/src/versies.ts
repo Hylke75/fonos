@@ -1,4 +1,5 @@
 // Realtime via polling: elke paar seconden de tellers ophalen; bij een verandering de callback aanroepen.
+import { tabletKop } from './api'
 import { useEffect, useRef } from 'react'
 
 export type Versies = { aanvragen: number; beschikbaarheid: number; catalogus: number; laatste_nieuw?: number | null }
@@ -12,7 +13,7 @@ export function useVersies(opWijziging: (nieuw: Versies, oud: Versies) => void, 
     let t: any
     const tik = async () => {
       try {
-        const r = await fetch('/api/versies', { credentials: 'same-origin', cache: 'no-store' })
+        const r = await fetch('/api/versies', { credentials: 'same-origin', cache: 'no-store', headers: tabletKop() })
         if (r.ok) {
           const v: Versies = await r.json()
           if (vorige && (v.aanvragen !== vorige.aanvragen || v.beschikbaarheid !== vorige.beschikbaarheid || v.catalogus !== vorige.catalogus)) ref.current(v, vorige)

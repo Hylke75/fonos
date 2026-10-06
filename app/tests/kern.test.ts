@@ -55,7 +55,8 @@ test('aanvragen: eerst platenspeler kiezen, reserveren, in gebruik, maximum, vri
   // Een vastgehouden speler is niet door een ander te kiezen.
   await assert.rejects(() => kiesSpeler(2), (e: any) => e.code === 'bezet')
   const r = await dienAanvraagIn({ platenspeler: 2, sessie: s2, titels: [{ titel_id: a }] })
-  assert.ok(r.bestelnummer > 1000)
+  // Bestelnummers beginnen elke dag bij 1.
+  assert.equal(r.bestelnummer, 1)
   // Het enige exemplaar is nu in gebruik.
   const s4 = await kiesSpeler(4)
   await assert.rejects(() => dienAanvraagIn({ platenspeler: 4, sessie: s4, titels: [{ titel_id: a }] }), (e: any) => e instanceof AanvraagFout && e.code === 'niet_beschikbaar')
@@ -63,6 +64,7 @@ test('aanvragen: eerst platenspeler kiezen, reserveren, in gebruik, maximum, vri
   await assert.rejects(() => dienAanvraagIn({ platenspeler: 2, sessie: s2, titels: [{ titel_id: b }] }), (e: any) => e.code === 'bezet')
   const r2 = await dienAanvraagIn({ platenspeler: 2, sessie: s2, titels: [{ titel_id: b }], bezetAfsluiten: true })
   assert.equal(r2.vorigeAfgesloten, true)
+  assert.equal(r2.bestelnummer, 2)
   assert.equal((await get<any>('SELECT status, afgesloten_door FROM aanvragen WHERE id = ?', r.id))!.afgesloten_door, 'bezoeker')
   // Bezoeker geeft de speler vrij: aanvraag afgesloten, speler weer vrij.
   assert.equal(await houdSpelerVast(2, s2), true)
@@ -151,4 +153,44 @@ test('back-up: terugzetten zet Fonos-waarden terug en vraagt TERUGZETTEN', async
   await zetTerug(k.token, 'TERUGZETTEN', IK, k)
   assert.equal(getoond((await get<any>('SELECT * FROM titels WHERE id = ?', id))!).label, 'Eigen label')
   assert.equal((await get<any>("SELECT COUNT(*) n FROM backups WHERE soort = 'voor_terugzetten'"))!.n, 1)
+})
+
+test('verbeteringen: status voor de bezoeker, looplijst, terugzetten, vandaag, beschikbaar-filter, sluitingstijd per dag', async () => {
+  const { aanvraagVanSessie, looplijst, terugTeZetten, zetTerugInArchief, vandaagOverzicht, ophalen } = await import('../server/aanvragen.ts')
+  const { zoekCatalogus } = await import('../server/catalogus.ts')
+  const { sluitingVandaag } = await import('../server/planner.ts')
+  await sluitAllesAf('test', IK)
+  await zetTerugInArchief((await terugTeZetten()).map((t) => t.id), IK) // restanten van eerdere tests
+  const a = await titelMetExemplaar('VB00001', 'Kind of Blue', 'Miles Davis')
+  const b = await titelMetExemplaar('VB00002', 'Blue Train', 'John Coltrane')
+  const s = await kiesSpeler(3)
+  const r = await dienAanvraagIn({ platenspeler: 3, sessie: s, titels: [{ titel_id: a }, { titel_id: b }] })
+  // De bezoeker ziet zijn aanvraag; een andere sessie niet.
+  assert.equal((await aanvraagVanSessie(3, s))!.aanvraag!.status, 'nieuw')
+  assert.equal(await aanvraagVanSessie(3, 'onzin'), null)
+  // Looplijst bevat beide titels; daarna haalt de medewerker er één uit (niet te vinden).
+  assert.equal((await looplijst()).filter((x) => x.aanvraag_id === r.id).length, 2)
+  const item = (await get<any>('SELECT id FROM aanvraag_items WHERE aanvraag_id = ? AND titel_id = ?', r.id, b))!
+  await verwijderItem(r.id, item.id, 'niet te vinden', IK)
+  const st = (await aanvraagVanSessie(3, s))!.aanvraag!
+  assert.equal(st.items.find((i: any) => i.titel_id === b)!.verwijderd, 1)
+  assert.equal(st.items.find((i: any) => i.titel_id === b)!.reden, 'niet te vinden')
+  // Alleen beschikbare titels: a is in gebruik, b weer vrij.
+  const ids = (await zoekCatalogus({ q: 'blue', beschikbaar: true })).titels.map((t: any) => t.id)
+  assert.ok(ids.includes(b) && !ids.includes(a))
+  // Na uitgeven en vrijgeven: terugzetten.
+  await ophalen(r.id, IK)
+  await uitgeven(r.id, IK)
+  await geefSpelerVrij(3, 'bezoeker', IK, s)
+  const terug = await terugTeZetten()
+  assert.equal(terug.length, 1)
+  assert.equal(await zetTerugInArchief(terug.map((t) => t.id), IK), 1)
+  assert.equal((await terugTeZetten()).length, 0)
+  // Overzicht van vandaag.
+  const v = await vandaagOverzicht()
+  assert.ok(v.aanvragen >= 1 && v.niet_gevonden >= 1)
+  // Sluitingstijd per weekdag, anders de algemene.
+  const maandag = new Date('2026-10-05T10:00:00Z')
+  assert.equal(sluitingVandaag({ sluitingstijd: '17:00', sluitingstijd_ma: '' }, maandag), '17:00')
+  assert.equal(sluitingVandaag({ sluitingstijd: '17:00', sluitingstijd_ma: '22:00' }, maandag), '22:00')
 })

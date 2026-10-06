@@ -5,6 +5,7 @@ import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Check } from 'lucide-react'
 import { Logo } from '../components/Logo'
 import { useKiosk } from './KioskApp'
+import { bestelnr } from '../api'
 
 export function Verstuurd() {
   const st = useLocation().state as { bestelnummer: number; platenspeler: number; aangemeld?: boolean } | null
@@ -28,7 +29,7 @@ export function Verstuurd() {
         <div className="vink"><Check size={56} color="#bdf2fb" strokeWidth={2.5} /></div>
         <h1>Aanvraag verstuurd!</h1>
         <div className="label">Bestelnummer</div>
-        <div className="nummer-groot">#{st.bestelnummer}</div>
+        <div className="nummer-groot">{bestelnr(st.bestelnummer)}</div>
         <p>Een FONOS-medewerker haalt de platen voor je op.<br />Deze worden gebracht naar platenspeler {st.platenspeler}.</p>
         {st.aangemeld && <p className="tekst-klein" style={{ fontSize: 17, marginTop: -12 }}>{config.instellingen.nieuwsbrief_bevestigingsmail ? 'Je ontvangt een e-mail om je aanmelding voor de nieuwsbrief te bevestigen.' : 'Je bent aangemeld voor de nieuwsbrief van Fonos.'}</p>}
         <div style={{ display: 'flex', gap: 16, justifyContent: 'center' }}>

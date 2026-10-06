@@ -1,10 +1,10 @@
 // Kopbalk van de kiosk: logo, zoekbalk met suggesties, taal en aanvraaglijst.
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Disc3, Search, ShoppingBag, X } from 'lucide-react'
+import { ArrowLeft, Clock, Disc3, Search, ShoppingBag, X } from 'lucide-react'
 import { Logo } from '../components/Logo'
 import { Hoes } from '../components/Hoes'
-import { api } from '../api'
+import { api, bestelnr } from '../api'
 import { useKiosk } from './KioskApp'
 
 export function MandKnop() {
@@ -14,6 +14,35 @@ export function MandKnop() {
       <ShoppingBag size={22} />
       {mand.length > 0 && <span className="teller">{mand.length}</span>}
     </Link>
+  )
+}
+
+const STATUS_TEKST: Record<string, string> = { nieuw: 'Ingediend', bezig: 'Wordt opgehaald', klaar: 'Bij je speler' }
+
+/** Status van de eigen aanvraag (verbetering 2): ingediend, wordt opgehaald, bij je speler. */
+export function AanvraagStatus() {
+  const { mijnAanvraag: a } = useKiosk()
+  const [open, setOpen] = useState(false)
+  if (!a) return null
+  return (
+    <>
+      <button className={`aanvraag-status st-${a.status}`} onClick={() => setOpen(!open)} aria-expanded={open} aria-label={`Aanvraag ${bestelnr(a.bestelnummer)}: ${STATUS_TEKST[a.status] ?? a.status}`}>
+        <Clock size={18} /> {bestelnr(a.bestelnummer)} · {STATUS_TEKST[a.status] ?? a.status}
+      </button>
+      {open && (
+        <div className="card status-paneel" role="dialog" aria-label="Je aanvraag">
+          <h3>Aanvraag {bestelnr(a.bestelnummer)}: {STATUS_TEKST[a.status] ?? a.status}</h3>
+          {a.items.map((i) => (
+            <div key={i.id} className={`regel ${i.verwijderd ? 'weg' : ''}`}>
+              <Hoes src={i.hoes} />
+              <div><div>{i.artiesten || 'Diverse artiesten'}</div><div className="muted">{i.titel}</div>
+                {!!i.verwijderd && <div className="tekst-klein" style={{ color: 'var(--red)' }}>Niet beschikbaar{i.reden ? `: ${i.reden}` : ''}</div>}</div>
+            </div>
+          ))}
+          <button className="btn btn-ghost btn-s" style={{ marginTop: 12 }} onClick={() => setOpen(false)}>Sluiten</button>
+        </div>
+      )}
+    </>
   )
 }
 
@@ -91,6 +120,7 @@ export function KioskKop({ zoekStart }: { zoekStart?: string }) {
       <Link to="/home" aria-label="Naar de homepagina"><Logo /></Link>
       <Zoekbalk start={zoekStart} />
       <div className="rechts" style={{ marginLeft: 0 }}>
+        <AanvraagStatus />
         <SpelerKnop />
         <span className="badge-nl" aria-label="Taal: Nederlands">NL</span>
         <MandKnop />
@@ -107,6 +137,7 @@ export function KioskKopTerug({ tekst = 'Terug naar resultaten', naar, zoekIcoon
       <Link to="/home" aria-label="Naar de homepagina"><Logo /></Link>
       <button className="link-terug" onClick={() => (naar ? nav(naar) : window.history.length > 1 ? nav(-1) : nav('/home'))}><ArrowLeft size={20} /> {tekst}</button>
       <div className="rechts">
+        <AanvraagStatus />
         <SpelerKnop />
         {zoekIcoon && <Link to="/home" className="icon-btn" aria-label="Zoeken"><Search size={22} /></Link>}
         {mand && <MandKnop />}

@@ -58,6 +58,35 @@ export async function verwijder(adres: string) {
   if (existsSync(p)) unlinkSync(p)
 }
 
+/** Zet een bestand terug op precies hetzelfde adres als het ontbreekt (terugzetten van een back-up). */
+export async function zetTerugOpAdres(adres: string, data: Buffer) {
+  if (!blob() || !adres.startsWith(BESTAND_PREFIX)) return false // openbare Blob-adressen hebben een willekeurig deel: niet na te maken
+  const pad = adres.slice(BESTAND_PREFIX.length)
+  const { head, put } = await import('@vercel/blob')
+  if (await head(pad).then(() => true, () => false)) return false
+  const type = /\.png$/i.test(pad) ? 'image/png' : /\.webp$/i.test(pad) ? 'image/webp' : 'image/jpeg'
+  await put(pad, data, { access: BLOB_TOEGANG, contentType: type, addRandomSuffix: false })
+  return true
+}
+
+/** Verwijdert tijdelijke bestanden in de map uploads (downloads, geüploade imports) die ouder zijn dan maxLeeftijd. */
+export async function ruimUploadsOp(maxLeeftijd: number) {
+  const grens = Date.now() - maxLeeftijd
+  if (blob()) {
+    const { list, del } = await import('@vercel/blob')
+    let cursor: string | undefined
+    do {
+      const r = await list({ prefix: 'uploads/', cursor, limit: 1000 })
+      const oud = r.blobs.filter((b) => new Date(b.uploadedAt).getTime() < grens).map((b) => b.url)
+      if (oud.length) await del(oud)
+      cursor = r.hasMore ? r.cursor : undefined
+    } while (cursor)
+    return
+  }
+  const d = join(OPSLAG_DIR, 'uploads')
+  for (const f of lokaleBestanden('uploads')) if (statSync(join(d, f)).mtimeMs < grens) unlinkSync(join(d, f))
+}
+
 export function lokaalPad(adres: string) {
   const rel = adres.replace(/^\/uploads\//, '')
   if (rel.includes('..')) throw new Error('Ongeldig pad')

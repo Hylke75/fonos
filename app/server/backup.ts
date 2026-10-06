@@ -11,7 +11,7 @@ import { sluitAllesAf } from './aanvragen.ts'
 import { getoond } from './titels.ts'
 import { aanvragenGewijzigd, beschikbaarheidGewijzigd, catalogusVersieOmhoog } from './events.ts'
 import { stuurMail } from './mail.ts'
-import { bewaar, isEigenUpload, lees, lokaalPad, verwijder } from './opslag.ts'
+import { ruimUploadsOp, zetTerugOpAdres, bewaar, isEigenUpload, lees, lokaalPad, verwijder } from './opslag.ts'
 
 // Tabellen in de back-up. Niet: gebruikers en wachtwoorden, sessies, de Muziekweb-dump (opnieuw te importeren).
 const TABELLEN = [
@@ -119,6 +119,14 @@ export async function ruimOp() {
     await verwijder(b.bestand)
     await run('DELETE FROM backups WHERE id = ?', b.id)
   }
+  // Handmatige back-ups en back-ups vóór terugzetten: na de ingestelde termijn (O-8).
+  const dagen = Number(inst.backup_bewaar_handmatig_dagen) || 90
+  for (const b of await all<any>("SELECT * FROM backups WHERE soort IN ('handmatig', 'voor_terugzetten') AND tijd < nu(?::interval)", `-${dagen} days`)) {
+    await verwijder(b.bestand)
+    await run('DELETE FROM backups WHERE id = ?', b.id)
+  }
+  // Downloadbestanden en geüploade importbestanden (map uploads) zijn tijdelijk: na een dag weg.
+  await ruimUploadsOp(24 * 3600 * 1000).catch((e) => console.error('[backup] opruimen uploads mislukt', e))
 }
 
 export async function backupAdres(id: number) {
@@ -217,11 +225,13 @@ export async function zetTerug(token: string, bevestiging: string, wie: Wie, kan
       await run(`SELECT setval(pg_get_serial_sequence('${t}', 'id'), GREATEST(COALESCE((SELECT MAX(id) FROM ${t}), 0), 1))`)
     }
   })
-  // Lokale opslag: ontbrekende hoezen terugschrijven. In Vercel Blob blijven de bestanden gewoon staan.
+  // Ontbrekende eigen hoezen terugschrijven op hetzelfde adres (lokale opslag en Vercel Blob, 12.4).
   for (const [naam, adres] of Object.entries(k.index)) {
-    if (!adres.startsWith('/uploads/') || !k.hoezen[naam]) continue
-    const p = lokaalPad(adres)
-    if (!existsSync(p)) { mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, k.hoezen[naam]) }
+    if (!k.hoezen[naam]) continue
+    if (adres.startsWith('/uploads/')) {
+      const p = lokaalPad(adres)
+      if (!existsSync(p)) { mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, k.hoezen[naam]) }
+    } else await zetTerugOpAdres(adres, k.hoezen[naam]).catch((e) => console.error('[backup] hoes niet teruggezet', adres, e))
   }
   await run('DELETE FROM taken WHERE id = ?', token)
   await log(wie, 'back-up teruggezet', { type: 'backup', label: k.bron, nieuw: { gemaakt: k.data.gemaakt, back_up_vooraf: voor.bestand } })

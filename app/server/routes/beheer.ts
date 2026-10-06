@@ -10,7 +10,7 @@ import { all, get, run, insert, json, instellingen, zetInstelling, syncPlatenspe
 import { log } from '../log.ts'
 import { TWEELAAGS, ROLLEN, REDENEN_AFVOER, type TitelVelden } from '../../shared/velden.ts'
 import {
-  getoond, zetFonosWaarde, besluitConflict, zetFonosEigen, FONOS_EIGEN, maakTitel, koppelTitelnummer, exemplarenVan, OPEN_ITEMS_SQL, vindcoder,
+  getoond, zetFonosWaarde, besluitConflict, zetFonosEigen, FONOS_EIGEN, maakTitel, koppelTitelnummer, exemplarenVan, OPEN_ITEMS_SQL, vindcoder, ZICHTBAAR_SQL,
 } from '../titels.ts'
 import { album, wisConfigCache, wisHomeCache, selectieIds } from '../catalogus.ts'
 import { analyseer, leesBestand, samenvatting, voerDoor, type Categorie } from '../importers/collectie.ts'
@@ -36,7 +36,7 @@ beheer.get('/tellers', async (c) => {
     titels: await n('SELECT COUNT(*) AS n FROM titels'),
     exemplaren: await n("SELECT COUNT(*) AS n FROM exemplaren WHERE status = 'in_collectie'"),
     datakwaliteit: Object.values(await dqTellingen()).reduce((a, b) => a + b, 0),
-    laatste_import: (await get<any>("SELECT tijd FROM imports WHERE soort = 'muziekweb' AND rapport::jsonb->>'afgerond' = 'true' ORDER BY id DESC LIMIT 1"))?.tijd ?? null,
+    laatste_import: (await get<any>("SELECT tijd FROM imports WHERE soort = 'muziekweb' AND (rapport::jsonb->>'afgerond' = 'true' OR rapport::jsonb->>'bron' IS NOT NULL) ORDER BY id DESC LIMIT 1"))?.tijd ?? null,
     laatste_backup: (await get<any>("SELECT tijd FROM backups WHERE status = 'gelukt' ORDER BY id DESC LIMIT 1"))?.tijd ?? null,
   })
 })
@@ -411,7 +411,7 @@ const TOELICHTING = `COALESCE(NULLIF(t.fonos_data::jsonb->>'toelichting', ''), N
 const DQ: Record<string, { naam: string; sql: (laatste: number) => string }> = {
   zonder_titelnummer: { naam: 'Exemplaren zonder titelnummer', sql: () => `SELECT e.id AS exemplaar_id, e.objectnummer, e.vindcode, e.bron FROM exemplaren e WHERE e.titelnummer IS NULL AND e.titel_id IS NULL AND e.status = 'in_collectie'` },
   dubbel: { naam: 'Dubbele objectnummers', sql: () => `SELECT i.id AS issue_id, i.objectnummer, i.titelnummer, i.vindcode, i.bron, (SELECT e.titel_id FROM exemplaren e WHERE e.objectnummer = i.objectnummer) AS titel_id FROM import_issues i WHERE i.soort = 'dubbel_objectnummer' AND i.afgehandeld = 0` },
-  niet_in_dump: { naam: 'Titelnummers die niet in de dump voorkomen', sql: (laatste) => `
+  niet_in_dump: { naam: 'Titelnummers die (nog) niet in de dump voorkomen', sql: (laatste) => `
       SELECT NULL::int AS titel_id, e.id AS exemplaar_id, e.objectnummer, e.titelnummer FROM exemplaren e
         WHERE e.titel_id IS NULL AND e.titelnummer IS NOT NULL AND e.status = 'in_collectie'
       UNION ALL
@@ -812,6 +812,51 @@ beheer.post('/nieuwsbrief/verwijder-geexporteerd', alleenBeheerder, async (c) =>
   const r = await run('DELETE FROM nieuwsbrief_aanmeldingen WHERE geexporteerd_op IS NOT NULL')
   await log(wie(c), 'nieuwsbriefaanmeldingen verwijderd', { type: 'nieuwsbrief', nieuw: `${r.changes} geëxporteerde aanmelding(en)` })
   return c.json({ verwijderd: r.changes })
+})
+
+// ---------- Status (verbetering 18): build, data, back-up, cron, database en kiosks ----------
+beheer.get('/status', alleenBeheerder, async (c) => {
+  const t0 = Date.now()
+  await get('SELECT 1')
+  const db_ms = Date.now() - t0
+  const n = async (sql: string) => Number((await get<any>(sql))?.n ?? 0)
+  const exportDelen = await all<any>("SELECT taak, datum FROM planner WHERE taak LIKE 'export:%' ORDER BY taak")
+  return c.json({
+    build: {
+      commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? null,
+      bericht: process.env.VERCEL_GIT_COMMIT_MESSAGE?.split('\n')[0] ?? null,
+      branch: process.env.VERCEL_GIT_COMMIT_REF ?? null,
+      omgeving: process.env.VERCEL_ENV ?? 'lokaal',
+      regio: process.env.VERCEL_REGION ?? null,
+    },
+    database: { ok: true, ms: db_ms },
+    data: {
+      muziekweb_records: await n('SELECT COUNT(*)::int AS n FROM mw_dump'),
+      exportdelen: exportDelen.length,
+      laatste_exportdeel: exportDelen.at(-1)?.taak?.slice(7) ?? null,
+      titels: await n('SELECT COUNT(*)::int AS n FROM titels'),
+      zichtbare_titels: await n(`SELECT COUNT(*)::int AS n FROM titels t WHERE ${ZICHTBAAR_SQL}`),
+      exemplaren: await n("SELECT COUNT(*)::int AS n FROM exemplaren WHERE status = 'in_collectie'"),
+      wacht_op_muziekweb: await n("SELECT COUNT(*)::int AS n FROM exemplaren e WHERE e.status = 'in_collectie' AND e.titel_id IS NULL AND e.titelnummer IS NOT NULL AND NOT EXISTS (SELECT 1 FROM mw_dump m WHERE m.titelnummer = e.titelnummer)"),
+      ontbrekende_titelnummers: await n("SELECT COUNT(DISTINCT e.titelnummer)::int AS n FROM exemplaren e WHERE e.status = 'in_collectie' AND e.titel_id IS NULL AND e.titelnummer IS NOT NULL AND NOT EXISTS (SELECT 1 FROM mw_dump m WHERE m.titelnummer = e.titelnummer)"),
+    },
+    laatste_import: (await get<any>("SELECT tijd FROM imports WHERE soort = 'muziekweb' AND (rapport::jsonb->>'afgerond' = 'true' OR rapport::jsonb->>'bron' IS NOT NULL) ORDER BY id DESC LIMIT 1"))?.tijd ?? null,
+    laatste_backup: (await get<any>("SELECT tijd, soort FROM backups WHERE status = 'gelukt' ORDER BY id DESC LIMIT 1")) ?? null,
+    laatste_backup_fout: (await get<any>("SELECT tijd, fout FROM backups WHERE status <> 'gelukt' ORDER BY id DESC LIMIT 1")) ?? null,
+    laatste_cron: (await get<any>("SELECT datum FROM planner WHERE taak = 'cron:laatst'"))?.datum ?? null,
+    kiosks: await all("SELECT naam, laatst_gezien, pagina, laatst_gezien > nu('-2 minutes') AS online FROM kiosks ORDER BY naam"),
+    platenspelers: await all('SELECT nummer, actief, sessie IS NOT NULL AS vastgehouden, bezet_sinds, laatst_actief FROM platenspelers ORDER BY nummer'),
+    open_aanvragen: await n("SELECT COUNT(*)::int AS n FROM aanvragen WHERE status IN ('ingediend', 'uitgegeven')"),
+  })
+})
+
+/** Titelnummers uit de collectie die nog niet in de Muziekweb-data staan (verbetering 13): lijst voor de scraper. */
+beheer.get('/ontbrekende-titelnummers.csv', vereist('redacteur'), async (c) => {
+  const rijen = await all<any>(`SELECT e.titelnummer, COUNT(*)::int AS exemplaren, MIN(e.bron) AS bron FROM exemplaren e
+    WHERE e.status = 'in_collectie' AND e.titel_id IS NULL AND e.titelnummer IS NOT NULL AND NOT EXISTS (SELECT 1 FROM mw_dump m WHERE m.titelnummer = e.titelnummer)
+    GROUP BY e.titelnummer ORDER BY e.titelnummer`)
+  const csv = '\ufeff' + ['titelnummer;exemplaren;bron', ...rijen.map((r) => `${r.titelnummer};${r.exemplaren};"${String(r.bron ?? '').replace(/"/g, '""')}"`)].join('\r\n')
+  return new Response(csv, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="ontbrekende-titelnummers-${new Date().toISOString().slice(0, 10)}.csv"` } })
 })
 
 beheer.get('/opslag', (c) => c.json({ blob: !!process.env.BLOB_READ_WRITE_TOKEN, toegang: BLOB_TOEGANG }))

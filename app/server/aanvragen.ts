@@ -19,6 +19,9 @@ export class AanvraagFout extends Error {
 
 const OPEN = "('ingediend', 'uitgegeven')"
 
+/** Bestelnummer met datum voor het log: nummers beginnen elke dag opnieuw. */
+const nrLabel = (a: { bestelnummer: number; dag?: string | null }) => `#${String(a.bestelnummer).padStart(3, '0')}${a.dag ? ` (${a.dag})` : ''}`
+
 export function openAanvraagVoorSpeler(nummer: number) {
   return get<any>(`SELECT * FROM aanvragen WHERE platenspeler = ? AND status IN ${OPEN} ORDER BY id DESC LIMIT 1`, nummer)
 }
@@ -35,7 +38,7 @@ export async function platenspelers() {
 // ------------------------------------------------------------------ platenspeler kiezen, vasthouden, vrijgeven
 
 /** Bezoeker kiest een platenspeler (eerste stap in de kiosk). Geeft een sessiecode terug. */
-export async function kiesSpeler(nummer: number) {
+export async function kiesSpeler(nummer: number, wie: Wie = BEZOEKER) {
   const r = await tx(async () => {
     await run('SELECT pg_advisory_xact_lock(4711)')
     const p = await get<any>('SELECT * FROM platenspelers WHERE nummer = ?', nummer)
@@ -45,7 +48,7 @@ export async function kiesSpeler(nummer: number) {
     await run('UPDATE platenspelers SET sessie = ?, bezet_sinds = nu(), laatst_actief = nu() WHERE nummer = ?', sessie, nummer)
     return sessie
   })
-  await log(BEZOEKER, 'platenspeler gekozen', { type: 'platenspeler', id: nummer, label: `Platenspeler ${nummer}` })
+  await log(wie, 'platenspeler gekozen', { type: 'platenspeler', id: nummer, label: `Platenspeler ${nummer}` })
   await aanvragenGewijzigd()
   return r
 }
@@ -91,9 +94,12 @@ async function kiesExemplaar(titelId: number, voorkeur?: number | null): Promise
   return vrij.find((e) => e.id === voorkeur)?.id ?? vrij[0].id
 }
 
+const DAG_SQL = "to_char(now() AT TIME ZONE 'Europe/Amsterdam', 'YYYY-MM-DD')"
+
+/** Kort bestelnummer dat elke dag opnieuw bij 1 begint (6.5); getoond als #001. */
 async function volgendBestelnummer(): Promise<number> {
-  const r = await get<{ m: number | null }>('SELECT MAX(bestelnummer) AS m FROM aanvragen')
-  return Math.max(1000, r?.m ?? 1000) + 1
+  const r = await get<{ m: number | null }>(`SELECT MAX(bestelnummer) AS m FROM aanvragen WHERE dag = ${DAG_SQL}`)
+  return (r?.m ?? 0) + 1
 }
 
 /** Sluit een aanvraag af: exemplaren worden weer beschikbaar. */
@@ -101,7 +107,7 @@ export async function sluitAf(id: number, door: string, wie: Wie) {
   const a = await get<any>('SELECT * FROM aanvragen WHERE id = ?', id)
   if (!a || !['ingediend', 'uitgegeven'].includes(a.status)) return false
   await run("UPDATE aanvragen SET status = 'afgesloten', afgesloten_op = nu(), afgesloten_door = ? WHERE id = ?", door, id)
-  await log(wie, 'aanvraag afgesloten', { type: 'aanvraag', id, label: `#${a.bestelnummer}`, veld: 'status', oud: a.status, nieuw: `afgesloten (${door})` })
+  await log(wie, 'aanvraag afgesloten', { type: 'aanvraag', id, label: nrLabel(a), veld: 'status', oud: a.status, nieuw: `afgesloten (${door})` })
   return true
 }
 
@@ -130,7 +136,7 @@ export async function dienAanvraagIn(inv: { platenspeler: number; sessie?: strin
     if (niet.length) throw new AanvraagFout('niet_beschikbaar', 'Een of meer titels zijn intussen in gebruik.', { titelIds: niet })
     if (open) await sluitAf(open.id, 'bezoeker', BEZOEKER)
     const nr = await volgendBestelnummer()
-    const id = await insert('INSERT INTO aanvragen (bestelnummer, platenspeler) VALUES (?, ?)', nr, inv.platenspeler)
+    const id = await insert(`INSERT INTO aanvragen (bestelnummer, platenspeler, dag) VALUES (?, ?, ${DAG_SQL})`, nr, inv.platenspeler)
     await run('UPDATE platenspelers SET laatst_actief = nu() WHERE nummer = ?', inv.platenspeler)
     for (const k of keuze) await run('INSERT INTO aanvraag_items (aanvraag_id, titel_id, exemplaar_id) VALUES (?, ?, ?)', id, k.titel_id, k.exemplaar_id)
     return { id, bestelnummer: nr, platenspeler: inv.platenspeler, vorigeAfgesloten: !!open, titelIds: keuze.map((k) => k.titel_id) }
@@ -139,8 +145,8 @@ export async function dienAanvraagIn(inv: { platenspeler: number; sessie?: strin
   await beschikbaarheidGewijzigd(resultaat.titelIds)
   if (inst.melding_email_aan && inst.melding_email_adres) {
     // Open punt O-9: optionele e-mailmelding, standaard uit.
-    await stuurMail(inst.melding_email_adres, `Nieuwe aanvraag #${resultaat.bestelnummer} voor platenspeler ${resultaat.platenspeler}`,
-      `Er is een nieuwe aanvraag (#${resultaat.bestelnummer}) voor platenspeler ${resultaat.platenspeler} met ${resultaat.titelIds.length} titel(s).`).catch(() => {})
+    await stuurMail(inst.melding_email_adres, `Nieuwe aanvraag #${String(resultaat.bestelnummer).padStart(3, '0')} voor platenspeler ${resultaat.platenspeler}`,
+      `Er is een nieuwe aanvraag (#${String(resultaat.bestelnummer).padStart(3, '0')}) voor platenspeler ${resultaat.platenspeler} met ${resultaat.titelIds.length} titel(s).`).catch(() => {})
   }
   return resultaat
 }
@@ -185,7 +191,7 @@ async function wijzigStatus(id: number, van: string[], sql: string, actie: strin
   if (!a) throw new AanvraagFout('niet_gevonden', 'Aanvraag niet gevonden')
   if (!van.includes(a.status)) throw new AanvraagFout('status', 'Deze actie kan niet in de huidige status.')
   await run(sql, ...p, id)
-  await log(wie, actie, { type: 'aanvraag', id, label: `#${a.bestelnummer}` })
+  await log(wie, actie, { type: 'aanvraag', id, label: nrLabel(a) })
   await aanvragenGewijzigd()
   await beschikbaarheidGewijzigd()
 }
@@ -210,7 +216,7 @@ export async function verwijderItem(aanvraagId: number, itemId: number, reden: s
   const item = await get<any>('SELECT i.*, t.d_titel FROM aanvraag_items i JOIN titels t ON t.id = i.titel_id WHERE i.id = ? AND i.aanvraag_id = ?', itemId, aanvraagId)
   if (!item || item.verwijderd) throw new AanvraagFout('niet_gevonden', 'Titel niet gevonden in deze aanvraag.')
   await run('UPDATE aanvraag_items SET verwijderd = 1, reden = ? WHERE id = ?', reden, itemId)
-  await log(wie, 'titel uit aanvraag gehaald', { type: 'aanvraag', id: aanvraagId, label: `#${a.bestelnummer}`, veld: 'titel', oud: item.d_titel, nieuw: reden })
+  await log(wie, 'titel uit aanvraag gehaald', { type: 'aanvraag', id: aanvraagId, label: nrLabel(a), veld: 'titel', oud: item.d_titel, nieuw: reden })
   const over = (await get<{ n: number }>('SELECT COUNT(*) AS n FROM aanvraag_items WHERE aanvraag_id = ? AND verwijderd = 0', aanvraagId))!.n
   if (over === 0) await run("UPDATE aanvragen SET status = 'geannuleerd', geannuleerd_op = nu(), reden = 'Alle titels verwijderd' WHERE id = ?", aanvraagId)
   await aanvragenGewijzigd()
@@ -231,4 +237,65 @@ export async function sluitAllesAf(door: string, wie: Wie): Promise<number> {
 /** Lang openstaand: langer dan de ingestelde tijd op "ingediend" (9). */
 export function minutenOpen(a: { ingediend_op: string }) {
   return Math.floor((Date.now() - Date.parse(a.ingediend_op.replace(' ', 'T') + 'Z')) / 60000)
+}
+
+// ------------------------------------------------------------------ bezoeker: status van de eigen aanvraag (verbetering 2, 3)
+
+/** Open aanvraag op de speler van deze sessie, met per titel of hij eruit gehaald is (en waarom). */
+export async function aanvraagVanSessie(nummer: number, sessie: string) {
+  if (!(await spelerVanSessie(nummer, sessie))) return null
+  const a = await openAanvraagVoorSpeler(nummer)
+  if (!a) return { aanvraag: null }
+  const items = await all<any>(`SELECT i.id, i.titel_id, i.verwijderd, i.reden, t.d_titel AS titel, t.d_artiesten AS artiesten, t.d_hoes AS hoes
+    FROM aanvraag_items i JOIN titels t ON t.id = i.titel_id WHERE i.aanvraag_id = ? ORDER BY i.id`, a.id)
+  return { aanvraag: { id: a.id, bestelnummer: a.bestelnummer, status: weergaveStatus(a), items } }
+}
+
+// ------------------------------------------------------------------ medewerker: looplijst, terugzetten, vandaag (verbetering 7, 8, 10)
+
+/** Alle titels van ingediende aanvragen op volgorde van vindcode: één ronde door het archief voor alle spelers. */
+export async function looplijst() {
+  const vc = await vindcoder()
+  const rijen = await all<any>(`SELECT i.id, i.aanvraag_id, a.bestelnummer, a.platenspeler, a.opgepakt_op, t.d_titel AS titel, t.d_artiesten AS artiesten,
+      t.d_drager AS drager, t.d_hoes AS hoes, e.objectnummer, e.vindcode, e.titelnummer
+    FROM aanvraag_items i JOIN aanvragen a ON a.id = i.aanvraag_id JOIN titels t ON t.id = i.titel_id JOIN exemplaren e ON e.id = i.exemplaar_id
+    WHERE a.status = 'ingediend' AND i.verwijderd = 0`)
+  return rijen.map((r) => ({ ...r, vindcode: vc(r) }))
+    .sort((x, y) => String(x.vindcode ?? '~').localeCompare(String(y.vindcode ?? '~'), 'nl', { numeric: true }))
+}
+
+/** Platen van afgesloten aanvragen die nog terug in het archief moeten. */
+export async function terugTeZetten() {
+  const vc = await vindcoder()
+  const rijen = await all<any>(`SELECT i.id, a.bestelnummer, a.platenspeler, a.afgesloten_op, a.geannuleerd_op, t.d_titel AS titel, t.d_artiesten AS artiesten,
+      t.d_drager AS drager, t.d_hoes AS hoes, e.objectnummer, e.vindcode, e.titelnummer
+    FROM aanvraag_items i JOIN aanvragen a ON a.id = i.aanvraag_id JOIN titels t ON t.id = i.titel_id JOIN exemplaren e ON e.id = i.exemplaar_id
+    WHERE a.status IN ('afgesloten', 'geannuleerd') AND i.verwijderd = 0 AND i.teruggezet_op IS NULL
+      AND (a.uitgegeven_op IS NOT NULL OR a.opgepakt_op IS NOT NULL)
+      AND COALESCE(a.afgesloten_op, a.geannuleerd_op) > nu('-14 days')`)
+  return rijen.map((r) => ({ ...r, vindcode: vc(r) }))
+    .sort((x, y) => String(x.vindcode ?? '~').localeCompare(String(y.vindcode ?? '~'), 'nl', { numeric: true }))
+}
+
+export async function zetTerugInArchief(itemIds: number[], wie: Wie) {
+  if (!itemIds.length) return 0
+  const r = await run(`UPDATE aanvraag_items SET teruggezet_op = nu(), teruggezet_door = ? WHERE id = ANY(?::int[]) AND teruggezet_op IS NULL`, wie.naam, `{${itemIds.map(Number).join(',')}}`)
+  if (r.changes) await log(wie, 'platen teruggezet in het archief', { type: 'aanvraag', nieuw: `${r.changes} plaat/platen` })
+  return r.changes
+}
+
+/** Overzicht van vandaag: aantallen, tijd tot uitgifte, drukste spelers en meest aangevraagde titels. */
+export async function vandaagOverzicht() {
+  const tel = await get<any>(`SELECT COUNT(*)::int AS aanvragen,
+      COUNT(*) FILTER (WHERE status IN ${OPEN})::int AS open,
+      COUNT(*) FILTER (WHERE status = 'geannuleerd')::int AS geannuleerd,
+      ROUND(AVG(EXTRACT(EPOCH FROM ((uitgegeven_op || '+00')::timestamptz - (ingediend_op || '+00')::timestamptz)) / 60) FILTER (WHERE uitgegeven_op IS NOT NULL))::int AS min_tot_uitgifte
+    FROM aanvragen WHERE dag = ${DAG_SQL}`)
+  const titels = (await get<any>(`SELECT COUNT(*)::int AS n FROM aanvraag_items i JOIN aanvragen a ON a.id = i.aanvraag_id WHERE a.dag = ${DAG_SQL} AND i.verwijderd = 0`))!.n
+  const spelers = await all<any>(`SELECT platenspeler, COUNT(*)::int AS aantal FROM aanvragen WHERE dag = ${DAG_SQL} GROUP BY 1 ORDER BY 2 DESC, 1`)
+  const top = await all<any>(`SELECT t.id, t.d_titel AS titel, t.d_artiesten AS artiesten, t.d_hoes AS hoes, COUNT(*)::int AS aantal
+    FROM aanvraag_items i JOIN aanvragen a ON a.id = i.aanvraag_id JOIN titels t ON t.id = i.titel_id
+    WHERE a.dag = ${DAG_SQL} AND i.verwijderd = 0 GROUP BY t.id ORDER BY aantal DESC, t.d_titel LIMIT 10`)
+  const niet = (await get<any>(`SELECT COUNT(*)::int AS n FROM aanvraag_items i JOIN aanvragen a ON a.id = i.aanvraag_id WHERE a.dag = ${DAG_SQL} AND i.verwijderd = 1`))!.n
+  return { ...tel, titels, niet_gevonden: niet, spelers, top }
 }

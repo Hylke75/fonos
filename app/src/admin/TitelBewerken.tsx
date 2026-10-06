@@ -136,7 +136,7 @@ function VeldBewerker({ def, d, genres, opslaan, terug, besluit, upload }: {
       {def.soort === 'tracks' && <TracksBewerker waarde={getoond ?? []} opslaan={opslaan} />}
       {def.soort === 'hoes' && (
         <div className="hoes-bewerk">
-          <Hoes src={getoond} />
+          <Hoes src={getoond} groot />
           <div>
             <input ref={file} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
             <button className="btn btn-ghost btn-s" onClick={() => file.current?.click()}><Upload size={14} /> Eigen afbeelding uploaden</button>

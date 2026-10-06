@@ -24,6 +24,18 @@ functioneel ontwerp v1.0 (6 oktober 2026) en de vormgeving uit de bijlage.
 Omgevingsvariabelen in Vercel: `DATABASE_URL` (mag meerdere adressen bevatten, gescheiden door spaties),
 `FONOS_BEHEERDER_EMAIL`, `FONOS_START_WACHTWOORD`, `CRON_SECRET`, en `BLOB_READ_WRITE_TOKEN` (via de Blob-koppeling).
 
+## Werking aan de bar
+
+- **Kiosk:** rustscherm → platenspeler kiezen (knoppen, QR-code op de speler of link `/speler/3`) → zoeken en aanvragen →
+  speler vrijgeven. Na 20 minuten zonder gebruik "Ben je er nog?"; zonder reactie na 3 minuten automatisch vrijgegeven (instelbaar).
+  In de kop de status van de eigen aanvraag; een titel die de medewerker eruit haalt, wordt gemeld. Bij een volle aanvraag kun je platen bewaren voor later.
+- **Tabletnaam:** open de kiosk één keer met `?tablet=Bar%20links`; de naam staat daarna in het log en op Beheer → Status.
+- **Medewerker:** tegels per platenspeler, looplijst over alle open aanvragen (op catalogusnummer), terugzetten in het archief en een overzicht van vandaag.
+  Bestelnummers beginnen elke dag bij #001.
+- **Beheer → Status:** build, database, cron, back-up, kiosks, platenspelers en de Muziekweb-data die nog binnenkomt
+  (met een CSV van titelnummers die nog niet in de dump staan). Hier ook de QR-codes voor de platenspelers om af te drukken.
+- **Beheer → Nieuwsbrief:** aanmeldingen bekijken, exporteren als CSV en verwijderen; na export automatisch verwijderd na de ingestelde termijn.
+
 ## Lokaal starten
 
 Vereist Node.js 22.13 of nieuwer. Zonder `DATABASE_URL` draait de app op PGlite (Postgres in het proces, map `data/pglite`).
