@@ -2,7 +2,7 @@
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import type { Context, Next } from 'hono'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
-import { get, run, json } from './db.ts'
+import { get, run, insert, json } from './db.ts'
 import type { Rol } from '../shared/velden.ts'
 import type { Wie } from './log.ts'
 
@@ -24,41 +24,41 @@ export function controleerWachtwoord(w: string, hash: string | null): boolean {
 
 export type Gebruiker = { id: number; email: string; naam: string; rollen: Rol[]; actief: number }
 
-export function maakGebruiker(g: { email: string; naam: string; rollen: Rol[]; wachtwoord?: string }): number {
-  return Number(run('INSERT INTO gebruikers (email, naam, rollen, wachtwoord) VALUES (?, ?, ?, ?)',
-    g.email.trim(), g.naam.trim(), JSON.stringify(g.rollen), g.wachtwoord ? hashWachtwoord(g.wachtwoord) : null).lastInsertRowid)
+export function maakGebruiker(g: { email: string; naam: string; rollen: Rol[]; wachtwoord?: string }): Promise<number> {
+  return insert('INSERT INTO gebruikers (email, naam, rollen, wachtwoord) VALUES (?, ?, ?, ?)',
+    g.email.trim(), g.naam.trim(), JSON.stringify(g.rollen), g.wachtwoord ? hashWachtwoord(g.wachtwoord) : null)
 }
 
-export function login(email: string, wachtwoord: string): { token: string; gebruiker: Gebruiker } | null {
-  const g = get<any>('SELECT * FROM gebruikers WHERE email = ? AND actief = 1', email.trim())
+export async function login(email: string, wachtwoord: string): Promise<{ token: string; gebruiker: Gebruiker } | null> {
+  const g = await get<any>('SELECT * FROM gebruikers WHERE lower(email) = lower(?) AND actief = 1', email.trim())
   if (!g || !controleerWachtwoord(wachtwoord, g.wachtwoord)) return null
   const token = randomBytes(32).toString('hex')
-  run("INSERT INTO sessies (token, gebruiker_id, verloopt) VALUES (?, ?, datetime('now', ?))", token, g.id, `+${SESSIE_UREN} hours`)
-  run("DELETE FROM sessies WHERE verloopt < datetime('now')")
+  await run('INSERT INTO sessies (token, gebruiker_id, verloopt) VALUES (?, ?, nu(?::interval))', token, g.id, `${SESSIE_UREN} hours`)
+  await run('DELETE FROM sessies WHERE verloopt < nu()')
   return { token, gebruiker: { id: g.id, email: g.email, naam: g.naam, rollen: json(g.rollen, []), actief: g.actief } }
 }
 
-export function gebruikerBijToken(token?: string): Gebruiker | null {
+export async function gebruikerBijToken(token?: string): Promise<Gebruiker | null> {
   if (!token) return null
-  const g = get<any>(`SELECT g.* FROM sessies s JOIN gebruikers g ON g.id = s.gebruiker_id
-    WHERE s.token = ? AND s.verloopt > datetime('now') AND g.actief = 1`, token)
+  const g = await get<any>(`SELECT g.* FROM sessies s JOIN gebruikers g ON g.id = s.gebruiker_id
+    WHERE s.token = ? AND s.verloopt > nu() AND g.actief = 1`, token)
   return g ? { id: g.id, email: g.email, naam: g.naam, rollen: json(g.rollen, []), actief: g.actief } : null
 }
 
 export function zetSessieCookie(c: Context, token: string) {
-  setCookie(c, COOKIE, token, { httpOnly: true, sameSite: 'Lax', path: '/', maxAge: SESSIE_UREN * 3600, secure: process.env.NODE_ENV === 'production' && process.env.FONOS_HTTPS !== '0' })
+  setCookie(c, COOKIE, token, { httpOnly: true, sameSite: 'Lax', path: '/', maxAge: SESSIE_UREN * 3600, secure: (process.env.NODE_ENV === 'production' || !!process.env.VERCEL) && process.env.FONOS_HTTPS !== '0' })
 }
 
-export function logout(c: Context) {
+export async function logout(c: Context) {
   const t = getCookie(c, COOKIE)
-  if (t) run('DELETE FROM sessies WHERE token = ?', t)
+  if (t) await run('DELETE FROM sessies WHERE token = ?', t)
   deleteCookie(c, COOKIE, { path: '/' })
 }
 
 /** Middleware: alleen door met een van de opgegeven rollen. Beheerder mag alles van redacteur. */
 export function vereist(...rollen: Rol[]) {
   return async (c: Context, next: Next) => {
-    const g = gebruikerBijToken(getCookie(c, COOKIE))
+    const g = await gebruikerBijToken(getCookie(c, COOKIE))
     if (!g) return c.json({ fout: 'Niet ingelogd' }, 401)
     const effectief = new Set<Rol>(g.rollen)
     if (effectief.has('beheerder')) effectief.add('redacteur')
@@ -73,16 +73,16 @@ export const wie = (c: Context): Wie => {
   return { id: g.id, naam: g.naam }
 }
 
-export function maakResetToken(gebruikerId: number): string {
+export async function maakResetToken(gebruikerId: number): Promise<string> {
   const token = randomBytes(24).toString('hex')
-  run("UPDATE gebruikers SET reset_token = ?, reset_tot = datetime('now', '+2 hours') WHERE id = ?", token, gebruikerId)
+  await run("UPDATE gebruikers SET reset_token = ?, reset_tot = nu('2 hours') WHERE id = ?", token, gebruikerId)
   return token
 }
 
-export function resetWachtwoord(token: string, wachtwoord: string): boolean {
-  const g = get<any>("SELECT id FROM gebruikers WHERE reset_token = ? AND reset_tot > datetime('now') AND actief = 1", token)
+export async function resetWachtwoord(token: string, wachtwoord: string): Promise<boolean> {
+  const g = await get<any>('SELECT id FROM gebruikers WHERE reset_token = ? AND reset_tot > nu() AND actief = 1', token)
   if (!g) return false
-  run('UPDATE gebruikers SET wachtwoord = ?, reset_token = NULL, reset_tot = NULL WHERE id = ?', hashWachtwoord(wachtwoord), g.id)
-  run('DELETE FROM sessies WHERE gebruiker_id = ?', g.id)
+  await run('UPDATE gebruikers SET wachtwoord = ?, reset_token = NULL, reset_tot = NULL WHERE id = ?', hashWachtwoord(wachtwoord), g.id)
+  await run('DELETE FROM sessies WHERE gebruiker_id = ?', g.id)
   return true
 }

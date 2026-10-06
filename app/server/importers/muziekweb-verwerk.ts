@@ -1,9 +1,10 @@
 // Muziekweb-import, deel 2: VERWERKEN (generiek, los van het dumpformaat).
 // Werkt de Muziekweb-waarden bij; raakt nooit Fonos-waarden aan (6.2, 10.7).
-import { all, db, get, run } from '../db.ts'
-import { maakTitel, verwerkMuziekweb } from '../titels.ts'
+import { all, get, insert, run, tx } from '../db.ts'
+import { afgeleid, bewaarWoorden, verwerkMuziekweb, ZOEK_SQL } from '../titels.ts'
 import { log, type Wie } from '../log.ts'
 import type { MwRecord } from './muziekweb-lezers.ts'
+import type { TitelVelden } from '../../shared/velden.ts'
 
 export type MwRapport = {
   import_id: number
@@ -16,70 +17,102 @@ export type MwRapport = {
   niet_in_dump_voorbeelden: string[]
 }
 
-export async function verwerkMuziekwebImport(records: AsyncIterable<MwRecord>, wie: Wie, bron: string, voortgang?: (n: number) => void): Promise<MwRapport> {
-  const importId = Number(run("INSERT INTO imports (soort, gebruiker, rapport) VALUES ('muziekweb', ?, '{}')", wie.naam).lastInsertRowid)
-  const rapport: MwRapport = { import_id: importId, in_dump: 0, bijgewerkt: 0, ongewijzigd: 0, nieuwe_titels: 0, nieuwe_conflicten: 0, niet_in_dump: 0, niet_in_dump_voorbeelden: [] }
-  const d = db()
-  const upsertDump = d.prepare('INSERT INTO mw_dump (titelnummer, data, import_id) VALUES (?, ?, ?) ON CONFLICT(titelnummer) DO UPDATE SET data = excluded.data, import_id = excluded.import_id')
-  const zoekTitel = d.prepare('SELECT id, mw_data, soort, tip FROM titels WHERE titelnummer = ?')
+export const leegRapport = (importId: number): MwRapport => ({ import_id: importId, in_dump: 0, bijgewerkt: 0, ongewijzigd: 0, nieuwe_titels: 0, nieuwe_conflicten: 0, niet_in_dump: 0, niet_in_dump_voorbeelden: [] })
 
-  let batch: MwRecord[] = []
-  const verwerkBatch = () => {
-    d.exec('BEGIN IMMEDIATE')
-    try {
+export async function startImport(wie: Wie): Promise<number> {
+  return insert("INSERT INTO imports (soort, gebruiker, rapport) VALUES ('muziekweb', ?, '{}')", wie.naam)
+}
+
+/** Verwerkt een reeks records binnen een lopende import (kan in delen, over meerdere verzoeken). */
+export async function verwerkRecords(records: MwRecord[], importId: number, rapport: MwRapport) {
+  for (let i = 0; i < records.length; i += 500) {
+    const batch = records.slice(i, i + 500).filter((r) => r?.titelnummer)
+    await tx(async () => {
+      await run(`INSERT INTO mw_dump (titelnummer, data, import_id)
+        SELECT x.titelnummer, x.data, ? FROM jsonb_to_recordset(?::jsonb) AS x(titelnummer text, data text)
+        ON CONFLICT (titelnummer) DO UPDATE SET data = excluded.data, import_id = excluded.import_id`,
+        importId, JSON.stringify(batch.map((r) => ({ titelnummer: r.titelnummer, data: JSON.stringify({ soort: r.soort, tip: r.tip, velden: r.velden }) }))))
+      const bestaand = await all<any>('SELECT id, titelnummer, mw_data, soort, tip FROM titels WHERE titelnummer = ANY(?::text[])',
+        `{${batch.map((r) => `"${r.titelnummer.replace(/"/g, '')}"`).join(',')}}`)
+      const perNummer = new Map(bestaand.map((t) => [t.titelnummer, t]))
       for (const r of batch) {
-        upsertDump.run(r.titelnummer, JSON.stringify({ soort: r.soort, tip: r.tip, velden: r.velden }), importId)
-        const t = zoekTitel.get(r.titelnummer) as any
+        const t = perNummer.get(r.titelnummer)
         if (!t) continue
         if (t.mw_data === JSON.stringify(r.velden) && t.soort === r.soort && !!t.tip === r.tip) { rapport.ongewijzigd++; continue }
-        rapport.nieuwe_conflicten += verwerkMuziekweb(t.id, r.velden, { soort: r.soort, tip: r.tip })
+        rapport.nieuwe_conflicten += await verwerkMuziekweb(t.id, r.velden, { soort: r.soort, tip: r.tip })
         rapport.bijgewerkt++
       }
-      d.exec('COMMIT')
-    } catch (e) { d.exec('ROLLBACK'); throw e }
+    })
     rapport.in_dump += batch.length
-    voortgang?.(rapport.in_dump)
-    batch = []
   }
-  for await (const r of records) {
-    if (!r?.titelnummer) continue
-    batch.push(r)
-    if (batch.length >= 1000) verwerkBatch()
-  }
-  if (batch.length) verwerkBatch()
+}
 
-  // Exemplaren met een titelnummer dat nu wel in de dump staat: titel aanmaken en koppelen.
-  rapport.nieuwe_titels = koppelLosseExemplaren()
-
-  const niet = all<{ titelnummer: string }>(
+/** Sluit een import af: losse exemplaren koppelen, rapport vastleggen, log. */
+export async function rondImportAf(importId: number, rapport: MwRapport, wie: Wie, bron: string) {
+  rapport.nieuwe_titels += await koppelLosseExemplaren()
+  const niet = await all<{ titelnummer: string }>(
     `SELECT t.titelnummer FROM titels t LEFT JOIN mw_dump m ON m.titelnummer = t.titelnummer
       WHERE t.titelnummer IS NOT NULL AND (m.titelnummer IS NULL OR m.import_id <> ?)`, importId)
   rapport.niet_in_dump = niet.length
   rapport.niet_in_dump_voorbeelden = niet.slice(0, 50).map((r) => r.titelnummer)
-  run('UPDATE imports SET rapport = ? WHERE id = ?', JSON.stringify({ ...rapport, bron }), importId)
-  log(wie, 'Muziekweb-import', { type: 'import', id: importId, label: bron, nieuw: rapport })
+  await run('UPDATE imports SET rapport = ? WHERE id = ?', JSON.stringify({ ...rapport, bron }), importId)
+  await log(wie, 'Muziekweb-import', { type: 'import', id: importId, label: bron, nieuw: rapport })
   return rapport
 }
 
+/** Volledige import in één keer (opdrachtregel, tests en kleine dumps). */
+export async function verwerkMuziekwebImport(records: AsyncIterable<MwRecord>, wie: Wie, bron: string, voortgang?: (n: number) => void): Promise<MwRapport> {
+  const importId = await startImport(wie)
+  const rapport = leegRapport(importId)
+  let batch: MwRecord[] = []
+  for await (const r of records) {
+    batch.push(r)
+    if (batch.length >= 2000) { await verwerkRecords(batch, importId, rapport); batch = []; voortgang?.(rapport.in_dump) }
+  }
+  if (batch.length) await verwerkRecords(batch, importId, rapport)
+  voortgang?.(rapport.in_dump)
+  return rondImportAf(importId, rapport, wie, bron)
+}
+
+/** Nieuwe titels in bulk (één INSERT per blok), met afgeleide kolommen en zoekvector. */
+export async function maakTitelsBulk(rijen: { titelnummer: string | null; soort: string; tip: boolean; mw: TitelVelden }[]): Promise<Map<string, number>> {
+  const ids = new Map<string, number>()
+  for (let i = 0; i < rijen.length; i += 150) {
+    const blok = rijen.slice(i, i + 150)
+    const p: unknown[] = []
+    const woorden = new Set<string>()
+    const waarden = blok.map((r) => {
+      const a = afgeleid(r.mw, {})
+      a.woorden.forEach((w) => woorden.add(w))
+      p.push(r.titelnummer, r.soort, JSON.stringify(r.mw), r.tip ? 1 : 0, a.d_titel, a.d_artiesten, a.d_jaar, a.d_drager, a.d_genres, a.d_hoes, a.d_label,
+        a.d_personen, a.d_sleutel, a.z.a, a.z.b, a.z.c, a.z.d)
+      return `(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${ZOEK_SQL})`
+    })
+    const r = await run(`INSERT INTO titels (titelnummer, soort, mw_data, tip, d_titel, d_artiesten, d_jaar, d_drager, d_genres, d_hoes, d_label, d_personen, d_sleutel, zoek)
+      VALUES ${waarden.join(',')} ON CONFLICT (titelnummer) DO NOTHING RETURNING id, titelnummer`, ...p)
+    for (const x of r.rows) ids.set(x.titelnummer, x.id)
+    await bewaarWoorden([...woorden])
+  }
+  return ids
+}
+
 /** Maakt titels aan voor exemplaren met een bekend titelnummer zonder gekoppelde titel. */
-export function koppelLosseExemplaren(): number {
-  const los = all<{ titelnummer: string }>(
-    `SELECT DISTINCT e.titelnummer FROM exemplaren e JOIN mw_dump m ON m.titelnummer = e.titelnummer
-      WHERE e.titel_id IS NULL AND e.titelnummer IS NOT NULL`)
-  let n = 0
-  const d = db()
-  d.exec('BEGIN IMMEDIATE')
-  try {
-    for (const { titelnummer } of los) {
-      let t = get<{ id: number }>('SELECT id FROM titels WHERE titelnummer = ?', titelnummer)
-      if (!t) {
-        const dump = JSON.parse(get<{ data: string }>('SELECT data FROM mw_dump WHERE titelnummer = ?', titelnummer)!.data)
-        t = { id: maakTitel({ titelnummer, mw: dump.velden, soort: dump.soort, tip: dump.tip }) }
-        n++
-      }
-      run("UPDATE exemplaren SET titel_id = ?, gewijzigd = datetime('now') WHERE titelnummer = ? AND titel_id IS NULL", t.id, titelnummer)
-    }
-    d.exec('COMMIT')
-  } catch (e) { d.exec('ROLLBACK'); throw e }
-  return n
+export async function koppelLosseExemplaren(): Promise<number> {
+  let nieuw = 0
+  for (;;) {
+    const los = await all<{ titelnummer: string; data: string }>(
+      `SELECT DISTINCT e.titelnummer, m.data FROM exemplaren e JOIN mw_dump m ON m.titelnummer = e.titelnummer
+        WHERE e.titel_id IS NULL AND NOT EXISTS (SELECT 1 FROM titels t WHERE t.titelnummer = e.titelnummer) LIMIT 1500`)
+    if (!los.length) break
+    const ids = await maakTitelsBulk(los.map((l) => { const d = JSON.parse(l.data); return { titelnummer: l.titelnummer, soort: d.soort, tip: d.tip, mw: d.velden } }))
+    nieuw += ids.size
+    if (!ids.size) break
+  }
+  await run(`UPDATE exemplaren e SET titel_id = t.id, gewijzigd = nu() FROM titels t
+    WHERE e.titel_id IS NULL AND e.titelnummer IS NOT NULL AND t.titelnummer = e.titelnummer`)
+  return nieuw
+}
+
+export async function laatsteImportId() {
+  return (await get<{ id: number | null }>("SELECT MAX(id) AS id FROM imports WHERE soort = 'muziekweb'"))?.id ?? 0
 }

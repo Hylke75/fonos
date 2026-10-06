@@ -5,7 +5,6 @@ import { createReadStream, existsSync, readdirSync, statSync } from 'node:fs'
 import { createGunzip } from 'node:zlib'
 import { createInterface } from 'node:readline'
 import { join } from 'node:path'
-import { DatabaseSync } from 'node:sqlite'
 import type { TitelVelden, Track } from '../../shared/velden.ts'
 
 export type MwRecord = {
@@ -136,10 +135,38 @@ export async function* leesExportMap(map: string): AsyncGenerator<MwRecord> {
   }
 }
 
+/** De delen (part-NNNN) van een exportmap, gesorteerd. */
+export function exportDelen(map: string): string[] {
+  if (!existsSync(map)) return []
+  return readdirSync(map).filter((d) => /^part-\d+$/.test(d) && statSync(join(map, d)).isDirectory()).sort()
+}
+
+/** Leest één deel van de exportmap (voor verwerken in stappen, bv. op Vercel). */
+export async function leesExportDeel(dir: string): Promise<MwRecord[]> {
+  const bestand = (naam: string) => [join(dir, naam + '.jsonl.gz'), join(dir, naam + '.jsonl')].find(existsSync) ?? ''
+  const works = new Map<string, any>()
+  for (const w of await leesJsonl(bestand('works'))) works.set(w.code, w)
+  const composers = new Map<string, string[]>()
+  for (const c of await leesJsonl(bestand('work_composers'))) {
+    if (!composers.has(c.work_code)) composers.set(c.work_code, [])
+    if (c.name && !composers.get(c.work_code)!.includes(c.name)) composers.get(c.work_code)!.push(c.name)
+  }
+  const pages = await leesJsonl(bestand('album_pages'))
+  return [...naarRecords({
+    pages,
+    tracks: groepeer(await leesJsonl(bestand('tracks')), 'album_code'),
+    performers: groepeer(await leesJsonl(bestand('track_performers')), 'track_id'),
+    genres: groepeer(await leesJsonl(bestand('album_page_genres')), 'album_code'),
+    labels: groepeer(await leesJsonl(bestand('album_page_labels')), 'album_code'),
+    works, composers,
+  })]
+}
+
 // ------------------------------------------------------------------ lezer 2: muziekweb.db (SQLite)
 
 /** Leest muziekweb.db zoals gebouwd door muziekweb_import.py + muziekweb_scrape.py. */
 export async function* leesSqlite(pad: string): AsyncGenerator<MwRecord> {
+  const { DatabaseSync } = await import('node:sqlite')
   const src = new DatabaseSync(pad, { readOnly: true })
   const heeft = (t: string) => !!src.prepare("SELECT 1 FROM sqlite_master WHERE name = ?").get(t)
   const works = new Map<string, any>()

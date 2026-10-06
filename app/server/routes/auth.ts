@@ -15,7 +15,7 @@ auth.post('/login', async (c) => {
   const sleutel = (email ?? '').toLowerCase()
   const p = pogingen.get(sleutel)
   if (p && Date.now() - p.sinds < 15 * 60_000 && p.n >= 10) return c.json({ fout: 'Te veel pogingen. Probeer het over een kwartier opnieuw.' }, 429)
-  const r = login(email ?? '', wachtwoord ?? '')
+  const r = await login(email ?? '', wachtwoord ?? '')
   if (!r) {
     pogingen.set(sleutel, p && Date.now() - p.sinds < 15 * 60_000 ? { n: p.n + 1, sinds: p.sinds } : { n: 1, sinds: Date.now() })
     return c.json({ fout: 'E-mailadres of wachtwoord klopt niet.' }, 401)
@@ -25,18 +25,18 @@ auth.post('/login', async (c) => {
   return c.json(r.gebruiker)
 })
 
-auth.post('/logout', (c) => { logout(c); return c.json({ ok: true }) })
+auth.post('/logout', async (c) => { await logout(c); return c.json({ ok: true }) })
 
-auth.get('/ik', (c) => {
-  const g = gebruikerBijToken(getCookie(c, COOKIE))
+auth.get('/ik', async (c) => {
+  const g = await gebruikerBijToken(getCookie(c, COOKIE))
   return g ? c.json(g) : c.json({ fout: 'Niet ingelogd' }, 401)
 })
 
 auth.post('/reset-aanvraag', async (c) => {
   const { email } = await c.req.json<{ email: string }>()
-  const g = get<any>('SELECT * FROM gebruikers WHERE email = ? AND actief = 1', (email ?? '').trim())
+  const g = await get<any>('SELECT * FROM gebruikers WHERE lower(email) = lower(?) AND actief = 1', (email ?? '').trim())
   if (g) {
-    const token = maakResetToken(g.id)
+    const token = await maakResetToken(g.id)
     const basis = process.env.FONOS_BASIS_URL ?? new URL(c.req.url).origin
     await stuurMail(g.email, 'Nieuw wachtwoord voor de Fonotheek', `Kies een nieuw wachtwoord via deze link (2 uur geldig):\n${basis}/wachtwoord?token=${token}`).catch((e) => console.error(e))
   }
@@ -47,5 +47,5 @@ auth.post('/reset-aanvraag', async (c) => {
 auth.post('/reset', async (c) => {
   const { token, wachtwoord } = await c.req.json<{ token: string; wachtwoord: string }>()
   if (!wachtwoord || wachtwoord.length < 10) return c.json({ fout: 'Kies een wachtwoord van minstens 10 tekens.' }, 400)
-  return resetWachtwoord(token ?? '', wachtwoord) ? c.json({ ok: true }) : c.json({ fout: 'Deze link is verlopen of al gebruikt.' }, 400)
+  return await resetWachtwoord(token ?? '', wachtwoord) ? c.json({ ok: true }) : c.json({ fout: 'Deze link is verlopen of al gebruikt.' }, 400)
 })

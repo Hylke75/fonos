@@ -5,6 +5,7 @@ import { Upload } from 'lucide-react'
 import { api, ApiFout, datumTijd } from '../api'
 import { Laden } from '../components/Iconen'
 import { Melding } from './ui'
+import { uploadBestand } from './upload'
 
 export function Importeren({ beheerder }: { beheerder: boolean }) {
   const [p, setP] = useSearchParams()
@@ -123,31 +124,47 @@ function RapportWeergave({ r }: { r: any }) {
 }
 
 function MuziekwebImport() {
-  const [s, setS] = useState<any>(null)
+  const [bezig, setBezig] = useState<string | null>(null)
+  const [rapport, setRapport] = useState<any>(null)
   const [m, setM] = useState<any>(null)
-  const laad = () => api('/beheer/import/muziekweb/status').then(setS)
-  useEffect(() => { laad() }, [])
-  useEffect(() => { if (!s?.bezig) return; const t = setInterval(laad, 1500); return () => clearInterval(t) }, [s?.bezig])
-  const upload = async (f: File) => {
-    setM(null)
-    const fd = new FormData(); fd.append('bestand', f)
-    try { setS(await api('/beheer/import/muziekweb', { form: fd })) } catch (e) { setM({ soort: 'fout', tekst: (e as ApiFout).message }) }
+  // In stappen: elk deel is één verzoek (Vercel-functies hebben een maximale duur).
+  const voerUit = async (stap: (importId: number, delen: string[]) => Promise<void>) => {
+    setM(null); setRapport(null)
+    try {
+      setBezig('Import starten…')
+      const { import_id, delen } = await api('/beheer/import/muziekweb/start', { method: 'POST' })
+      await stap(import_id, delen)
+      setBezig('Afronden: losse exemplaren koppelen…')
+      setRapport(await api('/beheer/import/muziekweb/afronden', { body: { import_id } }))
+    } catch (e) { setM({ soort: 'fout', tekst: `Import mislukt: ${(e as ApiFout).message}` }) } finally { setBezig(null) }
   }
-  const server = async () => { setM(null); try { setS(await api('/beheer/import/muziekweb/server', { method: 'POST' })) } catch (e) { setM({ soort: 'fout', tekst: (e as ApiFout).message }) } }
+  const exportmap = () => voerUit(async (id, delen) => {
+    if (!delen.length) throw new ApiFout(0, 'Geen exportmap gevonden op de server')
+    for (const [i, deel] of delen.entries()) {
+      setBezig(`Deel ${i + 1} van ${delen.length} (${deel})…`)
+      const r = await api('/beheer/import/muziekweb/deel', { body: { import_id: id, deel } })
+      setRapport(r)
+    }
+  })
+  const upload = (f: File) => voerUit(async (id) => {
+    setBezig(`Uploaden: ${f.name}…`)
+    const adres = await uploadBestand(f, (pct) => setBezig(`Uploaden: ${pct}%`))
+    setBezig('Verwerken…')
+    await api('/beheer/import/muziekweb/bestand', { body: { import_id: id, adres, naam: f.name } })
+  })
   return (
     <>
       <div className="card paneel">
         <p style={{ marginTop: 0 }}>Een nieuwe Muziekweb-dump werkt de Muziekweb-waarden van alle titels bij. <b>Fonos-waarden worden nooit overschreven</b>; verandert Muziekweb een veld dat Fonos heeft aangepast, dan ontstaat een conflict.</p>
-        <p className="muted tekst-klein">Formaten: zip met de exportmap (part-*/album_pages.jsonl.gz enz.), muziekweb.db of een .jsonl-bestand. Het definitieve dumpformaat is nog open (O-2).</p>
+        <p className="muted tekst-klein">"Exportmap inlezen" verwerkt de Muziekweb-exports die met de app zijn meegeleverd (map exports/, per deel). Een losse dump kan als .jsonl, .jsonl.gz of zip met één exportdeel. Het definitieve dumpformaat is nog open (O-2).</p>
         <div style={{ display: 'flex', gap: 10 }}>
-          <BestandKiezer accept=".zip,.db,.sqlite,.jsonl,.gz" onKies={upload} tekst="Dump uploaden" />
-          <button className="btn btn-ghost" onClick={server}>Ophalen uit servermap</button>
+          <button className="btn btn-cyan" disabled={!!bezig} onClick={exportmap}>Exportmap inlezen</button>
+          <BestandKiezer accept=".zip,.jsonl,.gz" onKies={upload} tekst="Dump uploaden" />
         </div>
       </div>
       <Melding m={m} />
-      {s?.bezig && <div className="card paneel"><Laden tekst={`Bezig: ${s.verwerkt.toLocaleString('nl-NL')} records verwerkt…`} /></div>}
-      {s?.fout && <Melding m={{ soort: 'fout', tekst: `Import mislukt: ${s.fout}` }} />}
-      {s?.rapport && !s.bezig && <div className="card paneel"><h2 style={{ marginTop: 0 }}>Rapport laatste import</h2><RapportWeergave r={s.rapport} /></div>}
+      {bezig && <div className="card paneel"><Laden tekst={bezig} /></div>}
+      {rapport && <div className="card paneel"><h2 style={{ marginTop: 0 }}>{bezig ? 'Tussenstand' : 'Rapport'}</h2><RapportWeergave r={rapport} /></div>}
     </>
   )
 }

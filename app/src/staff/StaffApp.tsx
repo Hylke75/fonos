@@ -1,8 +1,9 @@
 // Medewerkersscherm (9): aanvragen realtime, ophalen, uitgeven, vrijgeven, annuleren; platenspelers (in)actief.
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Route, Routes, useNavigate, useParams } from 'react-router-dom'
 import { AlertTriangle, ArrowLeft, Clock, LogOut, X } from 'lucide-react'
 import { api, ApiFout, tijd } from '../api'
+import { useVersies } from '../versies'
 import { Logo } from '../components/Logo'
 import { Hoes } from '../components/Hoes'
 import { Laden } from '../components/Iconen'
@@ -25,20 +26,9 @@ function piep() {
   } catch { /* geen geluid mogelijk */ }
 }
 
-/** Realtime-verbinding met het medewerkerskanaal. */
-function useRealtime(opNieuw: (d: any) => void) {
-  const ref = useRef(opNieuw)
-  ref.current = opNieuw
-  useEffect(() => {
-    let es: EventSource | null = null, t: any
-    const verbind = () => {
-      es = new EventSource('/api/events?kanaal=medewerker')
-      es.addEventListener('aanvragen', (e) => ref.current(JSON.parse((e as MessageEvent).data)))
-      es.onerror = () => { es?.close(); t = setTimeout(verbind, 4000) }
-    }
-    verbind()
-    return () => { es?.close(); clearTimeout(t) }
-  }, [])
+/** Realtime: verversen zodra de aanvragen veranderen; bij een nieuwe aanvraag het bestelnummer. */
+function useRealtime(opNieuw: (d: { nieuw?: number | null }) => void) {
+  useVersies((v, oud) => opNieuw({ nieuw: v.aanvragen !== oud.aanvragen && v.laatste_nieuw !== oud.laatste_nieuw ? v.laatste_nieuw : null }), 3000)
 }
 
 export function StaffApp() {

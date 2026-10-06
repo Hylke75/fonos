@@ -1,25 +1,24 @@
 // API voor de beheeromgeving (10, 12). Rollen: redacteur en beheerder.
 import { Hono, type Context } from 'hono'
-import { writeFileSync, mkdtempSync, rmSync, readFileSync } from 'node:fs'
-import { join, extname } from 'node:path'
+import { writeFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { join, extname, basename } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import JSZip from 'jszip'
 import { vereist, wie, maakGebruiker, maakResetToken } from '../auth.ts'
-import { all, get, run, json, instellingen, zetInstelling, syncPlatenspelers, STANDAARD_INSTELLINGEN, UPLOAD_DIR, BACKUP_DIR, tx } from '../db.ts'
+import { all, get, run, insert, json, instellingen, zetInstelling, syncPlatenspelers, STANDAARD_INSTELLINGEN, tx, ROOT } from '../db.ts'
 import { log } from '../log.ts'
 import { TWEELAAGS, ROLLEN, REDENEN_AFVOER, type TitelVelden } from '../../shared/velden.ts'
 import {
-  getoond, zetFonosWaarde, besluitConflict, zetFonosEigen, FONOS_EIGEN, maakTitel, koppelTitelnummer, exemplarenVan, OPEN_ITEMS_SQL, vindcode,
+  getoond, zetFonosWaarde, besluitConflict, zetFonosEigen, FONOS_EIGEN, maakTitel, koppelTitelnummer, exemplarenVan, OPEN_ITEMS_SQL, vindcoder,
 } from '../titels.ts'
-import { markeerVuil } from '../zoeken.ts'
-import { album, wisConfigCache, selectieTitels, inGebruik } from '../catalogus.ts'
-import { alleDocs } from '../zoeken.ts'
+import { album, wisConfigCache, wisHomeCache, selectieIds } from '../catalogus.ts'
 import { analyseer, leesBestand, samenvatting, voerDoor, type Categorie } from '../importers/collectie.ts'
-import { kiesLezer } from '../importers/muziekweb-lezers.ts'
-import { verwerkMuziekwebImport } from '../importers/muziekweb-verwerk.ts'
-import { backupPad, leesBackup, maakBackup, maakZip, vergelijk, zetTerug } from '../backup.ts'
-import { beschikbaarheidGewijzigd } from '../events.ts'
+import { exportDelen, leesExportDeel, leesStandaard } from '../importers/muziekweb-lezers.ts'
+import { laatsteImportId, leegRapport, rondImportAf, startImport, verwerkRecords } from '../importers/muziekweb-verwerk.ts'
+import { backupAdres, leesBackup, maakBackup, maakZip, vergelijk, zetTerug } from '../backup.ts'
+import { beschikbaarheidGewijzigd, catalogusVersieOmhoog } from '../events.ts'
+import { bewaar, lees } from '../opslag.ts'
 import { stuurMail } from '../mail.ts'
 
 export const beheer = new Hono()
@@ -27,121 +26,122 @@ beheer.use('*', vereist('redacteur', 'beheerder'))
 const alleenBeheerder = vereist('beheerder')
 
 const fout = (c: Context, bericht: string, status: 400 | 404 | 409 = 400) => c.json({ fout: bericht }, status)
-const catalogusGewijzigd = (titelIds: number[] = []) => { markeerVuil(); wisConfigCache(); beschikbaarheidGewijzigd(titelIds) }
+const catalogusGewijzigd = async (titelIds: number[] = []) => { wisConfigCache(); wisHomeCache(); await catalogusVersieOmhoog(); await beschikbaarheidGewijzigd(titelIds) }
 
 // ------------------------------------------------------------------ startpagina (10.1)
 
-beheer.get('/tellers', (c) => {
-  const n = (sql: string) => get<{ n: number }>(sql)!.n
+beheer.get('/tellers', async (c) => {
+  const n = async (sql: string) => (await get<{ n: number }>(sql))!.n
   return c.json({
-    titels: n('SELECT COUNT(*) n FROM titels'),
-    exemplaren: n("SELECT COUNT(*) n FROM exemplaren WHERE status = 'in_collectie'"),
-    datakwaliteit: Object.values(dqTellingen()).reduce((a, b) => a + b, 0),
-    laatste_import: get<any>("SELECT tijd FROM imports WHERE soort = 'muziekweb' ORDER BY id DESC LIMIT 1")?.tijd ?? null,
-    laatste_backup: get<any>("SELECT tijd FROM backups WHERE status = 'gelukt' ORDER BY id DESC LIMIT 1")?.tijd ?? null,
+    titels: await n('SELECT COUNT(*) AS n FROM titels'),
+    exemplaren: await n("SELECT COUNT(*) AS n FROM exemplaren WHERE status = 'in_collectie'"),
+    datakwaliteit: Object.values(await dqTellingen()).reduce((a, b) => a + b, 0),
+    laatste_import: (await get<any>("SELECT tijd FROM imports WHERE soort = 'muziekweb' ORDER BY id DESC LIMIT 1"))?.tijd ?? null,
+    laatste_backup: (await get<any>("SELECT tijd FROM backups WHERE status = 'gelukt' ORDER BY id DESC LIMIT 1"))?.tijd ?? null,
   })
 })
 
-beheer.get('/titels', (c) => {
+beheer.get('/titels', async (c) => {
   const q = c.req.query()
   const waar: string[] = []
   const p: any[] = []
   if (q.q?.trim()) {
     const z = `%${q.q.trim()}%`
-    waar.push(`(t.d_titel LIKE ? OR t.d_artiesten LIKE ? OR t.titelnummer LIKE ? OR EXISTS (SELECT 1 FROM exemplaren e WHERE e.titel_id = t.id AND (e.objectnummer LIKE ? OR e.vindcode LIKE ?)))`)
+    waar.push(`(t.d_titel ILIKE ? OR t.d_artiesten ILIKE ? OR t.titelnummer ILIKE ? OR EXISTS (SELECT 1 FROM exemplaren e WHERE e.titel_id = t.id AND (e.objectnummer ILIKE ? OR e.vindcode ILIKE ?)))`)
     p.push(z, z, z, z, z)
   }
   if (q.drager) { waar.push('t.d_drager = ?'); p.push(q.drager) }
   if (q.soort) { waar.push('t.soort = ?'); p.push(q.soort) }
   if (q.zichtbaar) { waar.push('t.zichtbaar = ?'); p.push(q.zichtbaar === 'ja' ? 1 : 0) }
   if (q.aangepast) { waar.push('t.heeft_fonos = ?'); p.push(q.aangepast === 'ja' ? 1 : 0) }
-  if (q.genre) { waar.push('EXISTS (SELECT 1 FROM json_each(t.d_genres) j WHERE j.value = ?)'); p.push(q.genre) }
+  if (q.genre) { waar.push('t.d_genres::jsonb @> ?::jsonb'); p.push(JSON.stringify([q.genre])) }
   if (q.collectie === 'in') waar.push("EXISTS (SELECT 1 FROM exemplaren e WHERE e.titel_id = t.id AND e.status = 'in_collectie')")
   if (q.collectie === 'uit') waar.push("NOT EXISTS (SELECT 1 FROM exemplaren e WHERE e.titel_id = t.id AND e.status = 'in_collectie')")
   const where = waar.length ? `WHERE ${waar.join(' AND ')}` : ''
   const per = Math.min(Number(q.per) || 50, 200)
   const pagina = Math.max(1, Number(q.pagina) || 1)
-  const sorteer = ({ titel: 't.d_titel', artiest: 't.d_artiesten IS NULL, t.d_artiesten', jaar: 't.d_jaar DESC', nieuw: 't.id DESC' } as any)[q.sort] ?? 't.d_artiesten IS NULL, t.d_artiesten COLLATE NOCASE, t.d_titel'
-  const totaal = get<{ n: number }>(`SELECT COUNT(*) n FROM titels t ${where}`, ...p)!.n
-  const titels = all<any>(`SELECT t.id, t.titelnummer, t.d_titel titel, t.d_artiesten artiesten, t.d_jaar jaar, t.d_drager drager, t.d_hoes hoes,
-      t.zichtbaar, t.heeft_fonos, t.conflicten != '{}' AS conflict, t.soort,
-      (SELECT COUNT(*) FROM exemplaren e WHERE e.titel_id = t.id AND e.status = 'in_collectie') AS exemplaren
+  const sorteer = ({ titel: 'lower(t.d_titel)', artiest: 't.d_artiesten IS NULL, lower(t.d_artiesten)', jaar: 't.d_jaar DESC NULLS LAST', nieuw: 't.id DESC' } as any)[q.sort] ?? 't.d_artiesten IS NULL, lower(t.d_artiesten), lower(t.d_titel), t.id'
+  const totaal = (await get<{ n: number }>(`SELECT COUNT(*) AS n FROM titels t ${where}`, ...p))!.n
+  const titels = await all<any>(`SELECT t.id, t.titelnummer, t.d_titel AS titel, t.d_artiesten AS artiesten, t.d_jaar AS jaar, t.d_drager AS drager, t.d_hoes AS hoes,
+      t.zichtbaar, t.heeft_fonos, (t.conflicten <> '{}')::int AS conflict, t.soort,
+      (SELECT COUNT(*)::int FROM exemplaren e WHERE e.titel_id = t.id AND e.status = 'in_collectie') AS exemplaren
     FROM titels t ${where} ORDER BY ${sorteer} LIMIT ? OFFSET ?`, ...p, per, (pagina - 1) * per)
   return c.json({ totaal, pagina, per, titels })
 })
 
-beheer.get('/genres', (c) => {
+beheer.get('/genres', async (c) => {
   // Alle bekende Muziekweb-genres in de collectie, met aantallen.
-  const rows = all<any>(`SELECT j.value AS naam, COUNT(*) n FROM titels t, json_each(t.d_genres) j GROUP BY j.value ORDER BY j.value`)
+  const rows = await all<any>(`SELECT j.value AS naam, COUNT(*)::int AS n FROM titels t, jsonb_array_elements_text(t.d_genres::jsonb) j(value) GROUP BY j.value ORDER BY j.value`)
   return c.json(rows)
 })
 
 // ------------------------------------------------------------------ titel bewerken (10.2)
 
-function titelDetail(id: number) {
-  const t = get<any>('SELECT * FROM titels WHERE id = ?', id)
+async function titelDetail(id: number) {
+  const vindcode = await vindcoder()
+  const t = await get<any>('SELECT * FROM titels WHERE id = ?', id)
   if (!t) return null
-  const dumpRij = t.titelnummer ? get<any>('SELECT import_id FROM mw_dump WHERE titelnummer = ?', t.titelnummer) : null
+  const dumpRij = t.titelnummer ? await get<any>('SELECT import_id FROM mw_dump WHERE titelnummer = ?', t.titelnummer) : null
   return {
     id: t.id, titelnummer: t.titelnummer, soort: t.soort, tip: !!t.tip,
     mw: json(t.mw_data, {}), fonos: json(t.fonos_data, {}), getoond: getoond(t), conflicten: json(t.conflicten, {}),
     zichtbaar: !!t.zichtbaar, uitgelicht: !!t.uitgelicht, fonos_verhaal: t.fonos_verhaal, ai_tekst: !!t.ai_tekst,
     in_dump: !!dumpRij, aangemaakt: t.aangemaakt, gewijzigd: t.gewijzigd,
-    exemplaren: exemplarenVan(id).map((e) => ({ ...e, vindcode_getoond: vindcode(e) })),
-    geschiedenis: all<any>("SELECT * FROM wijzigingslog WHERE record_type = 'titel' AND record_id = ? ORDER BY id DESC LIMIT 200", String(id)),
+    exemplaren: (await exemplarenVan(id)).map((e) => ({ ...e, vindcode_getoond: vindcode(e) })),
+    geschiedenis: await all<any>("SELECT * FROM wijzigingslog WHERE record_type = 'titel' AND record_id = ? ORDER BY id DESC LIMIT 200", String(id)),
   }
 }
 
-beheer.get('/titel/:id', (c) => {
-  const d = titelDetail(Number(c.req.param('id')))
+beheer.get('/titel/:id', async (c) => {
+  const d = await titelDetail(Number(c.req.param('id')))
   return d ? c.json(d) : fout(c, 'Titel niet gevonden', 404)
 })
 
-beheer.get('/titel/:id/voorbeeld', (c) => {
-  const a = album(Number(c.req.param('id')), true)
+beheer.get('/titel/:id/voorbeeld', async (c) => {
+  const a = await album(Number(c.req.param('id')), true)
   return a ? c.json(a) : fout(c, 'Titel niet gevonden', 404)
 })
 
 beheer.patch('/titel/:id', async (c) => {
   const id = Number(c.req.param('id'))
   const body = await c.req.json<{ velden?: Partial<TitelVelden>; eigen?: Record<string, unknown> }>()
-  if (!get('SELECT id FROM titels WHERE id = ?', id)) return fout(c, 'Titel niet gevonden', 404)
-  tx(() => {
+  if (!await get('SELECT id FROM titels WHERE id = ?', id)) return fout(c, 'Titel niet gevonden', 404)
+  await tx(async () => {
     for (const [veld, waarde] of Object.entries(body.velden ?? {})) {
       if (!TWEELAAGS.some((v) => v.veld === veld)) throw new Error(`Onbekend veld ${veld}`)
-      zetFonosWaarde(id, veld as keyof TitelVelden, waarde === null ? undefined : waarde, wie(c))
+      await zetFonosWaarde(id, veld as keyof TitelVelden, waarde === null ? undefined : waarde, wie(c))
     }
     for (const [veld, waarde] of Object.entries(body.eigen ?? {})) {
       if (!FONOS_EIGEN.includes(veld as any)) throw new Error(`Onbekend veld ${veld}`)
-      zetFonosEigen(id, veld as any, waarde, wie(c))
+      await zetFonosEigen(id, veld as any, waarde, wie(c))
     }
   })
-  catalogusGewijzigd([id])
-  return c.json(titelDetail(id))
+  await catalogusGewijzigd([id])
+  return c.json(await titelDetail(id))
 })
 
 beheer.post('/titel/:id/terug', async (c) => {
   const id = Number(c.req.param('id'))
   const { veld } = await c.req.json<{ veld: keyof TitelVelden }>()
-  zetFonosWaarde(id, veld, undefined, wie(c))
-  catalogusGewijzigd([id])
-  return c.json(titelDetail(id))
+  await zetFonosWaarde(id, veld, undefined, wie(c))
+  await catalogusGewijzigd([id])
+  return c.json(await titelDetail(id))
 })
 
 beheer.post('/titel/:id/conflict', async (c) => {
   const id = Number(c.req.param('id'))
   const { veld, keuze } = await c.req.json<{ veld: string; keuze: 'fonos' | 'muziekweb' }>()
-  besluitConflict(id, veld, keuze, wie(c))
-  catalogusGewijzigd([id])
-  return c.json(titelDetail(id))
+  await besluitConflict(id, veld, keuze, wie(c))
+  await catalogusGewijzigd([id])
+  return c.json(await titelDetail(id))
 })
 
 beheer.post('/titel/:id/koppel', async (c) => {
   const id = Number(c.req.param('id'))
   const { titelnummer } = await c.req.json<{ titelnummer: string }>()
-  try { koppelTitelnummer(id, titelnummer.trim().toUpperCase(), wie(c)) } catch (e: any) { return fout(c, e.message) }
-  catalogusGewijzigd([id])
-  return c.json(titelDetail(id))
+  try { await koppelTitelnummer(id, titelnummer.trim().toUpperCase(), wie(c)) } catch (e: any) { return fout(c, e.message) }
+  await catalogusGewijzigd([id])
+  return c.json(await titelDetail(id))
 })
 
 const AFBEELDING = /^image\/(jpeg|png|webp)$/
@@ -150,10 +150,9 @@ async function bewaarUpload(c: Context): Promise<string> {
   const f = body.bestand as File | undefined
   if (!f || typeof f === 'string') throw new Error('Geen bestand ontvangen')
   if (!AFBEELDING.test(f.type)) throw new Error('Alleen jpg, png of webp')
-  if (f.size > 10 * 1024 * 1024) throw new Error('Bestand is groter dan 10 MB')
-  const naam = `${randomUUID()}${extname(f.name).toLowerCase() || '.jpg'}`
-  writeFileSync(join(UPLOAD_DIR, naam), Buffer.from(await f.arrayBuffer()))
-  return `/uploads/${naam}`
+  // Vercel-functies nemen maximaal 4,5 MB per verzoek aan.
+  if (f.size > 4 * 1024 * 1024) throw new Error('Bestand is groter dan 4 MB')
+  return bewaar('hoezen', `hoes${extname(f.name).toLowerCase() || '.jpg'}`, Buffer.from(await f.arrayBuffer()), f.type)
 }
 
 beheer.post('/titel/:id/hoes/:kant', async (c) => {
@@ -161,30 +160,30 @@ beheer.post('/titel/:id/hoes/:kant', async (c) => {
   const kant = c.req.param('kant') === 'achter' ? 'hoes_achter' : 'hoes_voor'
   try {
     const url = await bewaarUpload(c)
-    zetFonosWaarde(id, kant, url, wie(c))
+    await zetFonosWaarde(id, kant, url, wie(c))
   } catch (e: any) { return fout(c, e.message) }
-  catalogusGewijzigd([id])
-  return c.json(titelDetail(id))
+  await catalogusGewijzigd([id])
+  return c.json(await titelDetail(id))
 })
 
 beheer.post('/titels/bulk', async (c) => {
   const { ids, zichtbaar, uitgelicht } = await c.req.json<{ ids: number[]; zichtbaar?: boolean; uitgelicht?: boolean }>()
-  tx(() => {
+  await tx(async () => {
     for (const id of ids ?? []) {
-      if (zichtbaar !== undefined) zetFonosEigen(Number(id), 'zichtbaar', zichtbaar, wie(c))
-      if (uitgelicht !== undefined) zetFonosEigen(Number(id), 'uitgelicht', uitgelicht, wie(c))
+      if (zichtbaar !== undefined) await zetFonosEigen(Number(id), 'zichtbaar', zichtbaar, wie(c))
+      if (uitgelicht !== undefined) await zetFonosEigen(Number(id), 'uitgelicht', uitgelicht, wie(c))
     }
   })
-  catalogusGewijzigd(ids)
+  await catalogusGewijzigd(ids)
   return c.json({ ok: true })
 })
 
 // ------------------------------------------------------------------ toevoegen (10.4) en exemplaren (10.3, 10.5)
 
-beheer.get('/dump/:titelnummer', (c) => {
+beheer.get('/dump/:titelnummer', async (c) => {
   const tn = c.req.param('titelnummer').trim().toUpperCase()
-  const d = get<any>('SELECT data FROM mw_dump WHERE titelnummer = ?', tn)
-  const bestaand = get<any>('SELECT id FROM titels WHERE titelnummer = ?', tn)
+  const d = await get<any>('SELECT data FROM mw_dump WHERE titelnummer = ?', tn)
+  const bestaand = await get<any>('SELECT id FROM titels WHERE titelnummer = ?', tn)
   if (!d) return fout(c, 'Titelnummer niet gevonden in de laatste Muziekweb-import', 404)
   return c.json({ titelnummer: tn, ...JSON.parse(d.data), bestaande_titel: bestaand?.id ?? null })
 })
@@ -195,121 +194,121 @@ beheer.post('/titels', async (c) => {
   const b = await c.req.json<{ titelnummer?: string; objectnummer?: string; vindcode?: string; handmatig?: TitelVelden }>()
   const obj = b.objectnummer?.trim()
   if (obj && !OBJECT_RE.test(obj)) return fout(c, 'Een objectnummer bestaat uit cijfers')
-  if (obj && get('SELECT id FROM exemplaren WHERE objectnummer = ?', obj)) return fout(c, `Objectnummer ${obj} bestaat al`, 409)
+  if (obj && await get('SELECT id FROM exemplaren WHERE objectnummer = ?', obj)) return fout(c, `Objectnummer ${obj} bestaat al`, 409)
   let id: number
   try {
-    id = tx(() => {
+    id = await tx(async () => {
       let titelId: number
       if (b.titelnummer) {
         const tn = b.titelnummer.trim().toUpperCase()
-        const bestaand = get<any>('SELECT id FROM titels WHERE titelnummer = ?', tn)
+        const bestaand = await get<any>('SELECT id FROM titels WHERE titelnummer = ?', tn)
         if (bestaand) titelId = bestaand.id // alleen een exemplaar toevoegen
         else {
-          const d = get<any>('SELECT data FROM mw_dump WHERE titelnummer = ?', tn)
+          const d = await get<any>('SELECT data FROM mw_dump WHERE titelnummer = ?', tn)
           if (!d) throw new Error('Titelnummer niet gevonden in de laatste Muziekweb-import')
           const dump = JSON.parse(d.data)
-          titelId = maakTitel({ titelnummer: tn, mw: dump.velden, soort: dump.soort, tip: dump.tip })
-          log(wie(c), 'titel toegevoegd', { type: 'titel', id: titelId, label: dump.velden.titel, nieuw: tn })
+          titelId = await maakTitel({ titelnummer: tn, mw: dump.velden, soort: dump.soort, tip: dump.tip })
+          await log(wie(c), 'titel toegevoegd', { type: 'titel', id: titelId, label: dump.velden.titel, nieuw: tn })
         }
       } else if (b.handmatig) {
         if (!b.handmatig.titel?.trim()) throw new Error('Vul minstens een titel in')
         const velden = Object.fromEntries(Object.entries(b.handmatig).filter(([, v]) => v !== '' && v != null && !(Array.isArray(v) && !v.length)))
-        titelId = maakTitel({ fonos: velden as TitelVelden })
-        log(wie(c), 'titel toegevoegd (handmatig)', { type: 'titel', id: titelId, label: b.handmatig.titel, nieuw: velden })
+        titelId = await maakTitel({ fonos: velden as TitelVelden })
+        await log(wie(c), 'titel toegevoegd (handmatig)', { type: 'titel', id: titelId, label: b.handmatig.titel, nieuw: velden })
       } else throw new Error('Geef een titelnummer of vul de velden handmatig in')
       if (obj) {
-        const tn = get<any>('SELECT titelnummer FROM titels WHERE id = ?', titelId)!.titelnummer
-        const eid = run('INSERT INTO exemplaren (objectnummer, titel_id, titelnummer, vindcode, bron) VALUES (?, ?, ?, ?, ?)', obj, titelId, tn, b.vindcode?.trim() || null, 'beheer').lastInsertRowid
-        log(wie(c), 'exemplaar toegevoegd', { type: 'exemplaar', id: Number(eid), label: obj, nieuw: { titel_id: titelId, vindcode: b.vindcode } })
+        const tn = (await get<any>('SELECT titelnummer FROM titels WHERE id = ?', titelId))!.titelnummer
+        const eid = await insert('INSERT INTO exemplaren (objectnummer, titel_id, titelnummer, vindcode, bron) VALUES (?, ?, ?, ?, ?)', obj, titelId, tn, b.vindcode?.trim() || null, 'beheer')
+        await log(wie(c), 'exemplaar toegevoegd', { type: 'exemplaar', id: Number(eid), label: obj, nieuw: { titel_id: titelId, vindcode: b.vindcode } })
       }
       return titelId
     })
   } catch (e: any) { return fout(c, e.message) }
-  catalogusGewijzigd([id])
-  return c.json(titelDetail(id))
+  await catalogusGewijzigd([id])
+  return c.json(await titelDetail(id))
 })
 
 beheer.post('/exemplaren', async (c) => {
   const b = await c.req.json<{ titel_id: number; objectnummer: string; vindcode?: string }>()
   const obj = b.objectnummer?.trim()
   if (!obj || !OBJECT_RE.test(obj)) return fout(c, 'Vul een geldig objectnummer in (cijfers)')
-  if (get('SELECT id FROM exemplaren WHERE objectnummer = ?', obj)) return fout(c, `Objectnummer ${obj} bestaat al`, 409)
-  const t = get<any>('SELECT id, titelnummer, d_titel FROM titels WHERE id = ?', b.titel_id)
+  if (await get('SELECT id FROM exemplaren WHERE objectnummer = ?', obj)) return fout(c, `Objectnummer ${obj} bestaat al`, 409)
+  const t = await get<any>('SELECT id, titelnummer, d_titel FROM titels WHERE id = ?', b.titel_id)
   if (!t) return fout(c, 'Titel niet gevonden', 404)
-  const eid = run('INSERT INTO exemplaren (objectnummer, titel_id, titelnummer, vindcode, bron) VALUES (?, ?, ?, ?, ?)', obj, t.id, t.titelnummer, b.vindcode?.trim() || null, 'beheer').lastInsertRowid
-  log(wie(c), 'exemplaar toegevoegd', { type: 'exemplaar', id: Number(eid), label: obj, nieuw: { titel: t.d_titel, vindcode: b.vindcode } })
-  catalogusGewijzigd([t.id])
-  return c.json(titelDetail(t.id))
+  const eid = await insert('INSERT INTO exemplaren (objectnummer, titel_id, titelnummer, vindcode, bron) VALUES (?, ?, ?, ?, ?)', obj, t.id, t.titelnummer, b.vindcode?.trim() || null, 'beheer')
+  await log(wie(c), 'exemplaar toegevoegd', { type: 'exemplaar', id: Number(eid), label: obj, nieuw: { titel: t.d_titel, vindcode: b.vindcode } })
+  await catalogusGewijzigd([t.id])
+  return c.json(await titelDetail(t.id))
 })
 
-const inOpenAanvraag = (exemplaarId: number) => !!get(`SELECT 1 FROM (${OPEN_ITEMS_SQL}) x WHERE x.exemplaar_id = ?`, exemplaarId)
+const inOpenAanvraag = async (exemplaarId: number) => !!await get(`SELECT 1 FROM (${OPEN_ITEMS_SQL}) x WHERE x.exemplaar_id = ?`, exemplaarId)
 
-beheer.get('/exemplaar/:id', (c) => {
-  const e = get<any>('SELECT e.*, t.d_titel AS titel, t.d_artiesten AS artiesten FROM exemplaren e LEFT JOIN titels t ON t.id = e.titel_id WHERE e.id = ?', Number(c.req.param('id')))
-  return e ? c.json({ ...e, in_gebruik: inOpenAanvraag(e.id), geschiedenis: all("SELECT * FROM wijzigingslog WHERE record_type = 'exemplaar' AND record_id = ? ORDER BY id DESC", String(e.id)) }) : fout(c, 'Exemplaar niet gevonden', 404)
+beheer.get('/exemplaar/:id', async (c) => {
+  const e = await get<any>('SELECT e.*, t.d_titel AS titel, t.d_artiesten AS artiesten FROM exemplaren e LEFT JOIN titels t ON t.id = e.titel_id WHERE e.id = ?', Number(c.req.param('id')))
+  return e ? c.json({ ...e, in_gebruik: await inOpenAanvraag(e.id), geschiedenis: await all("SELECT * FROM wijzigingslog WHERE record_type = 'exemplaar' AND record_id = ? ORDER BY id DESC", String(e.id)) }) : fout(c, 'Exemplaar niet gevonden', 404)
 })
 
 beheer.patch('/exemplaar/:id', async (c) => {
   const id = Number(c.req.param('id'))
-  const e = get<any>('SELECT * FROM exemplaren WHERE id = ?', id)
+  const e = await get<any>('SELECT * FROM exemplaren WHERE id = ?', id)
   if (!e) return fout(c, 'Exemplaar niet gevonden', 404)
   const b = await c.req.json<{ objectnummer?: string; vindcode?: string | null; titel_id?: number | null; titelnummer?: string | null }>()
   const wijz: [string, any][] = []
   if (b.objectnummer !== undefined && b.objectnummer.trim() !== e.objectnummer) {
     const o = b.objectnummer.trim()
     if (!OBJECT_RE.test(o)) return fout(c, 'Een objectnummer bestaat uit cijfers')
-    if (get('SELECT id FROM exemplaren WHERE objectnummer = ? AND id <> ?', o, id)) return fout(c, `Objectnummer ${o} bestaat al`, 409)
+    if (await get('SELECT id FROM exemplaren WHERE objectnummer = ? AND id <> ?', o, id)) return fout(c, `Objectnummer ${o} bestaat al`, 409)
     wijz.push(['objectnummer', o])
   }
   if (b.vindcode !== undefined && (b.vindcode?.trim() || null) !== e.vindcode) wijz.push(['vindcode', b.vindcode?.trim() || null])
   if (b.titelnummer !== undefined || b.titel_id !== undefined) {
     // Koppelen aan een andere titel (correctie), op titel-ID of titelnummer.
     let t: any = null
-    if (b.titel_id) t = get('SELECT id, titelnummer FROM titels WHERE id = ?', b.titel_id)
+    if (b.titel_id) t = await get('SELECT id, titelnummer FROM titels WHERE id = ?', b.titel_id)
     else if (b.titelnummer) {
       const tn = b.titelnummer.trim().toUpperCase()
-      t = get('SELECT id, titelnummer FROM titels WHERE titelnummer = ?', tn)
+      t = await get('SELECT id, titelnummer FROM titels WHERE titelnummer = ?', tn)
       if (!t) {
-        const d = get<any>('SELECT data FROM mw_dump WHERE titelnummer = ?', tn)
+        const d = await get<any>('SELECT data FROM mw_dump WHERE titelnummer = ?', tn)
         if (!d) return fout(c, 'Titelnummer niet gevonden in de collectie of de laatste Muziekweb-import')
         const dump = JSON.parse(d.data)
-        t = { id: maakTitel({ titelnummer: tn, mw: dump.velden, soort: dump.soort, tip: dump.tip }), titelnummer: tn }
+        t = { id: await maakTitel({ titelnummer: tn, mw: dump.velden, soort: dump.soort, tip: dump.tip }), titelnummer: tn }
       }
     }
     if (t && t.id !== e.titel_id) {
-      if (inOpenAanvraag(id)) return fout(c, 'Dit exemplaar zit in een open aanvraag', 409)
+      if (await inOpenAanvraag(id)) return fout(c, 'Dit exemplaar zit in een open aanvraag', 409)
       wijz.push(['titel_id', t.id], ['titelnummer', t.titelnummer])
     }
   }
   for (const [veld, waarde] of wijz) {
-    run(`UPDATE exemplaren SET ${veld} = ?, gewijzigd = datetime('now') WHERE id = ?`, waarde, id)
-    log(wie(c), 'veld gewijzigd', { type: 'exemplaar', id, label: e.objectnummer, veld, oud: e[veld], nieuw: waarde })
+    await run(`UPDATE exemplaren SET ${veld} = ?, gewijzigd = nu() WHERE id = ?`, waarde, id)
+    await log(wie(c), 'veld gewijzigd', { type: 'exemplaar', id, label: e.objectnummer, veld, oud: e[veld], nieuw: waarde })
   }
-  catalogusGewijzigd([e.titel_id])
-  return c.json(get('SELECT * FROM exemplaren WHERE id = ?', id))
+  await catalogusGewijzigd([e.titel_id])
+  return c.json(await get('SELECT * FROM exemplaren WHERE id = ?', id))
 })
 
 beheer.post('/exemplaar/:id/afvoeren', async (c) => {
   const id = Number(c.req.param('id'))
   const { reden, toelichting } = await c.req.json<{ reden: string; toelichting?: string }>()
-  const e = get<any>('SELECT * FROM exemplaren WHERE id = ?', id)
+  const e = await get<any>('SELECT * FROM exemplaren WHERE id = ?', id)
   if (!e) return fout(c, 'Exemplaar niet gevonden', 404)
   if (!reden || !(reden in REDENEN_AFVOER)) return fout(c, 'Kies een reden')
   if (reden === 'overig' && !toelichting?.trim()) return fout(c, 'Geef een toelichting bij "overig"')
-  if (inOpenAanvraag(id)) return fout(c, 'Dit exemplaar zit in een open aanvraag. Sluit die eerst af of haal het eruit.', 409)
-  run("UPDATE exemplaren SET status = 'uit_collectie', reden_afvoer = ?, toelichting_afvoer = ?, gewijzigd = datetime('now') WHERE id = ?", reden, toelichting?.trim() || null, id)
-  log(wie(c), 'exemplaar afgevoerd', { type: 'exemplaar', id, label: e.objectnummer, veld: 'status', oud: 'in collectie', nieuw: `uit collectie (${REDENEN_AFVOER[reden]}${toelichting ? ': ' + toelichting : ''})` })
-  catalogusGewijzigd([e.titel_id])
+  if (await inOpenAanvraag(id)) return fout(c, 'Dit exemplaar zit in een open aanvraag. Sluit die eerst af of haal het eruit.', 409)
+  await run("UPDATE exemplaren SET status = 'uit_collectie', reden_afvoer = ?, toelichting_afvoer = ?, gewijzigd = nu() WHERE id = ?", reden, toelichting?.trim() || null, id)
+  await log(wie(c), 'exemplaar afgevoerd', { type: 'exemplaar', id, label: e.objectnummer, veld: 'status', oud: 'in collectie', nieuw: `uit collectie (${REDENEN_AFVOER[reden]}${toelichting ? ': ' + toelichting : ''})` })
+  await catalogusGewijzigd([e.titel_id])
   return c.json({ ok: true })
 })
 
-beheer.post('/exemplaar/:id/terugzetten', (c) => {
+beheer.post('/exemplaar/:id/terugzetten', async (c) => {
   const id = Number(c.req.param('id'))
-  const e = get<any>('SELECT * FROM exemplaren WHERE id = ?', id)
+  const e = await get<any>('SELECT * FROM exemplaren WHERE id = ?', id)
   if (!e) return fout(c, 'Exemplaar niet gevonden', 404)
-  run("UPDATE exemplaren SET status = 'in_collectie', reden_afvoer = NULL, toelichting_afvoer = NULL, gewijzigd = datetime('now') WHERE id = ?", id)
-  log(wie(c), 'afvoeren teruggedraaid', { type: 'exemplaar', id, label: e.objectnummer, veld: 'status', oud: 'uit collectie', nieuw: 'in collectie' })
-  catalogusGewijzigd([e.titel_id])
+  await run("UPDATE exemplaren SET status = 'in_collectie', reden_afvoer = NULL, toelichting_afvoer = NULL, gewijzigd = nu() WHERE id = ?", id)
+  await log(wie(c), 'afvoeren teruggedraaid', { type: 'exemplaar', id, label: e.objectnummer, veld: 'status', oud: 'uit collectie', nieuw: 'in collectie' })
+  await catalogusGewijzigd([e.titel_id])
   return c.json({ ok: true })
 })
 
@@ -323,154 +322,175 @@ beheer.post('/import/collectie', async (c) => {
   try {
     const { regels, overgeslagen } = await leesBestand(Buffer.from(await f.arrayBuffer()), f.name)
     if (!regels.length) return fout(c, 'Geen regels met objectnummer of titelnummer gevonden')
-    return c.json(samenvatting(analyseer(regels, f.name, overgeslagen)))
+    return c.json(samenvatting(await analyseer(regels, f.name, overgeslagen)))
   } catch (e: any) { return fout(c, `Bestand niet te lezen: ${e.message}`) }
 })
 
 beheer.post('/import/collectie/:token', async (c) => {
   const { categorieen } = await c.req.json<{ categorieen: Categorie[] }>()
   try {
-    const r = voerDoor(c.req.param('token'), categorieen ?? [], wie(c))
-    catalogusGewijzigd()
+    const r = await voerDoor(c.req.param('token'), categorieen ?? [], wie(c))
+    await catalogusGewijzigd()
     return c.json(r)
   } catch (e: any) { return fout(c, e.message) }
 })
 
-beheer.get('/imports', (c) => c.json(all<any>('SELECT * FROM imports ORDER BY id DESC LIMIT 50').map((i) => ({ ...i, rapport: json(i.rapport, {}) }))))
+beheer.get('/imports', async (c) => c.json((await all<any>('SELECT * FROM imports ORDER BY id DESC LIMIT 50')).map((i) => ({ ...i, rapport: json(i.rapport, {}) }))))
 
 // ------------------------------------------------------------------ Muziekweb-import (10.7), beheerder
+// Op Vercel in stappen: per deel van de meegeleverde exportmap één verzoek; de browser stuurt de stappen.
 
-let mwStatus: { bezig: boolean; verwerkt: number; rapport?: any; fout?: string; gestart?: string } = { bezig: false, verwerkt: 0 }
-beheer.get('/import/muziekweb/status', alleenBeheerder, (c) => c.json(mwStatus))
+const exportMap = () => process.env.FONOS_DUMP_DIR ?? join(ROOT, '..', 'exports')
 
-beheer.post('/import/muziekweb', alleenBeheerder, async (c) => {
-  if (mwStatus.bezig) return fout(c, 'Er loopt al een import', 409)
-  const body = await c.req.parseBody()
-  const f = body.bestand as File | undefined
-  if (!f || typeof f === 'string') return fout(c, 'Geen bestand ontvangen')
-  const map = mkdtempSync(join(tmpdir(), 'fonos-dump-'))
-  let pad: string
-  const buf = Buffer.from(await f.arrayBuffer())
-  if (/\.zip$/i.test(f.name)) {
-    // Zip met de exportmap (part-*/…jsonl.gz) of een jsonl-bestand.
-    const zip = await JSZip.loadAsync(buf)
-    for (const z of Object.values(zip.files)) {
-      if (z.dir || z.name.includes('..')) continue
-      const doel = join(map, z.name)
-      await import('node:fs').then((fs) => fs.mkdirSync(join(doel, '..'), { recursive: true }))
-      writeFileSync(doel, await z.async('nodebuffer'))
-    }
-    const jsonl = Object.keys(zip.files).find((n) => /\.jsonl(\.gz)?$/.test(n) && !n.includes('/'))
-    pad = jsonl && !Object.keys(zip.files).some((n) => n.includes('album_pages')) ? join(map, jsonl) : map
-  } else if (/\.(db|sqlite3?|jsonl|jsonl\.gz)$/i.test(f.name)) {
-    pad = join(map, f.name.replace(/[^\w.-]/g, '_'))
-    writeFileSync(pad, buf)
-  } else return fout(c, 'Upload een zip (exportmap), muziekweb.db of .jsonl')
-  startMwImport(pad, f.name, wie(c), () => rmSync(map, { recursive: true, force: true }))
-  return c.json(mwStatus)
+beheer.post('/import/muziekweb/start', alleenBeheerder, async (c) => {
+  const id = await startImport(wie(c))
+  await run("INSERT INTO taken (id, soort, data) VALUES (?, 'mwimport', ?)", `mw-${id}`, JSON.stringify(leegRapport(id)))
+  return c.json({ import_id: id, delen: exportDelen(exportMap()) })
 })
 
-// Ophalen uit een map op de server (FONOS_DUMP_DIR), bv. waar een automatische levering binnenkomt (O-2).
-beheer.post('/import/muziekweb/server', alleenBeheerder, (c) => {
-  const pad = process.env.FONOS_DUMP_DIR
-  if (!pad) return fout(c, 'FONOS_DUMP_DIR is niet ingesteld op de server')
-  if (mwStatus.bezig) return fout(c, 'Er loopt al een import', 409)
-  startMwImport(pad, pad, wie(c))
-  return c.json(mwStatus)
-})
-
-function startMwImport(pad: string, bron: string, w: ReturnType<typeof wie>, klaar?: () => void) {
-  mwStatus = { bezig: true, verwerkt: 0, gestart: new Date().toISOString() }
-  verwerkMuziekwebImport(kiesLezer(pad), w, bron, (n) => { mwStatus.verwerkt = n })
-    .then((r) => { mwStatus = { ...mwStatus, bezig: false, rapport: r }; catalogusGewijzigd() })
-    .catch((e) => { mwStatus = { ...mwStatus, bezig: false, fout: String(e?.message ?? e) } })
-    .finally(() => klaar?.())
+async function mwRapport(id: number) {
+  const t = await get<{ data: string }>("SELECT data FROM taken WHERE id = ?", `mw-${id}`)
+  if (!t) throw new Error('Deze import is niet (meer) bekend. Start opnieuw.')
+  return JSON.parse(t.data) as ReturnType<typeof leegRapport>
 }
+const bewaarRapport = (id: number, r: any) => run('UPDATE taken SET data = ? WHERE id = ?', JSON.stringify(r), `mw-${id}`)
+
+beheer.post('/import/muziekweb/deel', alleenBeheerder, async (c) => {
+  const { import_id, deel } = await c.req.json<{ import_id: number; deel: string }>()
+  if (!/^part-\d+$/.test(deel ?? '')) return fout(c, 'Onbekend deel')
+  try {
+    const rapport = await mwRapport(import_id)
+    await verwerkRecords(await leesExportDeel(join(exportMap(), deel)), import_id, rapport)
+    await bewaarRapport(import_id, rapport)
+    return c.json(rapport)
+  } catch (e: any) { return fout(c, e.message) }
+})
+
+/** Een geüploade dump (.jsonl, .jsonl.gz of zip met één deel), via de aparte opslag. */
+beheer.post('/import/muziekweb/bestand', alleenBeheerder, async (c) => {
+  const { import_id, adres, naam } = await c.req.json<{ import_id: number; adres: string; naam: string }>()
+  const map = mkdtempSync(join(tmpdir(), 'fonos-dump-'))
+  try {
+    const rapport = await mwRapport(import_id)
+    const buf = await lees(adres)
+    let records
+    if (/\.zip$/i.test(naam)) {
+      const zip = await JSZip.loadAsync(buf)
+      for (const z of Object.values(zip.files)) {
+        if (z.dir || z.name.includes('..')) continue
+        const doel = join(map, basename(z.name))
+        writeFileSync(doel, await z.async('nodebuffer'))
+      }
+      records = await leesExportDeel(map)
+    } else {
+      const pad = join(map, basename(naam).replace(/[^\w.-]/g, '_'))
+      writeFileSync(pad, buf)
+      records = [] as any[]
+      for await (const r of leesStandaard(pad)) records.push(r)
+    }
+    await verwerkRecords(records, import_id, rapport)
+    await bewaarRapport(import_id, rapport)
+    return c.json(rapport)
+  } catch (e: any) { return fout(c, e.message) } finally { rmSync(map, { recursive: true, force: true }) }
+})
+
+beheer.post('/import/muziekweb/afronden', alleenBeheerder, async (c) => {
+  const { import_id } = await c.req.json<{ import_id: number }>()
+  try {
+    const rapport = await rondImportAf(import_id, await mwRapport(import_id), wie(c), 'Muziekweb-dump')
+    await run('DELETE FROM taken WHERE id = ?', `mw-${import_id}`)
+    await catalogusGewijzigd()
+    return c.json(rapport)
+  } catch (e: any) { return fout(c, e.message) }
+})
 
 // ------------------------------------------------------------------ datakwaliteit (10.7)
 
-const TOELICHTING = `COALESCE(NULLIF(json_extract(t.fonos_data, '$.toelichting'), ''), NULLIF(json_extract(t.mw_data, '$.toelichting'), ''))`
-const laatsteImport = () => get<{ id: number }>("SELECT MAX(id) id FROM imports WHERE soort = 'muziekweb'")?.id ?? 0
+const TOELICHTING = `COALESCE(NULLIF(t.fonos_data::jsonb->>'toelichting', ''), NULLIF(t.mw_data::jsonb->>'toelichting', ''))`
 
-const DQ: Record<string, { naam: string; sql: () => string }> = {
+const DQ: Record<string, { naam: string; sql: (laatste: number) => string }> = {
   zonder_titelnummer: { naam: 'Exemplaren zonder titelnummer', sql: () => `SELECT e.id AS exemplaar_id, e.objectnummer, e.vindcode, e.bron FROM exemplaren e WHERE e.titelnummer IS NULL AND e.titel_id IS NULL AND e.status = 'in_collectie'` },
   dubbel: { naam: 'Dubbele objectnummers', sql: () => `SELECT i.id AS issue_id, i.objectnummer, i.titelnummer, i.vindcode, i.bron, (SELECT e.titel_id FROM exemplaren e WHERE e.objectnummer = i.objectnummer) AS titel_id FROM import_issues i WHERE i.soort = 'dubbel_objectnummer' AND i.afgehandeld = 0` },
-  niet_in_dump: { naam: 'Titelnummers die niet in de dump voorkomen', sql: () => `
-      SELECT NULL AS titel_id, e.id AS exemplaar_id, e.objectnummer, e.titelnummer FROM exemplaren e
+  niet_in_dump: { naam: 'Titelnummers die niet in de dump voorkomen', sql: (laatste) => `
+      SELECT NULL::int AS titel_id, e.id AS exemplaar_id, e.objectnummer, e.titelnummer FROM exemplaren e
         WHERE e.titel_id IS NULL AND e.titelnummer IS NOT NULL AND e.status = 'in_collectie'
       UNION ALL
       SELECT t.id, NULL, NULL, t.titelnummer FROM titels t LEFT JOIN mw_dump m ON m.titelnummer = t.titelnummer
-        WHERE t.titelnummer IS NOT NULL AND (m.titelnummer IS NULL OR m.import_id < ${laatsteImport()})` },
+        WHERE t.titelnummer IS NOT NULL AND (m.titelnummer IS NULL OR m.import_id < ${Math.trunc(laatste)})` },
   zonder_hoes: { naam: 'Titels zonder hoes', sql: () => `SELECT t.id AS titel_id, t.titelnummer, t.d_titel AS titel, t.d_artiesten AS artiesten FROM titels t WHERE t.d_hoes IS NULL` },
   zonder_toelichting: { naam: 'Titels zonder toelichting', sql: () => `SELECT t.id AS titel_id, t.titelnummer, t.d_titel AS titel, t.d_artiesten AS artiesten FROM titels t WHERE ${TOELICHTING} IS NULL` },
-  ongekoppelde_genres: { naam: 'Muziekweb-genres zonder genreknop', sql: () => `SELECT j.value AS genre, COUNT(*) AS aantal FROM titels t, json_each(t.d_genres) j
+  ongekoppelde_genres: { naam: 'Muziekweb-genres zonder genreknop', sql: () => `SELECT j.value AS genre, COUNT(*)::int AS aantal FROM titels t, jsonb_array_elements_text(t.d_genres::jsonb) j(value)
       WHERE j.value NOT IN (SELECT mw_genre FROM genre_koppelingen) GROUP BY j.value ORDER BY aantal DESC` },
-  conflicten: { naam: 'Conflicten tussen Fonos- en Muziekweb-waarde', sql: () => `SELECT t.id AS titel_id, t.titelnummer, t.d_titel AS titel, t.conflicten FROM titels t WHERE t.conflicten != '{}'` },
+  conflicten: { naam: 'Conflicten tussen Fonos- en Muziekweb-waarde', sql: () => `SELECT t.id AS titel_id, t.titelnummer, t.d_titel AS titel, t.conflicten FROM titels t WHERE t.conflicten <> '{}'` },
 }
 
-function dqTellingen() {
-  return Object.fromEntries(Object.entries(DQ).map(([k, v]) => [k, get<{ n: number }>(`SELECT COUNT(*) n FROM (${v.sql()})`)!.n]))
+async function dqTellingen() {
+  const laatste = await laatsteImportId()
+  const uit: Record<string, number> = {}
+  await Promise.all(Object.entries(DQ).map(async ([k, v]) => { uit[k] = (await get<{ n: number }>(`SELECT COUNT(*)::int AS n FROM (${v.sql(laatste)}) x`))!.n }))
+  return uit
 }
 
-beheer.get('/datakwaliteit', (c) => {
-  const t = dqTellingen()
+beheer.get('/datakwaliteit', async (c) => {
+  const t = await dqTellingen()
   return c.json(Object.entries(DQ).map(([sleutel, v]) => ({ sleutel, naam: v.naam, aantal: t[sleutel] })))
 })
 
-beheer.get('/datakwaliteit/:lijst', (c) => {
+beheer.get('/datakwaliteit/:lijst', async (c) => {
   const l = DQ[c.req.param('lijst')]
   if (!l) return fout(c, 'Onbekende lijst', 404)
   const pagina = Math.max(1, Number(c.req.query('pagina')) || 1)
-  const rijen = all<any>(`SELECT * FROM (${l.sql()}) LIMIT 100 OFFSET ?`, (pagina - 1) * 100)
-  return c.json({ naam: l.naam, totaal: get<{ n: number }>(`SELECT COUNT(*) n FROM (${l.sql()})`)!.n, pagina, rijen: rijen.map((r) => (r.conflicten ? { ...r, conflicten: Object.keys(json(r.conflicten, {})) } : r)) })
+  const laatste = await laatsteImportId()
+  const rijen = await all<any>(`SELECT * FROM (${l.sql(laatste)}) x LIMIT 100 OFFSET ?`, (pagina - 1) * 100)
+  return c.json({ naam: l.naam, totaal: (await get<{ n: number }>(`SELECT COUNT(*)::int AS n FROM (${l.sql(laatste)}) x`))!.n, pagina, rijen: rijen.map((r) => (r.conflicten ? { ...r, conflicten: Object.keys(json(r.conflicten, {})) } : r)) })
 })
 
-beheer.post('/issue/:id/afgehandeld', (c) => {
+beheer.post('/issue/:id/afgehandeld', async (c) => {
   const id = Number(c.req.param('id'))
-  const i = get<any>('SELECT * FROM import_issues WHERE id = ?', id)
+  const i = await get<any>('SELECT * FROM import_issues WHERE id = ?', id)
   if (!i) return fout(c, 'Niet gevonden', 404)
-  run('UPDATE import_issues SET afgehandeld = 1 WHERE id = ?', id)
-  log(wie(c), 'dubbel objectnummer afgehandeld', { type: 'import_issue', id, label: i.objectnummer })
+  await run('UPDATE import_issues SET afgehandeld = 1 WHERE id = ?', id)
+  await log(wie(c), 'dubbel objectnummer afgehandeld', { type: 'import_issue', id, label: i.objectnummer })
   return c.json({ ok: true })
 })
 
 // ------------------------------------------------------------------ genreknoppen (10.8), beheerder
 
-beheer.get('/genreknoppen', (c) => c.json({
-  knoppen: all<any>('SELECT k.*, (SELECT COUNT(*) FROM genre_koppelingen g WHERE g.knop_id = k.id) AS koppelingen FROM genreknoppen k ORDER BY volgorde, id'),
-  nl_weergave: instellingen().nl_weergave,
+beheer.get('/genreknoppen', async (c) => c.json({
+  knoppen: await all<any>('SELECT k.*, (SELECT COUNT(*) FROM genre_koppelingen g WHERE g.knop_id = k.id) AS koppelingen FROM genreknoppen k ORDER BY volgorde, id'),
+  nl_weergave: (await instellingen()).nl_weergave,
 }))
 
-beheer.get('/genreknop/:id', (c) => {
+beheer.get('/genreknop/:id', async (c) => {
   const id = Number(c.req.param('id'))
-  const k = get<any>('SELECT * FROM genreknoppen WHERE id = ?', id)
+  const k = await get<any>('SELECT * FROM genreknoppen WHERE id = ?', id)
   if (!k) return fout(c, 'Niet gevonden', 404)
-  const telling = new Map(all<any>('SELECT j.value g, COUNT(*) n FROM titels t, json_each(t.d_genres) j GROUP BY j.value').map((r) => [r.g, r.n]))
-  const kop = all<any>('SELECT * FROM genre_koppelingen WHERE knop_id = ? ORDER BY weergavenaam, mw_genre', id).map((g) => ({ ...g, titels: telling.get(g.mw_genre) ?? 0 }))
+  const telling = new Map((await all<any>('SELECT j.value AS g, COUNT(*)::int AS n FROM titels t, jsonb_array_elements_text(t.d_genres::jsonb) j(value) GROUP BY j.value')).map((r) => [r.g, r.n]))
+  const kop = (await all<any>('SELECT * FROM genre_koppelingen WHERE knop_id = ? ORDER BY weergavenaam, mw_genre', id)).map((g) => ({ ...g, titels: telling.get(g.mw_genre) ?? 0 }))
   return c.json({ ...k, koppelingen: kop })
 })
 
 beheer.post('/genreknoppen', alleenBeheerder, async (c) => {
   const b = await c.req.json<any>()
   if (!b.naam?.trim()) return fout(c, 'Vul een naam in')
-  const max = get<{ m: number }>('SELECT COALESCE(MAX(volgorde), 0) m FROM genreknoppen')!.m
-  const id = Number(run('INSERT INTO genreknoppen (naam, volgorde, kleur, nederlands) VALUES (?, ?, ?, ?)', b.naam.trim(), max + 1, b.kleur || '#ff14b4', b.nederlands ? 1 : 0).lastInsertRowid)
-  log(wie(c), 'genreknop toegevoegd', { type: 'genreknop', id, label: b.naam })
+  const max = (await get<{ m: number }>('SELECT COALESCE(MAX(volgorde), 0) AS m FROM genreknoppen'))!.m
+  const id = await insert('INSERT INTO genreknoppen (naam, volgorde, kleur, nederlands) VALUES (?, ?, ?, ?)', b.naam.trim(), max + 1, b.kleur || '#ff14b4', b.nederlands ? 1 : 0)
+  await log(wie(c), 'genreknop toegevoegd', { type: 'genreknop', id, label: b.naam })
   wisConfigCache()
   return c.json({ id })
 })
 
 beheer.patch('/genreknop/:id', alleenBeheerder, async (c) => {
   const id = Number(c.req.param('id'))
-  const k = get<any>('SELECT * FROM genreknoppen WHERE id = ?', id)
+  const k = await get<any>('SELECT * FROM genreknoppen WHERE id = ?', id)
   if (!k) return fout(c, 'Niet gevonden', 404)
   const b = await c.req.json<any>()
   for (const veld of ['naam', 'volgorde', 'actief', 'kleur', 'nederlands', 'afbeelding'] as const) {
     if (b[veld] === undefined) continue
     const w = typeof b[veld] === 'boolean' ? (b[veld] ? 1 : 0) : b[veld]
     if (w === k[veld]) continue
-    run(`UPDATE genreknoppen SET ${veld} = ? WHERE id = ?`, w, id)
-    log(wie(c), 'veld gewijzigd', { type: 'genreknop', id, label: k.naam, veld, oud: k[veld], nieuw: w })
+    await run(`UPDATE genreknoppen SET ${veld} = ? WHERE id = ?`, w, id)
+    await log(wie(c), 'veld gewijzigd', { type: 'genreknop', id, label: k.naam, veld, oud: k[veld], nieuw: w })
   }
   wisConfigCache()
   return c.json({ ok: true })
@@ -479,19 +499,19 @@ beheer.patch('/genreknop/:id', alleenBeheerder, async (c) => {
 beheer.post('/genreknop/:id/afbeelding', alleenBeheerder, async (c) => {
   try {
     const url = await bewaarUpload(c)
-    run('UPDATE genreknoppen SET afbeelding = ? WHERE id = ?', url, Number(c.req.param('id')))
-    log(wie(c), 'afbeelding genreknop', { type: 'genreknop', id: c.req.param('id'), nieuw: url })
+    await run('UPDATE genreknoppen SET afbeelding = ? WHERE id = ?', url, Number(c.req.param('id')))
+    await log(wie(c), 'afbeelding genreknop', { type: 'genreknop', id: c.req.param('id'), nieuw: url })
     wisConfigCache()
     return c.json({ afbeelding: url })
   } catch (e: any) { return fout(c, e.message) }
 })
 
-beheer.delete('/genreknop/:id', alleenBeheerder, (c) => {
+beheer.delete('/genreknop/:id', alleenBeheerder, async (c) => {
   const id = Number(c.req.param('id'))
-  const k = get<any>('SELECT * FROM genreknoppen WHERE id = ?', id)
+  const k = await get<any>('SELECT * FROM genreknoppen WHERE id = ?', id)
   if (!k) return fout(c, 'Niet gevonden', 404)
-  run('DELETE FROM genreknoppen WHERE id = ?', id)
-  log(wie(c), 'genreknop verwijderd', { type: 'genreknop', id, label: k.naam })
+  await run('DELETE FROM genreknoppen WHERE id = ?', id)
+  await log(wie(c), 'genreknop verwijderd', { type: 'genreknop', id, label: k.naam })
   wisConfigCache()
   return c.json({ ok: true })
 })
@@ -500,28 +520,28 @@ beheer.delete('/genreknop/:id', alleenBeheerder, (c) => {
 beheer.put('/genreknop/:id/koppelingen', alleenBeheerder, async (c) => {
   const id = Number(c.req.param('id'))
   const { koppelingen } = await c.req.json<{ koppelingen: { mw_genre: string; weergavenaam?: string | null }[] }>()
-  const oud = all<any>('SELECT mw_genre, weergavenaam FROM genre_koppelingen WHERE knop_id = ? ORDER BY mw_genre', id)
-  tx(() => {
-    run('DELETE FROM genre_koppelingen WHERE knop_id = ?', id)
-    for (const k of koppelingen) if (k.mw_genre?.trim()) run('INSERT OR IGNORE INTO genre_koppelingen (knop_id, mw_genre, weergavenaam) VALUES (?, ?, ?)', id, k.mw_genre.trim(), k.weergavenaam?.trim() || null)
+  const oud = await all<any>('SELECT mw_genre, weergavenaam FROM genre_koppelingen WHERE knop_id = ? ORDER BY mw_genre', id)
+  await tx(async () => {
+    await run('DELETE FROM genre_koppelingen WHERE knop_id = ?', id)
+    for (const k of koppelingen) if (k.mw_genre?.trim()) await run('INSERT INTO genre_koppelingen (knop_id, mw_genre, weergavenaam) VALUES (?, ?, ?) ON CONFLICT DO NOTHING', id, k.mw_genre.trim(), k.weergavenaam?.trim() || null)
   })
-  log(wie(c), 'genrekoppelingen gewijzigd', { type: 'genreknop', id, veld: 'koppelingen', oud: oud.map((o) => o.mw_genre), nieuw: koppelingen.map((k) => k.mw_genre) })
+  await log(wie(c), 'genrekoppelingen gewijzigd', { type: 'genreknop', id, veld: 'koppelingen', oud: oud.map((o) => o.mw_genre), nieuw: koppelingen.map((k) => k.mw_genre) })
   wisConfigCache()
   return c.json({ ok: true })
 })
 
 // ------------------------------------------------------------------ selecties (10.9)
 
-beheer.get('/selecties', (c) => c.json(all<any>(`SELECT s.*, (SELECT COUNT(*) FROM selectie_titels x WHERE x.selectie_id = s.id) AS handmatig FROM selecties s ORDER BY volgorde, id`)))
+beheer.get('/selecties', async (c) => c.json(await all<any>(`SELECT s.*, (SELECT COUNT(*)::int FROM selectie_titels x WHERE x.selectie_id = s.id) AS handmatig FROM selecties s ORDER BY volgorde, id`)))
 
-beheer.get('/selectie/:id', (c) => {
-  const s = get<any>('SELECT * FROM selecties WHERE id = ?', Number(c.req.param('id')))
+beheer.get('/selectie/:id', async (c) => {
+  const s = await get<any>('SELECT * FROM selecties WHERE id = ?', Number(c.req.param('id')))
   if (!s) return fout(c, 'Niet gevonden', 404)
-  const titels = all<any>(`SELECT t.id, t.d_titel titel, t.d_artiesten artiesten, t.d_jaar jaar, t.d_drager drager, t.d_hoes hoes
+  const titels = await all<any>(`SELECT t.id, t.d_titel AS titel, t.d_artiesten AS artiesten, t.d_jaar AS jaar, t.d_drager AS drager, t.d_hoes AS hoes
     FROM selectie_titels x JOIN titels t ON t.id = x.titel_id WHERE x.selectie_id = ? ORDER BY x.volgorde`, s.id)
-  const docs = alleDocs()
-  const automatisch = ['uitgelicht', 'nieuw', 'vaak'].includes(s.soort) || s.mw_genre
-    ? selectieTitels(s, docs, inGebruik(), false).map((d) => ({ id: d.id, titel: d.titel, artiesten: d.artiesten, jaar: d.jaar, hoes: d.hoes })) : []
+  const ids = ['uitgelicht', 'nieuw', 'vaak'].includes(s.soort) || s.mw_genre ? await selectieIds(s, false) : []
+  const automatisch = ids.length ? await all(`SELECT t.id, t.d_titel AS titel, t.d_artiesten AS artiesten, t.d_jaar AS jaar, t.d_hoes AS hoes FROM titels t
+    WHERE t.id = ANY(?::int[]) ORDER BY array_position(?::int[], t.id)`, `{${ids.join(',')}}`, `{${ids.join(',')}}`) : []
   return c.json({ ...s, titels, voorbeeld: automatisch })
 })
 
@@ -529,56 +549,56 @@ beheer.post('/selecties', async (c) => {
   const b = await c.req.json<any>()
   if (!b.naam?.trim()) return fout(c, 'Vul een naam in')
   const soort = ['handmatig', 'seizoen'].includes(b.soort) ? b.soort : 'handmatig'
-  const max = get<{ m: number }>('SELECT COALESCE(MAX(volgorde), 0) m FROM selecties')!.m
-  const id = Number(run('INSERT INTO selecties (naam, soort, volgorde, begin, eind) VALUES (?, ?, ?, ?, ?)', b.naam.trim(), soort, max + 1, b.begin || null, b.eind || null).lastInsertRowid)
-  log(wie(c), 'selectie toegevoegd', { type: 'selectie', id, label: b.naam })
+  const max = (await get<{ m: number }>('SELECT COALESCE(MAX(volgorde), 0) AS m FROM selecties'))!.m
+  const id = await insert('INSERT INTO selecties (naam, soort, volgorde, begin, eind) VALUES (?, ?, ?, ?, ?)', b.naam.trim(), soort, max + 1, b.begin || null, b.eind || null)
+  await log(wie(c), 'selectie toegevoegd', { type: 'selectie', id, label: b.naam })
   return c.json({ id })
 })
 
 beheer.patch('/selectie/:id', async (c) => {
   const id = Number(c.req.param('id'))
-  const s = get<any>('SELECT * FROM selecties WHERE id = ?', id)
+  const s = await get<any>('SELECT * FROM selecties WHERE id = ?', id)
   if (!s) return fout(c, 'Niet gevonden', 404)
   const b = await c.req.json<any>()
   for (const veld of ['naam', 'volgorde', 'actief', 'begin', 'eind', 'aantal', 'periode_dagen', 'mw_genre'] as const) {
     if (b[veld] === undefined) continue
     const w = typeof b[veld] === 'boolean' ? (b[veld] ? 1 : 0) : b[veld] === '' ? null : b[veld]
     if (w === s[veld]) continue
-    run(`UPDATE selecties SET ${veld} = ? WHERE id = ?`, w, id)
-    log(wie(c), 'veld gewijzigd', { type: 'selectie', id, label: s.naam, veld, oud: s[veld], nieuw: w })
+    await run(`UPDATE selecties SET ${veld} = ? WHERE id = ?`, w, id)
+    await log(wie(c), 'veld gewijzigd', { type: 'selectie', id, label: s.naam, veld, oud: s[veld], nieuw: w })
   }
   return c.json({ ok: true })
 })
 
-beheer.delete('/selectie/:id', (c) => {
+beheer.delete('/selectie/:id', async (c) => {
   const id = Number(c.req.param('id'))
-  const s = get<any>('SELECT * FROM selecties WHERE id = ?', id)
+  const s = await get<any>('SELECT * FROM selecties WHERE id = ?', id)
   if (!s) return fout(c, 'Niet gevonden', 404)
   if (['uitgelicht', 'nieuw', 'vaak'].includes(s.soort)) return fout(c, 'Automatische selecties kun je uitzetten, niet verwijderen')
-  run('DELETE FROM selecties WHERE id = ?', id)
-  log(wie(c), 'selectie verwijderd', { type: 'selectie', id, label: s.naam })
+  await run('DELETE FROM selecties WHERE id = ?', id)
+  await log(wie(c), 'selectie verwijderd', { type: 'selectie', id, label: s.naam })
   return c.json({ ok: true })
 })
 
 beheer.put('/selectie/:id/titels', async (c) => {
   const id = Number(c.req.param('id'))
   const { ids } = await c.req.json<{ ids: number[] }>()
-  const oud = all<any>('SELECT titel_id FROM selectie_titels WHERE selectie_id = ? ORDER BY volgorde', id).map((r) => r.titel_id)
-  tx(() => {
-    run('DELETE FROM selectie_titels WHERE selectie_id = ?', id)
-    ;[...new Set(ids)].forEach((t, i) => run('INSERT INTO selectie_titels (selectie_id, titel_id, volgorde) VALUES (?, ?, ?)', id, t, i))
+  const oud = (await all<any>('SELECT titel_id FROM selectie_titels WHERE selectie_id = ? ORDER BY volgorde', id)).map((r) => r.titel_id)
+  await tx(async () => {
+    await run('DELETE FROM selectie_titels WHERE selectie_id = ?', id)
+    for (const [i, t] of [...new Set(ids)].entries()) await run('INSERT INTO selectie_titels (selectie_id, titel_id, volgorde) VALUES (?, ?, ?)', id, t, i)
   })
-  log(wie(c), 'titels selectie gewijzigd', { type: 'selectie', id, veld: 'titels', oud, nieuw: ids })
+  await log(wie(c), 'titels selectie gewijzigd', { type: 'selectie', id, veld: 'titels', oud, nieuw: ids })
   return c.json({ ok: true })
 })
 
 // ------------------------------------------------------------------ instellingen (10.10), beheerder
 
-beheer.get('/instellingen', alleenBeheerder, (c) => c.json({ instellingen: instellingen(), platenspelers: all('SELECT * FROM platenspelers ORDER BY nummer') }))
+beheer.get('/instellingen', alleenBeheerder, async (c) => c.json({ instellingen: await instellingen(), platenspelers: await all('SELECT * FROM platenspelers ORDER BY nummer') }))
 
 beheer.put('/instellingen', alleenBeheerder, async (c) => {
   const b = await c.req.json<Record<string, unknown>>()
-  const huidig = instellingen() as any
+  const huidig = await instellingen() as any
   for (const [k, v] of Object.entries(b)) {
     if (!(k in STANDAARD_INSTELLINGEN)) continue
     const std = (STANDAARD_INSTELLINGEN as any)[k]
@@ -588,24 +608,24 @@ beheer.put('/instellingen', alleenBeheerder, async (c) => {
     if (k === 'aantal_platenspelers') {
       const n = Number(waarde)
       if (n < 1 || n > 30) return fout(c, 'Aantal platenspelers tussen 1 en 30')
-      if (get(`SELECT 1 FROM aanvragen WHERE platenspeler > ? AND status IN ('ingediend', 'uitgegeven')`, n)) return fout(c, 'Er lopen nog aanvragen op platenspelers boven dit aantal')
-      syncPlatenspelers(n)
+      if (await get(`SELECT 1 FROM aanvragen WHERE platenspeler > ? AND status IN ('ingediend', 'uitgegeven')`, n)) return fout(c, 'Er lopen nog aanvragen op platenspelers boven dit aantal')
+      await syncPlatenspelers(n)
     }
-    zetInstelling(k, waarde)
-    log(wie(c), 'instelling gewijzigd', { type: 'instelling', id: k, label: k, veld: k, oud: huidig[k], nieuw: waarde })
+    await zetInstelling(k, waarde)
+    await log(wie(c), 'instelling gewijzigd', { type: 'instelling', id: k, label: k, veld: k, oud: huidig[k], nieuw: waarde })
   }
   wisConfigCache()
-  beschikbaarheidGewijzigd()
-  return c.json({ instellingen: instellingen() })
+  await beschikbaarheidGewijzigd()
+  return c.json({ instellingen: await instellingen() })
 })
 
 // ------------------------------------------------------------------ gebruikers (10.11), beheerder
 
-beheer.get('/gebruikers', alleenBeheerder, (c) =>
-  c.json(all<any>('SELECT id, email, naam, rollen, actief, aangemaakt FROM gebruikers ORDER BY naam').map((g) => ({ ...g, rollen: json(g.rollen, []), actief: !!g.actief }))))
+beheer.get('/gebruikers', alleenBeheerder, async (c) =>
+  c.json((await all<any>('SELECT id, email, naam, rollen, actief, aangemaakt FROM gebruikers ORDER BY naam')).map((g) => ({ ...g, rollen: json(g.rollen, []), actief: !!g.actief }))))
 
 async function stuurReset(c: Context, gebruikerId: number, email: string, welkom: boolean) {
-  const token = maakResetToken(gebruikerId)
+  const token = await maakResetToken(gebruikerId)
   const basis = process.env.FONOS_BASIS_URL ?? new URL(c.req.url).origin
   const link = `${basis}/wachtwoord?token=${token}`
   await stuurMail(email, welkom ? 'Je account voor de Fonotheek' : 'Nieuw wachtwoord voor de Fonotheek',
@@ -617,137 +637,159 @@ beheer.post('/gebruikers', alleenBeheerder, async (c) => {
   if (!b.email?.includes('@') || !b.naam?.trim()) return fout(c, 'Vul naam en e-mailadres in')
   const rollen = (b.rollen ?? []).filter((r) => (ROLLEN as readonly string[]).includes(r))
   if (!rollen.length) return fout(c, 'Kies minstens één rol')
-  if (get('SELECT id FROM gebruikers WHERE email = ?', b.email.trim())) return fout(c, 'Dit e-mailadres bestaat al', 409)
-  const id = maakGebruiker({ email: b.email, naam: b.naam, rollen: rollen as any })
-  log(wie(c), 'gebruiker aangemaakt', { type: 'gebruiker', id, label: b.naam, nieuw: { rollen } })
+  if (await get('SELECT id FROM gebruikers WHERE lower(email) = lower(?)', b.email.trim())) return fout(c, 'Dit e-mailadres bestaat al', 409)
+  const id = await maakGebruiker({ email: b.email, naam: b.naam, rollen: rollen as any })
+  await log(wie(c), 'gebruiker aangemaakt', { type: 'gebruiker', id, label: b.naam, nieuw: { rollen } })
   await stuurReset(c, id, b.email.trim(), true).catch((e) => console.error(e))
   return c.json({ id })
 })
 
 beheer.patch('/gebruiker/:id', alleenBeheerder, async (c) => {
   const id = Number(c.req.param('id'))
-  const g = get<any>('SELECT * FROM gebruikers WHERE id = ?', id)
+  const g = await get<any>('SELECT * FROM gebruikers WHERE id = ?', id)
   if (!g) return fout(c, 'Niet gevonden', 404)
   const b = await c.req.json<{ naam?: string; rollen?: string[]; actief?: boolean }>()
   const ik = wie(c)
   if (id === ik.id && (b.actief === false || (b.rollen && !b.rollen.includes('beheerder')))) return fout(c, 'Je kunt je eigen beheerdersrechten niet intrekken')
-  if (b.naam !== undefined && b.naam.trim() !== g.naam) { run('UPDATE gebruikers SET naam = ? WHERE id = ?', b.naam.trim(), id); log(ik, 'veld gewijzigd', { type: 'gebruiker', id, label: g.naam, veld: 'naam', oud: g.naam, nieuw: b.naam }) }
+  if (b.naam !== undefined && b.naam.trim() !== g.naam) { await run('UPDATE gebruikers SET naam = ? WHERE id = ?', b.naam.trim(), id); await log(ik, 'veld gewijzigd', { type: 'gebruiker', id, label: g.naam, veld: 'naam', oud: g.naam, nieuw: b.naam }) }
   if (b.rollen) {
     const r = b.rollen.filter((x) => (ROLLEN as readonly string[]).includes(x))
     if (!r.length) return fout(c, 'Kies minstens één rol')
-    run('UPDATE gebruikers SET rollen = ? WHERE id = ?', JSON.stringify(r), id)
-    log(ik, 'veld gewijzigd', { type: 'gebruiker', id, label: g.naam, veld: 'rollen', oud: json(g.rollen, []), nieuw: r })
+    await run('UPDATE gebruikers SET rollen = ? WHERE id = ?', JSON.stringify(r), id)
+    await log(ik, 'veld gewijzigd', { type: 'gebruiker', id, label: g.naam, veld: 'rollen', oud: json(g.rollen, []), nieuw: r })
   }
   if (b.actief !== undefined && (b.actief ? 1 : 0) !== g.actief) {
-    run('UPDATE gebruikers SET actief = ? WHERE id = ?', b.actief ? 1 : 0, id)
-    if (!b.actief) run('DELETE FROM sessies WHERE gebruiker_id = ?', id)
-    log(ik, b.actief ? 'gebruiker geactiveerd' : 'gebruiker gedeactiveerd', { type: 'gebruiker', id, label: g.naam })
+    await run('UPDATE gebruikers SET actief = ? WHERE id = ?', b.actief ? 1 : 0, id)
+    if (!b.actief) await run('DELETE FROM sessies WHERE gebruiker_id = ?', id)
+    await log(ik, b.actief ? 'gebruiker geactiveerd' : 'gebruiker gedeactiveerd', { type: 'gebruiker', id, label: g.naam })
   }
   return c.json({ ok: true })
 })
 
 beheer.post('/gebruiker/:id/reset', alleenBeheerder, async (c) => {
-  const g = get<any>('SELECT * FROM gebruikers WHERE id = ?', Number(c.req.param('id')))
+  const g = await get<any>('SELECT * FROM gebruikers WHERE id = ?', Number(c.req.param('id')))
   if (!g) return fout(c, 'Niet gevonden', 404)
   await stuurReset(c, g.id, g.email, false)
-  log(wie(c), 'wachtwoord-reset verstuurd', { type: 'gebruiker', id: g.id, label: g.naam })
+  await log(wie(c), 'wachtwoord-reset verstuurd', { type: 'gebruiker', id: g.id, label: g.naam })
   return c.json({ ok: true })
 })
 
 // ------------------------------------------------------------------ wijzigingslog (10.12)
 
-beheer.get('/log', (c) => {
+beheer.get('/log', async (c) => {
   const q = c.req.query()
   const waar: string[] = []
   const p: any[] = []
   if (q.gebruiker) { waar.push('gebruiker = ?'); p.push(q.gebruiker) }
   if (q.van) { waar.push('tijd >= ?'); p.push(q.van) }
-  if (q.tot) { waar.push('tijd < date(?, \'+1 day\')'); p.push(q.tot) }
+  if (q.tot) { waar.push("tijd < to_char(?::date + 1, 'YYYY-MM-DD')"); p.push(q.tot) }
   if (q.type) { waar.push('record_type = ?'); p.push(q.type) }
   if (q.record) { waar.push('record_id = ?'); p.push(q.record) }
-  if (q.q) { waar.push('(record_label LIKE ? OR actie LIKE ? OR veld LIKE ? OR oud LIKE ? OR nieuw LIKE ?)'); const z = `%${q.q}%`; p.push(z, z, z, z, z) }
+  if (q.q) { waar.push('(record_label ILIKE ? OR actie ILIKE ? OR veld ILIKE ? OR oud ILIKE ? OR nieuw ILIKE ?)'); const z = `%${q.q}%`; p.push(z, z, z, z, z) }
   const where = waar.length ? `WHERE ${waar.join(' AND ')}` : ''
   const pagina = Math.max(1, Number(q.pagina) || 1)
   return c.json({
-    totaal: get<{ n: number }>(`SELECT COUNT(*) n FROM wijzigingslog ${where}`, ...p)!.n,
+    totaal: (await get<{ n: number }>(`SELECT COUNT(*) n FROM wijzigingslog ${where}`, ...p))!.n,
     pagina,
-    regels: all(`SELECT * FROM wijzigingslog ${where} ORDER BY id DESC LIMIT 100 OFFSET ?`, ...p, (pagina - 1) * 100),
-    gebruikers: all<any>('SELECT DISTINCT gebruiker FROM wijzigingslog ORDER BY gebruiker').map((r) => r.gebruiker),
+    regels: await all(`SELECT * FROM wijzigingslog ${where} ORDER BY id DESC LIMIT 100 OFFSET ?`, ...p, (pagina - 1) * 100),
+    gebruikers: (await all<any>('SELECT DISTINCT gebruiker FROM wijzigingslog ORDER BY gebruiker')).map((r) => r.gebruiker),
   })
 })
 
 /** De oude waarde van een veld terugzetten (redacteur). */
 beheer.post('/log/:id/terugzetten', async (c) => {
-  const l = get<any>('SELECT * FROM wijzigingslog WHERE id = ?', Number(c.req.param('id')))
+  const l = await get<any>('SELECT * FROM wijzigingslog WHERE id = ?', Number(c.req.param('id')))
   if (!l || !l.veld || !['veld gewijzigd', 'terug naar Muziekweb'].includes(l.actie)) return fout(c, 'Deze regel kan niet worden teruggezet')
   const oud = l.oud == null ? null : (() => { try { return JSON.parse(l.oud) } catch { return l.oud } })()
   const id = Number(l.record_id)
   try {
     if (l.record_type === 'titel') {
       if (TWEELAAGS.some((v) => v.veld === l.veld)) {
-        const t = get<any>('SELECT mw_data FROM titels WHERE id = ?', id)
+        const t = await get<any>('SELECT mw_data FROM titels WHERE id = ?', id)
         const mw = json<any>(t?.mw_data, {})
         // Was de oude waarde de Muziekweb-waarde, dan de Fonos-waarde wissen; anders als Fonos-waarde zetten.
-        zetFonosWaarde(id, l.veld, JSON.stringify(mw[l.veld] ?? null) === JSON.stringify(oud) ? undefined : oud, wie(c))
-      } else if (FONOS_EIGEN.includes(l.veld)) zetFonosEigen(id, l.veld, oud, wie(c))
+        await zetFonosWaarde(id, l.veld, JSON.stringify(mw[l.veld] ?? null) === JSON.stringify(oud) ? undefined : oud, wie(c))
+      } else if (FONOS_EIGEN.includes(l.veld)) await zetFonosEigen(id, l.veld, oud, wie(c))
       else return fout(c, 'Dit veld kan niet worden teruggezet')
-      catalogusGewijzigd([id])
+      await catalogusGewijzigd([id])
     } else if (l.record_type === 'exemplaar' && ['vindcode', 'objectnummer'].includes(l.veld)) {
-      const e = get<any>('SELECT * FROM exemplaren WHERE id = ?', id)
+      const e = await get<any>('SELECT * FROM exemplaren WHERE id = ?', id)
       if (!e) return fout(c, 'Exemplaar bestaat niet meer')
-      if (l.veld === 'objectnummer' && get('SELECT 1 FROM exemplaren WHERE objectnummer = ? AND id <> ?', oud, id)) return fout(c, 'Dat objectnummer is intussen in gebruik')
-      run(`UPDATE exemplaren SET ${l.veld} = ? WHERE id = ?`, oud, id)
-      log(wie(c), 'veld gewijzigd', { type: 'exemplaar', id, label: e.objectnummer, veld: l.veld, oud: e[l.veld], nieuw: oud })
+      if (l.veld === 'objectnummer' && await get('SELECT 1 FROM exemplaren WHERE objectnummer = ? AND id <> ?', oud, id)) return fout(c, 'Dat objectnummer is intussen in gebruik')
+      await run(`UPDATE exemplaren SET ${l.veld} = ? WHERE id = ?`, oud, id)
+      await log(wie(c), 'veld gewijzigd', { type: 'exemplaar', id, label: e.objectnummer, veld: l.veld, oud: e[l.veld], nieuw: oud })
     } else return fout(c, 'Dit veld kan niet worden teruggezet')
   } catch (e: any) { return fout(c, e.message) }
   return c.json({ ok: true })
 })
 
 // ------------------------------------------------------------------ back-ups (12), beheerder
+// Grote bestanden gaan niet door een Vercel-functie (max. 4,5 MB): downloads verlopen via de aparte opslag,
+// uploads gaan rechtstreeks vanuit de browser naar Vercel Blob (/api/beheer/blob).
 
-beheer.get('/backups', alleenBeheerder, (c) => c.json({ backups: all('SELECT * FROM backups ORDER BY id DESC LIMIT 200'), map: BACKUP_DIR }))
+beheer.get('/backups', alleenBeheerder, async (c) => c.json({
+  backups: await all('SELECT id, tijd, soort, omvang, status, fout FROM backups ORDER BY id DESC LIMIT 200'),
+  map: process.env.BLOB_READ_WRITE_TOKEN ? 'Vercel Blob (los van de database)' : 'lokale opslagmap',
+}))
 
 beheer.post('/backups', alleenBeheerder, async (c) => {
-  try { return c.json(await maakBackup('handmatig', wie(c))) } catch (e: any) { return fout(c, e.message) }
+  try { const b = await maakBackup('handmatig', wie(c)); return c.json({ id: b.id, bestand: b.bestand, omvang: b.omvang }) } catch (e: any) { return fout(c, e.message) }
 })
 
-beheer.get('/backup/download', alleenBeheerder, async (c) => {
+beheer.post('/backup/download', alleenBeheerder, async (c) => {
   // Handmatige download: JSON + Excel, met of zonder geüploade hoezen (12.2).
-  const hoezen = c.req.query('hoezen') === '1'
-  const map = mkdtempSync(join(tmpdir(), 'fonos-dl-'))
-  const pad = join(map, 'backup.zip')
-  await maakZip({ excel: true, hoezen }, pad)
-  const buf = readFileSync(pad)
-  rmSync(map, { recursive: true, force: true })
-  log(wie(c), 'back-up gedownload', { type: 'backup', nieuw: { hoezen, omvang: buf.length } })
+  const { hoezen } = await c.req.json<{ hoezen: boolean }>().catch(() => ({ hoezen: false }))
+  const buf = await maakZip({ excel: true, hoezen: !!hoezen })
   const naam = `fonotheek-backup-${new Date().toISOString().slice(0, 10)}.zip`
-  return new Response(buf, { headers: { 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="${naam}"` } })
+  const adres = await bewaar('uploads', naam, buf, 'application/zip')
+  await log(wie(c), 'back-up gedownload', { type: 'backup', nieuw: { hoezen: !!hoezen, omvang: buf.length } })
+  return c.json({ adres, naam })
 })
 
-beheer.get('/backup/:id/download', alleenBeheerder, (c) => {
-  const b = backupPad(Number(c.req.param('id')))
+beheer.get('/backup/:id/download', alleenBeheerder, async (c) => {
+  const b = await backupAdres(Number(c.req.param('id')))
   if (!b) return fout(c, 'Back-up niet gevonden', 404)
-  log(wie(c), 'back-up gedownload', { type: 'backup', id: c.req.param('id'), label: b.bestand })
-  return new Response(readFileSync(b.pad), { headers: { 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="${b.bestand}"` } })
+  await log(wie(c), 'back-up gedownload', { type: 'backup', id: c.req.param('id'), label: b.naam })
+  return c.json(b)
 })
+
+/** Upload rechtstreeks naar Vercel Blob (client upload); alleen voor ingelogde beheerders. */
+beheer.post('/blob', alleenBeheerder, async (c) => {
+  if (!process.env.BLOB_READ_WRITE_TOKEN) return fout(c, 'Geen Vercel Blob ingesteld')
+  const { handleUpload } = await import('@vercel/blob/client')
+  const body = await c.req.json()
+  const r = await handleUpload({
+    body, request: c.req.raw,
+    onBeforeGenerateToken: async () => ({ allowedContentTypes: ['application/zip', 'application/json', 'application/gzip', 'application/x-gzip', 'application/octet-stream', 'text/plain'], addRandomSuffix: true, maximumSizeInBytes: 500 * 1024 * 1024 }),
+    onUploadCompleted: async () => {},
+  })
+  return c.json(r)
+})
+
+/** Upload zonder Vercel Blob (lokaal): bestand in de opslagmap. */
+beheer.post('/upload', alleenBeheerder, async (c) => {
+  const body = await c.req.parseBody()
+  const f = body.bestand as File
+  if (!f || typeof f === 'string') return fout(c, 'Geen bestand ontvangen')
+  return c.json({ adres: await bewaar('uploads', f.name, Buffer.from(await f.arrayBuffer()), f.type || 'application/octet-stream') })
+})
+
+beheer.get('/opslag', (c) => c.json({ blob: !!process.env.BLOB_READ_WRITE_TOKEN }))
 
 beheer.post('/terugzetten/controle', alleenBeheerder, async (c) => {
   try {
-    const ct = c.req.header('content-type') ?? ''
-    if (ct.includes('multipart')) {
-      const body = await c.req.parseBody()
-      const f = body.bestand as File
-      if (!f || typeof f === 'string') return fout(c, 'Geen bestand ontvangen')
-      return c.json(vergelijk(await leesBackup(Buffer.from(await f.arrayBuffer()), f.name)))
+    const b = await c.req.json<{ id?: number; adres?: string; naam?: string }>()
+    if (b.id) {
+      const x = await backupAdres(Number(b.id))
+      if (!x) return fout(c, 'Back-up niet gevonden', 404)
+      return c.json(await vergelijk(await leesBackup(x.adres, x.naam)))
     }
-    const { id } = await c.req.json<{ id: number }>()
-    const b = backupPad(Number(id))
-    if (!b) return fout(c, 'Back-up niet gevonden', 404)
-    return c.json(vergelijk(await leesBackup(readFileSync(b.pad), b.bestand)))
+    if (!b.adres) return fout(c, 'Geen bestand gekozen')
+    return c.json(await vergelijk(await leesBackup(b.adres, b.naam ?? 'geüpload bestand')))
   } catch (e: any) { return fout(c, e.message) }
 })
 
 beheer.post('/terugzetten', alleenBeheerder, async (c) => {
   const { token, bevestiging } = await c.req.json<{ token: string; bevestiging: string }>()
-  try { return c.json(await zetTerug(token, bevestiging, wie(c))) } catch (e: any) { return fout(c, e.message) }
+  try { const r = await zetTerug(token, bevestiging, wie(c)); await catalogusGewijzigd(); return c.json(r) } catch (e: any) { return fout(c, e.message) }
 })

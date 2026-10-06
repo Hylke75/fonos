@@ -1,200 +1,248 @@
--- Databaseschema van de Fonotheek-app (zie functioneel ontwerp, hoofdstuk 6).
--- Alle toegang loopt via de server; per route wordt de rol gecontroleerd (zie server/auth.ts).
+-- Databaseschema van de Fonotheek-app (Postgres; zie functioneel ontwerp, hoofdstuk 6).
+-- Tijdstippen staan als tekst 'YYYY-MM-DD HH24:MI:SS' in UTC (functie nu()), JSON als tekst.
+-- Alle toegang loopt via de server; row level security staat aan zonder policies, zodat de
+-- publieke Supabase-API niets kan lezen of schrijven (13).
 
-PRAGMA foreign_keys = ON;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;
 
--- Titels in de collectie (6.1). Velden met twee lagen staan als JSON in mw_data (Muziekweb-waarde)
--- en fonos_data (Fonos-waarde). De kolommen d_* zijn de getoonde waarde, afgeleid bij elke wijziging.
+CREATE OR REPLACE FUNCTION nu(i interval DEFAULT '0 seconds') RETURNS text
+  LANGUAGE sql STABLE AS $$ SELECT to_char((now() AT TIME ZONE 'UTC') + i, 'YYYY-MM-DD HH24:MI:SS') $$;
+
+-- Titels (6.1). Velden met twee lagen staan als JSON in mw_data (Muziekweb) en fonos_data (Fonos).
+-- De kolommen d_* zijn de getoonde waarde, afgeleid bij elke wijziging.
 CREATE TABLE IF NOT EXISTS titels (
-  id            INTEGER PRIMARY KEY,
-  titelnummer   TEXT UNIQUE,                -- leeg bij handmatig toegevoegde titels
-  soort         TEXT NOT NULL DEFAULT 'populair', -- populair | klassiek (uit Muziekweb)
-  mw_data       TEXT NOT NULL DEFAULT '{}',
-  fonos_data    TEXT NOT NULL DEFAULT '{}',
-  conflicten    TEXT NOT NULL DEFAULT '{}', -- veld -> {fonos, mw_oud, mw_nieuw, sinds}
-  zichtbaar     INTEGER NOT NULL DEFAULT 1,
-  uitgelicht    INTEGER NOT NULL DEFAULT 0,
-  fonos_verhaal TEXT,
-  ai_tekst      INTEGER NOT NULL DEFAULT 0, -- toelichting gegenereerd met AI
-  tip           INTEGER NOT NULL DEFAULT 0,
-  -- getoonde waarden
-  d_titel       TEXT,
-  d_artiesten   TEXT,                       -- tekst, komma-gescheiden
-  d_jaar        INTEGER,
-  d_drager      TEXT,                       -- LP | CD | Overig
-  d_genres      TEXT NOT NULL DEFAULT '[]',
-  d_hoes        TEXT,
-  d_label       TEXT,
-  heeft_fonos   INTEGER NOT NULL DEFAULT 0, -- er is minstens één Fonos-waarde
-  aangemaakt    TEXT NOT NULL DEFAULT (datetime('now')),
-  gewijzigd     TEXT NOT NULL DEFAULT (datetime('now'))
+  id            serial PRIMARY KEY,
+  titelnummer   text UNIQUE,
+  soort         text NOT NULL DEFAULT 'populair',
+  mw_data       text NOT NULL DEFAULT '{}',
+  fonos_data    text NOT NULL DEFAULT '{}',
+  conflicten    text NOT NULL DEFAULT '{}',
+  zichtbaar     integer NOT NULL DEFAULT 1,
+  uitgelicht    integer NOT NULL DEFAULT 0,
+  fonos_verhaal text,
+  ai_tekst      integer NOT NULL DEFAULT 0,
+  tip           integer NOT NULL DEFAULT 0,
+  d_titel       text,
+  d_artiesten   text,
+  d_jaar        integer,
+  d_drager      text,
+  d_genres      text NOT NULL DEFAULT '[]',
+  d_hoes        text,
+  d_label       text,
+  d_personen    text NOT NULL DEFAULT '[]',  -- genormaliseerde artiesten en componisten (artiestpagina)
+  d_sleutel     text,                        -- genormaliseerd titel|eerste artiest (andere uitgaven)
+  zoek          tsvector,
+  heeft_fonos   integer NOT NULL DEFAULT 0,
+  aangemaakt    text NOT NULL DEFAULT nu(),
+  gewijzigd     text NOT NULL DEFAULT nu()
 );
 CREATE INDEX IF NOT EXISTS idx_titels_artiest ON titels(d_artiesten);
 CREATE INDEX IF NOT EXISTS idx_titels_titel ON titels(d_titel);
+CREATE INDEX IF NOT EXISTS idx_titels_zoek ON titels USING gin (zoek);
+CREATE INDEX IF NOT EXISTS idx_titels_genres ON titels USING gin ((d_genres::jsonb));
+CREATE INDEX IF NOT EXISTS idx_titels_personen ON titels USING gin ((d_personen::jsonb));
+CREATE INDEX IF NOT EXISTS idx_titels_sleutel ON titels(d_sleutel);
 
--- Laatste Muziekweb-dump: alle titels, ook die niet in de collectie zitten (10.7).
+-- Woorden voor typfouttolerantie bij zoeken (7.4).
+CREATE TABLE IF NOT EXISTS zoekwoorden (woord text PRIMARY KEY);
+CREATE INDEX IF NOT EXISTS idx_zoekwoorden_trgm ON zoekwoorden USING gin (woord gin_trgm_ops);
+
 CREATE TABLE IF NOT EXISTS mw_dump (
-  titelnummer TEXT PRIMARY KEY,
-  data        TEXT NOT NULL,
-  import_id   INTEGER
+  titelnummer text PRIMARY KEY,
+  data        text NOT NULL,
+  import_id   integer
 );
 
--- Exemplaren (6.3).
 CREATE TABLE IF NOT EXISTS exemplaren (
-  id           INTEGER PRIMARY KEY,
-  objectnummer TEXT NOT NULL UNIQUE,
-  titel_id     INTEGER REFERENCES titels(id),
-  titelnummer  TEXT,                        -- titelnummer zoals aangeleverd (ook als de titel ontbreekt)
-  vindcode     TEXT,                        -- open punt O-1
-  status       TEXT NOT NULL DEFAULT 'in_collectie', -- in_collectie | uit_collectie
-  reden_afvoer TEXT,                        -- beschadigd | kwijt | erfgoed | overig
-  toelichting_afvoer TEXT,
-  bron         TEXT,                        -- bv. bestand/tabblad van de eerste vulling
-  aangemaakt   TEXT NOT NULL DEFAULT (datetime('now')),
-  gewijzigd    TEXT NOT NULL DEFAULT (datetime('now'))
+  id           serial PRIMARY KEY,
+  objectnummer text NOT NULL UNIQUE,
+  titel_id     integer REFERENCES titels(id),
+  titelnummer  text,
+  vindcode     text,
+  status       text NOT NULL DEFAULT 'in_collectie',
+  reden_afvoer text,
+  toelichting_afvoer text,
+  bron         text,
+  aangemaakt   text NOT NULL DEFAULT nu(),
+  gewijzigd    text NOT NULL DEFAULT nu()
 );
-CREATE INDEX IF NOT EXISTS idx_exemplaren_titel ON exemplaren(titel_id);
+CREATE INDEX IF NOT EXISTS idx_exemplaren_titel ON exemplaren(titel_id, status);
 CREATE INDEX IF NOT EXISTS idx_exemplaren_titelnummer ON exemplaren(titelnummer);
 
--- Regels uit imports die niet als exemplaar zijn op te slaan (bv. dubbele objectnummers).
 CREATE TABLE IF NOT EXISTS import_issues (
-  id           INTEGER PRIMARY KEY,
-  soort        TEXT NOT NULL,               -- dubbel_objectnummer
-  objectnummer TEXT,
-  titelnummer  TEXT,
-  vindcode     TEXT,
-  bron         TEXT,
-  afgehandeld  INTEGER NOT NULL DEFAULT 0,
-  aangemaakt   TEXT NOT NULL DEFAULT (datetime('now'))
+  id           serial PRIMARY KEY,
+  soort        text NOT NULL,
+  objectnummer text,
+  titelnummer  text,
+  vindcode     text,
+  bron         text,
+  afgehandeld  integer NOT NULL DEFAULT 0,
+  aangemaakt   text NOT NULL DEFAULT nu()
 );
 
--- Platenspelers (6.4).
 CREATE TABLE IF NOT EXISTS platenspelers (
-  nummer INTEGER PRIMARY KEY,
-  actief INTEGER NOT NULL DEFAULT 1
+  nummer integer PRIMARY KEY,
+  actief integer NOT NULL DEFAULT 1
 );
 
--- Aanvragen (6.5). Geen persoonsgegevens.
 CREATE TABLE IF NOT EXISTS aanvragen (
-  id            INTEGER PRIMARY KEY,
-  bestelnummer  INTEGER NOT NULL UNIQUE,
-  platenspeler  INTEGER NOT NULL,
-  status        TEXT NOT NULL DEFAULT 'ingediend', -- ingediend | uitgegeven | afgesloten | geannuleerd
-  ingediend_op  TEXT NOT NULL DEFAULT (datetime('now')),
-  opgepakt_op   TEXT,                       -- medewerker is de platen aan het ophalen ("Bezig")
-  uitgegeven_op TEXT,
-  afgesloten_op TEXT,
-  geannuleerd_op TEXT,
-  reden         TEXT,
-  afgesloten_door TEXT                      -- medewerker | bezoeker | sluitingstijd | terugzetten
+  id            serial PRIMARY KEY,
+  bestelnummer  integer NOT NULL UNIQUE,
+  platenspeler  integer NOT NULL,
+  status        text NOT NULL DEFAULT 'ingediend',
+  ingediend_op  text NOT NULL DEFAULT nu(),
+  opgepakt_op   text,
+  uitgegeven_op text,
+  afgesloten_op text,
+  geannuleerd_op text,
+  reden         text,
+  afgesloten_door text
 );
 CREATE INDEX IF NOT EXISTS idx_aanvragen_status ON aanvragen(status);
 
 CREATE TABLE IF NOT EXISTS aanvraag_items (
-  id           INTEGER PRIMARY KEY,
-  aanvraag_id  INTEGER NOT NULL REFERENCES aanvragen(id),
-  titel_id     INTEGER NOT NULL REFERENCES titels(id),
-  exemplaar_id INTEGER NOT NULL REFERENCES exemplaren(id),
-  verwijderd   INTEGER NOT NULL DEFAULT 0,
-  reden        TEXT
+  id           serial PRIMARY KEY,
+  aanvraag_id  integer NOT NULL REFERENCES aanvragen(id),
+  titel_id     integer NOT NULL REFERENCES titels(id),
+  exemplaar_id integer NOT NULL REFERENCES exemplaren(id),
+  verwijderd   integer NOT NULL DEFAULT 0,
+  reden        text
 );
 CREATE INDEX IF NOT EXISTS idx_items_aanvraag ON aanvraag_items(aanvraag_id);
 CREATE INDEX IF NOT EXISTS idx_items_exemplaar ON aanvraag_items(exemplaar_id);
 
--- Genreknoppen (10.8).
 CREATE TABLE IF NOT EXISTS genreknoppen (
-  id        INTEGER PRIMARY KEY,
-  naam      TEXT NOT NULL,
-  volgorde  INTEGER NOT NULL DEFAULT 0,
-  actief    INTEGER NOT NULL DEFAULT 1,
-  kleur     TEXT NOT NULL DEFAULT '#ff14b4',
-  afbeelding TEXT,                          -- eigen upload; leeg = hoes uit de knop
-  nederlands INTEGER NOT NULL DEFAULT 0     -- de knop "Nederlandse muziek" (O-7)
+  id        serial PRIMARY KEY,
+  naam      text NOT NULL,
+  volgorde  integer NOT NULL DEFAULT 0,
+  actief    integer NOT NULL DEFAULT 1,
+  kleur     text NOT NULL DEFAULT '#ff14b4',
+  afbeelding text,
+  nederlands integer NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS genre_koppelingen (
-  id           INTEGER PRIMARY KEY,
-  knop_id      INTEGER NOT NULL REFERENCES genreknoppen(id) ON DELETE CASCADE,
-  mw_genre     TEXT NOT NULL,               -- naam van het Muziekweb-genre
-  weergavenaam TEXT,                        -- naam van het subfilter; gelijke namen vormen één subfilter
+  id           serial PRIMARY KEY,
+  knop_id      integer NOT NULL REFERENCES genreknoppen(id) ON DELETE CASCADE,
+  mw_genre     text NOT NULL,
+  weergavenaam text,
   UNIQUE (knop_id, mw_genre)
 );
 
--- Selecties op de homepagina (10.9).
 CREATE TABLE IF NOT EXISTS selecties (
-  id        INTEGER PRIMARY KEY,
-  naam      TEXT NOT NULL,
-  soort     TEXT NOT NULL,                  -- uitgelicht | vaak | nieuw | handmatig | seizoen
-  volgorde  INTEGER NOT NULL DEFAULT 0,
-  actief    INTEGER NOT NULL DEFAULT 1,
-  begin     TEXT,                           -- MM-DD, alleen seizoen
-  eind      TEXT,                           -- MM-DD, alleen seizoen
-  mw_genre  TEXT,                           -- seizoen: vul aan met titels uit dit Muziekweb-genre
-  aantal    INTEGER NOT NULL DEFAULT 20,
-  periode_dagen INTEGER NOT NULL DEFAULT 90
+  id        serial PRIMARY KEY,
+  naam      text NOT NULL,
+  soort     text NOT NULL,
+  volgorde  integer NOT NULL DEFAULT 0,
+  actief    integer NOT NULL DEFAULT 1,
+  begin     text,
+  eind      text,
+  mw_genre  text,
+  aantal    integer NOT NULL DEFAULT 20,
+  periode_dagen integer NOT NULL DEFAULT 90
 );
 CREATE TABLE IF NOT EXISTS selectie_titels (
-  selectie_id INTEGER NOT NULL REFERENCES selecties(id) ON DELETE CASCADE,
-  titel_id    INTEGER NOT NULL REFERENCES titels(id) ON DELETE CASCADE,
-  volgorde    INTEGER NOT NULL DEFAULT 0,
+  selectie_id integer NOT NULL REFERENCES selecties(id) ON DELETE CASCADE,
+  titel_id    integer NOT NULL REFERENCES titels(id) ON DELETE CASCADE,
+  volgorde    integer NOT NULL DEFAULT 0,
   PRIMARY KEY (selectie_id, titel_id)
 );
 
 CREATE TABLE IF NOT EXISTS instellingen (
-  sleutel TEXT PRIMARY KEY,
-  waarde  TEXT NOT NULL
+  sleutel text PRIMARY KEY,
+  waarde  text NOT NULL
 );
 
--- Gebruikers en sessies (10.11).
 CREATE TABLE IF NOT EXISTS gebruikers (
-  id        INTEGER PRIMARY KEY,
-  email     TEXT NOT NULL UNIQUE COLLATE NOCASE,
-  naam      TEXT NOT NULL,
-  wachtwoord TEXT,
-  rollen    TEXT NOT NULL DEFAULT '[]',     -- medewerker | redacteur | beheerder
-  actief    INTEGER NOT NULL DEFAULT 1,
-  reset_token TEXT,
-  reset_tot TEXT,
-  aangemaakt TEXT NOT NULL DEFAULT (datetime('now'))
+  id        serial PRIMARY KEY,
+  email     text NOT NULL,
+  naam      text NOT NULL,
+  wachtwoord text,
+  rollen    text NOT NULL DEFAULT '[]',
+  actief    integer NOT NULL DEFAULT 1,
+  reset_token text,
+  reset_tot text,
+  aangemaakt text NOT NULL DEFAULT nu()
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gebruikers_email ON gebruikers (lower(email));
+
 CREATE TABLE IF NOT EXISTS sessies (
-  token     TEXT PRIMARY KEY,
-  gebruiker_id INTEGER NOT NULL REFERENCES gebruikers(id) ON DELETE CASCADE,
-  verloopt  TEXT NOT NULL
+  token     text PRIMARY KEY,
+  gebruiker_id integer NOT NULL REFERENCES gebruikers(id) ON DELETE CASCADE,
+  verloopt  text NOT NULL
 );
 
--- Wijzigingslog (10.12).
 CREATE TABLE IF NOT EXISTS wijzigingslog (
-  id        INTEGER PRIMARY KEY,
-  tijd      TEXT NOT NULL DEFAULT (datetime('now')),
-  gebruiker_id INTEGER,
-  gebruiker TEXT,
-  actie     TEXT NOT NULL,
-  record_type TEXT,
-  record_id TEXT,
-  record_label TEXT,
-  veld      TEXT,
-  oud       TEXT,
-  nieuw     TEXT
+  id        serial PRIMARY KEY,
+  tijd      text NOT NULL DEFAULT nu(),
+  gebruiker_id integer,
+  gebruiker text,
+  actie     text NOT NULL,
+  record_type text,
+  record_id text,
+  record_label text,
+  veld      text,
+  oud       text,
+  nieuw     text
 );
 CREATE INDEX IF NOT EXISTS idx_log_record ON wijzigingslog(record_type, record_id);
 CREATE INDEX IF NOT EXISTS idx_log_tijd ON wijzigingslog(tijd);
 
--- Imports (collectie en Muziekweb) met hun rapport.
 CREATE TABLE IF NOT EXISTS imports (
-  id     INTEGER PRIMARY KEY,
-  tijd   TEXT NOT NULL DEFAULT (datetime('now')),
-  soort  TEXT NOT NULL,                     -- muziekweb | collectie
-  gebruiker TEXT,
-  rapport TEXT NOT NULL DEFAULT '{}'
+  id     serial PRIMARY KEY,
+  tijd   text NOT NULL DEFAULT nu(),
+  soort  text NOT NULL,
+  gebruiker text,
+  rapport text NOT NULL DEFAULT '{}'
 );
 
--- Back-ups (12.3). De bestanden zelf staan in een aparte map.
 CREATE TABLE IF NOT EXISTS backups (
-  id      INTEGER PRIMARY KEY,
-  tijd    TEXT NOT NULL DEFAULT (datetime('now')),
-  soort   TEXT NOT NULL,                    -- dagelijks | handmatig | voor_terugzetten
-  bestand TEXT,
-  omvang  INTEGER,
-  status  TEXT NOT NULL,                    -- gelukt | mislukt
-  fout    TEXT
+  id      serial PRIMARY KEY,
+  tijd    text NOT NULL DEFAULT nu(),
+  soort   text NOT NULL,
+  bestand text,
+  omvang  bigint,
+  status  text NOT NULL,
+  fout    text
 );
+
+-- Tellers voor realtime verversen (kiosk en medewerkersscherm pollen deze).
+CREATE TABLE IF NOT EXISTS versies (
+  naam   text PRIMARY KEY,
+  waarde bigint NOT NULL DEFAULT 0,
+  extra  text
+);
+
+-- Taken die de planner per dag één keer uitvoert (sluitingstijd, back-up).
+CREATE TABLE IF NOT EXISTS planner (
+  taak  text PRIMARY KEY,
+  datum text NOT NULL
+);
+
+-- Wachtrij nieuwsbrief: alleen zolang het nieuwsbriefsysteem onbereikbaar is, maximaal 24 uur (11).
+CREATE TABLE IF NOT EXISTS nieuwsbrief_wachtrij (
+  id      serial PRIMARY KEY,
+  email   text NOT NULL,
+  naam    text,
+  sinds   text NOT NULL DEFAULT nu(),
+  pogingen integer NOT NULL DEFAULT 1
+);
+
+-- Kortlevende status van imports en back-ups die meerdere verzoeken beslaan.
+CREATE TABLE IF NOT EXISTS taken (
+  id     text PRIMARY KEY,
+  soort  text NOT NULL,
+  data   text NOT NULL,
+  tijd   text NOT NULL DEFAULT nu()
+);
+
+-- Geen toegang via de publieke Supabase-API: RLS aan, geen policies.
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['titels','zoekwoorden','mw_dump','exemplaren','import_issues','platenspelers','aanvragen',
+    'aanvraag_items','genreknoppen','genre_koppelingen','selecties','selectie_titels','instellingen','gebruikers','sessies',
+    'wijzigingslog','imports','backups','versies','planner','nieuwsbrief_wachtrij','taken'] LOOP
+    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
+  END LOOP;
+END $$;

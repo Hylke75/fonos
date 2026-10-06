@@ -4,6 +4,7 @@ import { Download, Upload } from 'lucide-react'
 import { api, ApiFout, datumTijd } from '../api'
 import { Laden } from '../components/Iconen'
 import { Melding, Modal } from './ui'
+import { uploadBestand } from './upload'
 
 const mb = (n?: number) => (n ? `${(n / 1024 / 1024).toFixed(1)} MB` : '')
 const SOORT: Record<string, string> = { dagelijks: 'Dagelijks', handmatig: 'Handmatig', voor_terugzetten: 'Vóór terugzetten' }
@@ -17,6 +18,12 @@ export function Backups() {
   const [woord, setWoord] = useState('')
   const file = useRef<HTMLInputElement>(null)
   const laad = () => api('/beheer/backups').then(setD)
+  // Het zip-bestand staat in de aparte opslag; de browser haalt het daar op.
+  const download = async (f: () => Promise<{ adres: string; naam: string }>) => {
+    setM(null); setBezig(true)
+    try { const r = await f(); const a = document.createElement('a'); a.href = r.adres; a.download = r.naam; document.body.appendChild(a); a.click(); a.remove() }
+    catch (e) { setM({ soort: 'fout', tekst: (e as ApiFout).message }) } finally { setBezig(false) }
+  }
   useEffect(() => { laad() }, [])
   const kies = async (f: () => Promise<any>) => { setM(null); setBezig(true); try { setControle(await f()); setWoord('') } catch (e) { setM({ soort: 'fout', tekst: (e as ApiFout).message }) } finally { setBezig(false) } }
   const zetTerug = async () => {
@@ -34,12 +41,12 @@ export function Backups() {
           <h2 style={{ marginTop: 0 }}>Handmatige download</h2>
           <p className="muted tekst-klein">Zip met JSON (om terug te zetten) en Excel (leesbaar, een tabblad per onderdeel). Zonder persoonsgegevens en wachtwoorden. De download wordt gelogd.</p>
           <label className="check"><input type="checkbox" checked={hoezen} onChange={(e) => setHoezen(e.target.checked)} /> Met door Fonos geüploade hoezen</label>
-          <div style={{ marginTop: 12 }}><a className="btn btn-cyan" href={`/api/beheer/backup/download?hoezen=${hoezen ? 1 : 0}`}><Download size={18} /> Download back-up</a></div>
+          <div style={{ marginTop: 12 }}><button className="btn btn-cyan" disabled={bezig} onClick={() => download(() => api('/beheer/backup/download', { body: { hoezen } }))}><Download size={18} /> {bezig ? 'Bezig…' : 'Download back-up'}</button></div>
         </div>
         <div className="card paneel">
           <h2 style={{ marginTop: 0 }}>Terugzetten uit een bestand</h2>
           <p className="muted tekst-klein">Upload een gedownload zip- of JSON-bestand. Je ziet eerst wat er verandert.</p>
-          <input ref={file} type="file" accept=".zip,.json" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) { const fd = new FormData(); fd.append('bestand', f); kies(() => api('/beheer/terugzetten/controle', { form: fd })) } }} />
+          <input ref={file} type="file" accept=".zip,.json" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) kies(async () => api('/beheer/terugzetten/controle', { body: { adres: await uploadBestand(f), naam: f.name } })) }} />
           <button className="btn btn-ghost" onClick={() => file.current?.click()}><Upload size={18} /> Bestand kiezen</button>
         </div>
       </div>
@@ -58,7 +65,7 @@ export function Backups() {
                 <td>{datumTijd(b.tijd)}</td><td>{SOORT[b.soort] ?? b.soort}</td><td>{mb(b.omvang)}</td>
                 <td>{b.status === 'gelukt' ? <span className="status status-actief">Gelukt</span> : <span className="status" style={{ background: '#3a1522', color: '#ff8a98', minWidth: 64, height: 28, fontSize: 13 }} title={b.fout}>Mislukt</span>}</td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{b.status === 'gelukt' && <>
-                  <a className="btn btn-ghost btn-s" href={`/api/beheer/backup/${b.id}/download`}>Downloaden</a>{' '}
+                  <button className="btn btn-ghost btn-s" onClick={() => download(() => api(`/beheer/backup/${b.id}/download`))}>Downloaden</button>{' '}
                   <button className="btn btn-ghost btn-s" onClick={() => kies(() => api('/beheer/terugzetten/controle', { body: { id: b.id } }))}>Terugzetten</button>
                 </>}</td>
               </tr>

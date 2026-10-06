@@ -2,7 +2,7 @@
 // Eerst een controle-overzicht zonder iets te wijzigen; daarna voert de redacteur per categorie door.
 import ExcelJS from 'exceljs'
 import { randomUUID } from 'node:crypto'
-import { all, db, get, run } from '../db.ts'
+import { all, get, insert, run, tx } from '../db.ts'
 import { log, type Wie } from '../log.ts'
 import { koppelLosseExemplaren } from './muziekweb-verwerk.ts'
 import { beschikbaarheidGewijzigd } from '../events.ts'
@@ -17,7 +17,7 @@ const KOP_OBJECT = /^(objectnummer|objectnr|object|plessey)$/i
 const KOP_TITEL = /^(titelnummer|titlenumber|titelnr|catalogusnummer|catalogusnr\.?)$/i
 
 /** Haalt objectnummer en titelnummer uit een regel, ongeacht kolomvolgorde of "titel;object"-notatie. */
-function ontleedRegel(cellen: string[], kop: { vindcode: number; object: number; titel: number }, bron: string, regel: number): Regel | null {
+function ontleedRegel(cellen: string[], kop: { vindcode: number; object: number; titel: number; bron: number }, bron: string, regel: number): Regel | null {
   let objectnummer: string | null = null
   let titelnummer: string | null = null
   const vindcode = kop.vindcode >= 0 ? (cellen[kop.vindcode]?.trim() || null) : null
@@ -37,17 +37,41 @@ function ontleedRegel(cellen: string[], kop: { vindcode: number; object: number;
 
 function kopIndex(cellen: string[]) {
   const idx = (re: RegExp) => cellen.findIndex((c) => re.test((c ?? '').trim()))
-  return { vindcode: idx(KOP_VINDCODE), object: idx(KOP_OBJECT), titel: idx(KOP_TITEL) }
+  return { vindcode: idx(KOP_VINDCODE), object: idx(KOP_OBJECT), titel: idx(KOP_TITEL), bron: idx(/^bron$/i) }
 }
 
-function regelsUitTabel(rijen: string[][], bron: string): Regel[] {
+/** Splitst een CSV-regel, met velden tussen dubbele aanhalingstekens. */
+function splitsCsv(regel: string, sep: string): string[] {
+  const uit: string[] = []
+  let veld = '', tussen = false
+  for (let i = 0; i < regel.length; i++) {
+    const c = regel[i]
+    if (tussen) {
+      if (c === '"' && regel[i + 1] === '"') { veld += '"'; i++ }
+      else if (c === '"') tussen = false
+      else veld += c
+    } else if (c === '"') tussen = true
+    else if (c === sep) { uit.push(veld); veld = '' }
+    else veld += c
+  }
+  uit.push(veld)
+  return uit
+}
+
+const IS_OUD = /(^|\/\s*)OUD/i
+
+function regelsUitTabel(rijen: string[][], bron: string, overgeslagen: string[] = []): Regel[] {
   if (!rijen.length) return []
   let kop = kopIndex(rijen[0])
   const heeftKop = kop.vindcode >= 0 || kop.object >= 0 || kop.titel >= 0
-  if (!heeftKop) kop = { vindcode: -1, object: -1, titel: -1 }
+  if (!heeftKop) kop = { vindcode: -1, object: -1, titel: -1, bron: -1 }
   const out: Regel[] = []
   rijen.slice(heeftKop ? 1 : 0).forEach((cellen, i) => {
-    const r = ontleedRegel(cellen, kop, bron, i + (heeftKop ? 2 : 1))
+    // Een kolom "bron" (bestand / tabblad) per regel: OUD_-tabbladen overslaan (open punt O-6).
+    const eigenBron = kop.bron >= 0 ? (cellen[kop.bron] ?? '').trim() : ''
+    if (eigenBron && IS_OUD.test((eigenBron.split('/').pop() ?? '').trim())) { if (!overgeslagen.includes(eigenBron)) overgeslagen.push(eigenBron); return }
+    const zonderBron = kop.bron >= 0 ? cellen.map((c, j) => (j === kop.bron ? '' : c)) : cellen
+    const r = ontleedRegel(zonderBron, kop, eigenBron ? `${bron}: ${eigenBron}` : bron, i + (heeftKop ? 2 : 1))
     if (r) out.push(r)
   })
   return out
@@ -75,8 +99,8 @@ export async function leesBestand(buf: Buffer, naam: string): Promise<{ regels: 
   const regelsTekst = tekst.split(/\r?\n/).filter((l) => l.trim())
   const sep = regelsTekst[0]?.includes('\t') ? '\t' : (regelsTekst[0]?.split(',').length ?? 0) > 1 ? ',' : null
   // Zonder tab of komma blijft de regel heel; ontleedRegel splitst dan zelf op puntkomma.
-  const rijen = regelsTekst.map((l) => (sep ? l.split(sep) : [l]).map((c) => c.replace(/^"|"$/g, '')))
-  return { regels: regelsUitTabel(rijen, naam), overgeslagen }
+  const rijen = regelsTekst.map((l) => (sep ? splitsCsv(l, sep) : [l]))
+  return { regels: regelsUitTabel(rijen, naam, overgeslagen), overgeslagen }
 }
 
 // ------------------------------------------------------------------ controle-overzicht
@@ -94,13 +118,16 @@ export type Categorie = keyof typeof CATEGORIEEN
 type Item = Regel & { bestaand?: { id: number; titelnummer: string | null; vindcode: string | null } }
 export type Analyse = { token: string; bestand: string; overgeslagen: string[]; totaal: number; categorieen: Record<Categorie, Item[]> }
 
-const analyses = new Map<string, Analyse & { tijd: number }>()
+async function bewaarAnalyse(a: Analyse) {
+  await run("DELETE FROM taken WHERE soort = 'bulkimport' AND tijd < nu('-2 hours')")
+  await run("INSERT INTO taken (id, soort, data) VALUES (?, 'bulkimport', ?)", a.token, JSON.stringify(a))
+}
 
-export function analyseer(regels: Regel[], bestand: string, overgeslagen: string[] = []): Analyse {
+export async function analyseer(regels: Regel[], bestand: string, overgeslagen: string[] = []): Promise<Analyse> {
   const cat: Record<Categorie, Item[]> = { nieuw: [], gewijzigd: [], ontbrekend: [], onbekend: [], dubbel: [], zonder_titelnummer: [] }
   const bestaand = new Map<string, any>()
-  for (const e of all<any>('SELECT id, objectnummer, titelnummer, vindcode, status FROM exemplaren')) bestaand.set(e.objectnummer, e)
-  const bekend = new Set(all<{ t: string }>('SELECT titelnummer t FROM mw_dump UNION SELECT titelnummer FROM titels WHERE titelnummer IS NOT NULL').map((r) => r.t))
+  for (const e of await all<any>('SELECT id, objectnummer, titelnummer, vindcode, status FROM exemplaren')) bestaand.set(e.objectnummer, e)
+  const bekend = new Set((await all<{ t: string }>('SELECT titelnummer AS t FROM mw_dump UNION SELECT titelnummer FROM titels WHERE titelnummer IS NOT NULL')).map((r) => r.t))
   const gezien = new Map<string, number>()
   for (const r of regels) if (r.objectnummer) gezien.set(r.objectnummer, (gezien.get(r.objectnummer) ?? 0) + 1)
   const eerste = new Set<string>()
@@ -119,10 +146,8 @@ export function analyseer(regels: Regel[], bestand: string, overgeslagen: string
   for (const [obj, e] of bestaand) {
     if (e.status === 'in_collectie' && !gezien.has(obj)) cat.ontbrekend.push({ objectnummer: obj, titelnummer: e.titelnummer, vindcode: e.vindcode, bron: 'collectie', regel: 0, bestaand: { id: e.id, titelnummer: e.titelnummer, vindcode: e.vindcode } })
   }
-  const token = randomUUID()
-  const a: Analyse = { token, bestand, overgeslagen, totaal: regels.length, categorieen: cat }
-  analyses.set(token, { ...a, tijd: Date.now() })
-  for (const [k, v] of analyses) if (Date.now() - v.tijd > 3600_000) analyses.delete(k)
+  const a: Analyse = { token: randomUUID(), bestand, overgeslagen, totaal: regels.length, categorieen: cat }
+  await bewaarAnalyse(a)
   return a
 }
 
@@ -133,52 +158,53 @@ export function samenvatting(a: Analyse) {
   }
 }
 
+const recordset = (rijen: object[]) => JSON.stringify(rijen)
+
 /** Voert de gekozen categorieën door. */
-export function voerDoor(token: string, keuze: Categorie[], wie: Wie) {
-  const a = analyses.get(token)
-  if (!a) throw new Error('Het controle-overzicht is verlopen. Upload het bestand opnieuw.')
+export async function voerDoor(token: string, keuze: Categorie[], wie: Wie) {
+  const t = await get<{ data: string }>("SELECT data FROM taken WHERE id = ? AND soort = 'bulkimport'", token)
+  if (!t) throw new Error('Het controle-overzicht is verlopen. Upload het bestand opnieuw.')
+  const a: Analyse = JSON.parse(t.data)
   const telling: Record<string, number> = {}
-  const d = db()
-  const open = new Set(all<{ exemplaar_id: number }>(OPEN_ITEMS_SQL).map((r) => r.exemplaar_id))
+  const open = new Set((await all<{ exemplaar_id: number }>(OPEN_ITEMS_SQL)).map((r) => r.exemplaar_id))
   const overgeslagenInGebruik: string[] = []
-  d.exec('BEGIN IMMEDIATE')
-  try {
-    const nieuwExemplaar = d.prepare('INSERT OR IGNORE INTO exemplaren (objectnummer, titelnummer, vindcode, bron) VALUES (?, ?, ?, ?)')
+  await tx(async () => {
     for (const k of keuze) {
       const items = a.categorieen[k] ?? []
       telling[k] = 0
-      for (const it of items) {
-        if (k === 'nieuw' || k === 'onbekend' || k === 'zonder_titelnummer') {
-          if (it.bestaand) {
-            run("UPDATE exemplaren SET titelnummer = ?, titel_id = NULL, vindcode = COALESCE(?, vindcode), gewijzigd = datetime('now') WHERE id = ?", it.titelnummer, it.vindcode, it.bestaand.id)
-          } else {
-            nieuwExemplaar.run(it.objectnummer, it.titelnummer, it.vindcode, it.bron)
-          }
-        } else if (k === 'gewijzigd') {
-          if (open.has(it.bestaand!.id)) { overgeslagenInGebruik.push(it.objectnummer!); continue }
-          const tn = it.titelnummer !== it.bestaand!.titelnummer
-          run(`UPDATE exemplaren SET titelnummer = ?, ${tn ? 'titel_id = NULL,' : ''} vindcode = COALESCE(?, vindcode), gewijzigd = datetime('now') WHERE id = ?`, it.titelnummer, it.vindcode, it.bestaand!.id)
-        } else if (k === 'ontbrekend') {
-          if (open.has(it.bestaand!.id)) { overgeslagenInGebruik.push(it.objectnummer!); continue }
-          run("UPDATE exemplaren SET status = 'uit_collectie', reden_afvoer = 'overig', toelichting_afvoer = ?, gewijzigd = datetime('now') WHERE id = ?", `Niet in bulkimport ${a.bestand}`, it.bestaand!.id)
-        } else if (k === 'dubbel') {
-          run("INSERT INTO import_issues (soort, objectnummer, titelnummer, vindcode, bron) VALUES ('dubbel_objectnummer', ?, ?, ?, ?)", it.objectnummer, it.titelnummer, it.vindcode, `${it.bron}, regel ${it.regel}`)
+      if (k === 'nieuw' || k === 'onbekend' || k === 'zonder_titelnummer') {
+        const nieuw = items.filter((i) => !i.bestaand).map((i) => ({ objectnummer: i.objectnummer, titelnummer: i.titelnummer, vindcode: i.vindcode, bron: i.bron }))
+        for (let j = 0; j < nieuw.length; j += 5000) {
+          await run(`INSERT INTO exemplaren (objectnummer, titelnummer, vindcode, bron)
+            SELECT objectnummer, titelnummer, vindcode, bron FROM jsonb_to_recordset(?::jsonb) AS x(objectnummer text, titelnummer text, vindcode text, bron text)
+            ON CONFLICT (objectnummer) DO NOTHING`, recordset(nieuw.slice(j, j + 5000)))
         }
-        telling[k]++
+        const bij = items.filter((i) => i.bestaand).map((i) => ({ id: i.bestaand!.id, titelnummer: i.titelnummer, vindcode: i.vindcode }))
+        if (bij.length) await run(`UPDATE exemplaren e SET titelnummer = x.titelnummer, titel_id = NULL, vindcode = COALESCE(x.vindcode, e.vindcode), gewijzigd = nu()
+            FROM jsonb_to_recordset(?::jsonb) AS x(id int, titelnummer text, vindcode text) WHERE e.id = x.id`, recordset(bij))
+        telling[k] = items.length
+      } else if (k === 'gewijzigd' || k === 'ontbrekend') {
+        const vrij = items.filter((i) => { if (open.has(i.bestaand!.id)) { overgeslagenInGebruik.push(i.objectnummer!); return false } return true })
+        if (k === 'gewijzigd' && vrij.length) await run(`UPDATE exemplaren e SET titelnummer = x.titelnummer,
+            titel_id = CASE WHEN e.titelnummer IS DISTINCT FROM x.titelnummer THEN NULL ELSE e.titel_id END, vindcode = COALESCE(x.vindcode, e.vindcode), gewijzigd = nu()
+            FROM jsonb_to_recordset(?::jsonb) AS x(id int, titelnummer text, vindcode text) WHERE e.id = x.id`,
+          recordset(vrij.map((i) => ({ id: i.bestaand!.id, titelnummer: i.titelnummer, vindcode: i.vindcode }))))
+        if (k === 'ontbrekend' && vrij.length) await run(`UPDATE exemplaren SET status = 'uit_collectie', reden_afvoer = 'overig', toelichting_afvoer = ?, gewijzigd = nu()
+            WHERE id = ANY(?::int[])`, `Niet in bulkimport ${a.bestand}`, `{${vrij.map((i) => i.bestaand!.id).join(',')}}`)
+        telling[k] = vrij.length
+      } else if (k === 'dubbel') {
+        await run(`INSERT INTO import_issues (soort, objectnummer, titelnummer, vindcode, bron)
+          SELECT 'dubbel_objectnummer', objectnummer, titelnummer, vindcode, bron FROM jsonb_to_recordset(?::jsonb) AS x(objectnummer text, titelnummer text, vindcode text, bron text)`,
+          recordset(items.map((i) => ({ objectnummer: i.objectnummer, titelnummer: i.titelnummer, vindcode: i.vindcode, bron: `${i.bron}, regel ${i.regel}` }))))
+        telling[k] = items.length
       }
     }
-    // Exemplaren met een titelnummer: koppelen aan een bestaande titel.
-    run(`UPDATE exemplaren SET titel_id = (SELECT id FROM titels t WHERE t.titelnummer = exemplaren.titelnummer)
-          WHERE titel_id IS NULL AND titelnummer IS NOT NULL`)
-    d.exec('COMMIT')
-  } catch (e) { d.exec('ROLLBACK'); throw e }
-  const nieuweTitels = koppelLosseExemplaren()
-  analyses.delete(token)
+  })
+  const nieuweTitels = await koppelLosseExemplaren()
+  await run('DELETE FROM taken WHERE id = ?', token)
   const rapport = { bestand: a.bestand, doorgevoerd: telling, nieuwe_titels: nieuweTitels, overgeslagen_in_gebruik: overgeslagenInGebruik, tabbladen_overgeslagen: a.overgeslagen }
-  const id = Number(run("INSERT INTO imports (soort, gebruiker, rapport) VALUES ('collectie', ?, ?)", wie.naam, JSON.stringify(rapport)).lastInsertRowid)
-  log(wie, 'bulkimport collectie', { type: 'import', id, label: a.bestand, nieuw: rapport })
-  beschikbaarheidGewijzigd()
+  const id = await insert("INSERT INTO imports (soort, gebruiker, rapport) VALUES ('collectie', ?, ?)", wie.naam, JSON.stringify(rapport))
+  await log(wie, 'bulkimport collectie', { type: 'import', id, label: a.bestand, nieuw: rapport })
+  await beschikbaarheidGewijzigd()
   return rapport
 }
-
-export const issueTelling = () => get<{ n: number }>("SELECT COUNT(*) n FROM import_issues WHERE afgehandeld = 0")!.n

@@ -9,39 +9,39 @@ export const kiosk = new Hono()
 
 const num = (v?: string) => (v && /^\d+$/.test(v) ? Number(v) : undefined)
 
-kiosk.get('/config', (c) => c.json(kioskConfig()))
-kiosk.get('/home', (c) => c.json(home()))
-kiosk.get('/suggesties', (c) => c.json(suggesties(c.req.query('q') ?? '')))
+kiosk.get('/config', async (c) => c.json(await kioskConfig()))
+kiosk.get('/home', async (c) => c.json(await home()))
+kiosk.get('/suggesties', async (c) => c.json(await suggesties(c.req.query('q') ?? '')))
 
-kiosk.get('/zoek', (c) => {
+kiosk.get('/zoek', async (c) => {
   const q = c.req.query()
-  return c.json(zoekCatalogus({
+  return c.json(await zoekCatalogus({
     q: q.q, knop: num(q.knop), sub: q.sub || undefined, drager: q.drager || undefined, decennium: num(q.decennium), jaar: num(q.jaar),
     nl: q.nl === '1', selectie: num(q.selectie), sort: (q.sort as any) || undefined, pagina: num(q.pagina), per: num(q.per),
   }))
 })
 
-kiosk.get('/titel/:id', (c) => {
-  const a = album(Number(c.req.param('id')))
+kiosk.get('/titel/:id', async (c) => {
+  const a = await album(Number(c.req.param('id')))
   return a ? c.json(a) : c.json({ fout: 'Deze titel is niet (meer) beschikbaar.' }, 404)
 })
 
-kiosk.get('/artiest', (c) => c.json(artiest(c.req.query('naam') ?? '')))
+kiosk.get('/artiest', async (c) => c.json(await artiest(c.req.query('naam') ?? '')))
 
-kiosk.get('/verras', (c) => {
-  const id = verrasMe(num(c.req.query('knop')))
+kiosk.get('/verras', async (c) => {
+  const id = await verrasMe(num(c.req.query('knop')))
   return id ? c.json({ id }) : c.json({ fout: 'Geen titel gevonden' }, 404)
 })
 
 kiosk.post('/beschikbaarheid', async (c) => {
   const { ids } = await c.req.json<{ ids: number[] }>()
-  return c.json(beschikbaarheid((ids ?? []).map(Number).slice(0, 50)))
+  return c.json(await beschikbaarheid((ids ?? []).map(Number).slice(0, 50)))
 })
 
 kiosk.post('/aanvraag', async (c) => {
   const body = await c.req.json<any>()
   try {
-    const r = dienAanvraagIn({
+    const r = await dienAanvraagIn({
       platenspeler: Number(body.platenspeler),
       titels: (body.titels ?? []).map((t: any) => ({ titel_id: Number(t.titel_id), exemplaar_id: t.exemplaar_id ? Number(t.exemplaar_id) : null })),
       bezetAfsluiten: !!body.bezetAfsluiten,

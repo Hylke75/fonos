@@ -2,6 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../api'
+import { useVersies } from '../versies'
 import { Rust } from './Rust'
 import { Home } from './Home'
 import { Zoeken } from './Zoeken'
@@ -59,17 +60,7 @@ export function KioskApp() {
   useEffect(() => { controleerMand() }, [mand.length, controleerMand])
 
   // Realtime: andere bezoekers vragen platen aan; spelers worden (in)actief.
-  useEffect(() => {
-    let es: EventSource | null = null
-    let t: any
-    const verbind = () => {
-      es = new EventSource('/api/events?kanaal=kiosk')
-      es.addEventListener('beschikbaarheid', () => { setVersie((v) => v + 1); controleerMand(); laadConfig() })
-      es.onerror = () => { es?.close(); t = setTimeout(verbind, 5000) }
-    }
-    verbind()
-    return () => { es?.close(); clearTimeout(t) }
-  }, [controleerMand, laadConfig])
+  useVersies(() => { setVersie((v) => v + 1); controleerMand(); laadConfig() }, 5000)
 
   const toast = useCallback((t: string) => {
     setMelding(t)
