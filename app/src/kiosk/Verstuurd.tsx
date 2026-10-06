@@ -1,16 +1,14 @@
-// Bevestigingsscherm (7.9): bestelnummer en platenspeler. Daarna de vraag over de nieuwsbrief.
+// Bevestigingsscherm (7.9): bestelnummer en platenspeler. Na een paar seconden (instelbaar) sessie wissen en homepagina.
 import { useEffect, useRef } from 'react'
-import { Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { Check } from 'lucide-react'
 import { Logo } from '../components/Logo'
 import { useKiosk } from './KioskApp'
 
 export function Verstuurd() {
-  const st = useLocation().state as { bestelnummer: number; platenspeler: number } | null
+  const st = useLocation().state as { bestelnummer: number; platenspeler: number; aangemeld?: boolean } | null
   const { leegMand, config, wisSessie } = useKiosk()
-  // Zonder nieuwsbriefkoppeling (O-4) direct sessie wissen en terug naar de homepagina (7.9).
-  const verder = () => (config.instellingen.nieuwsbrief ? nav('/nieuwsbrief', { replace: true }) : wisSessie('/home'))
-  const nav = useNavigate()
+  const verder = () => wisSessie('/home')
   const klaar = useRef(false)
   useEffect(() => { if (st) leegMand() }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -30,6 +28,7 @@ export function Verstuurd() {
         <div className="label">Bestelnummer</div>
         <div className="nummer-groot">#{st.bestelnummer}</div>
         <p>Een FONOS-medewerker haalt de platen voor je op.<br />Deze worden gebracht naar platenspeler {st.platenspeler}.</p>
+        {st.aangemeld && <p className="tekst-klein" style={{ fontSize: 17, marginTop: -12 }}>Je ontvangt een e-mail om je aanmelding voor de nieuwsbrief te bevestigen.</p>}
         <button className="btn btn-ghost btn-l" style={{ minWidth: 260, background: '#0d1529' }} onClick={() => { klaar.current = true; verder() }}>Verder zoeken</button>
       </div>
     </div>

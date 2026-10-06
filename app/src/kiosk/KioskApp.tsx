@@ -10,7 +10,6 @@ import { Album } from './Album'
 import { Artiest } from './Artiest'
 import { Aanvraag } from './Aanvraag'
 import { Verstuurd } from './Verstuurd'
-import { Nieuwsbrief } from './Nieuwsbrief'
 import { Lezen } from './Lezen'
 import { Laden } from '../components/Iconen'
 
@@ -130,7 +129,6 @@ export function KioskApp() {
           <Route path="/artiest/:naam" element={<Artiest />} />
           <Route path="/aanvraag" element={<Aanvraag />} />
           <Route path="/verstuurd" element={<Verstuurd />} />
-          <Route path="/nieuwsbrief" element={<Nieuwsbrief />} />
           <Route path="/lezen" element={<Lezen />} />
           <Route path="*" element={<Home />} />
         </Routes>

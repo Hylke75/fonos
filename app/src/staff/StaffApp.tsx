@@ -66,19 +66,17 @@ function StafKop({ ik, uit }: { ik: Ik; uit: () => void }) {
 const minutenOpen = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000))
 
 function Lijst() {
-  const [tab, setTab] = useState<'actief' | 'afgerond' | 'spelers'>('actief')
+  const [tab, setTab] = useState<'spelers' | 'afgerond'>('spelers')
   const [d, setD] = useState<any>(null)
+  const [afgerond, setAfgerond] = useState<any>(null)
   const [spelers, setSpelers] = useState<any[] | null>(null)
-  const [openPerSpeler, setOpenPerSpeler] = useState<Record<number, any>>({})
   const [nieuw, setNieuw] = useState<number | null>(null)
   const nav = useNavigate()
   const laad = useCallback(() => {
-    if (tab === 'spelers') {
-      // Tegels per platenspeler (9): vrij, ingediend of uitgegeven, met de open aanvraag erbij.
-      api('/medewerker/platenspelers').then(setSpelers)
-      api<any>('/medewerker/aanvragen?tab=actief').then((x) => setOpenPerSpeler(Object.fromEntries(x.aanvragen.map((a: any) => [a.platenspeler, a]))))
-    }
-    else api(`/medewerker/aanvragen?tab=${tab}`).then(setD)
+    // Overzicht per platenspeler als tegels (9): vrij, ingediend, uitgegeven, met de open aanvraag erbij.
+    api('/medewerker/platenspelers').then(setSpelers)
+    api('/medewerker/aanvragen?tab=actief').then(setD)
+    if (tab === 'afgerond') api('/medewerker/aanvragen?tab=afgerond').then(setAfgerond)
   }, [tab])
   useEffect(() => { laad() }, [laad])
   useEffect(() => { const i = setInterval(laad, 30_000); return () => clearInterval(i) }, [laad]) // "hoelang al open" bijwerken
@@ -92,61 +90,62 @@ function Lijst() {
     await api(`/medewerker/aanvraag/${a.id}/${pad}`, { method: 'POST' }).catch(() => {})
     laad()
   }
-  const actieTekst = (s: string) => (s === 'nieuw' ? 'Nu ophalen' : s === 'bezig' ? 'Uitgeven' : 'Vrijgeven')
+  const actieTekst = (s: string) => (s === 'nieuw' ? 'Nu ophalen' : s === 'bezig' ? 'Uitgegeven' : 'Speler vrijgeven')
+  const openPerSpeler: Record<number, any> = Object.fromEntries((d?.aanvragen ?? []).map((a: any) => [a.platenspeler, a]))
 
   return (
     <>
       <div className="tabs" role="tablist">
-        <button role="tab" aria-selected={tab === 'actief'} className={`tab ${tab === 'actief' ? 'aan' : ''}`} onClick={() => setTab('actief')}>
-          Actieve aanvragen {d && d.actief > 0 && <span className="teller">{d.actief}</span>}
+        <button role="tab" aria-selected={tab === 'spelers'} className={`tab ${tab === 'spelers' ? 'aan' : ''}`} onClick={() => setTab('spelers')}>
+          Platenspelers {d && d.actief > 0 && <span className="teller">{d.actief}</span>}
         </button>
         <button role="tab" aria-selected={tab === 'afgerond'} className={`tab ${tab === 'afgerond' ? 'aan' : ''}`} onClick={() => setTab('afgerond')}>Afgerond</button>
-        <button role="tab" aria-selected={tab === 'spelers'} className={`tab ${tab === 'spelers' ? 'aan' : ''}`} onClick={() => setTab('spelers')}>Platenspelers</button>
       </div>
 
       {tab === 'spelers' ? (
-        !spelers ? <Laden /> : (
+        !spelers || !d ? <Laden /> : (
           <div className="spelers-tegels">
             {spelers.map((p) => {
               const a = openPerSpeler[p.nummer]
+              const status = !p.actief ? 'Inactief' : !a ? 'Vrij' : a.status === 'uitgegeven' ? 'Uitgegeven' : 'Ingediend'
               return (
-              <div key={p.nummer} className={`card speler-tegel ${a?.lang_open ? 'lang-open' : ''}`}>
-                <div className="groot">{p.nummer}</div>
-                {a ? (
-                  <button className="speler-aanvraag" onClick={() => nav(`/medewerker/aanvraag/${a.id}`)}>
-                    <span className={`status status-${a.weergave_status}`}>{a.status === 'uitgegeven' ? 'Uitgegeven' : 'Ingediend'}</span>
-                    <span>#{a.bestelnummer} · {minutenOpen(a.ingediend_op)} min</span>
+                <div key={p.nummer} className={`card speler-tegel ${a ? 'open' : ''} ${a?.lang_open ? 'lang-open' : ''} ${a && nieuw === a.bestelnummer ? 'nieuw-binnen' : ''} ${!p.actief ? 'inactief' : ''}`}>
+                  <div className="tegel-kop">
+                    <span className="groot">{p.nummer}</span>
+                    <span className={`tegel-status tegel-${status.toLowerCase()}`}>{status}</span>
+                  </div>
+                  {a ? (
+                    <button className="speler-aanvraag" onClick={() => nav(`/medewerker/aanvraag/${a.id}`)} aria-label={`Aanvraag #${a.bestelnummer} openen`}>
+                      <span className="bestelnr">#{a.bestelnummer}</span>
+                      <span className="muted">{minutenOpen(a.ingediend_op)} min open · {a.aantal} {a.aantal === 1 ? 'titel' : 'titels'}</span>
+                      {a.lang_open && <span className="lang-label"><Clock size={13} /> &gt; {d.markering_min} min</span>}
+                      <span className="duimen">{a.hoezen.map((h: string, i: number) => <Hoes key={i} src={h} />)}</span>
+                    </button>
+                  ) : <div className="tegel-leeg" />}
+                  {a && <button className="btn btn-gray btn-block" style={{ minHeight: 52 }} onClick={() => actie(a)}>{actieTekst(a.weergave_status)}</button>}
+                  <button className={`toggle ${p.actief ? 'aan' : ''}`} aria-pressed={p.actief}
+                    onClick={async () => setSpelers(await api(`/medewerker/platenspeler/${p.nummer}`, { body: { actief: !p.actief } }))}>
+                    <span className="baan" /> {p.actief ? 'Actief' : 'Inactief'}
                   </button>
-                ) : <div className="muted">{!p.actief ? 'Inactief' : p.bezet ? 'Bezet' : 'Vrij'}</div>}
-                <button className={`toggle ${p.actief ? 'aan' : ''}`} aria-pressed={p.actief}
-                  onClick={async () => setSpelers(await api(`/medewerker/platenspeler/${p.nummer}`, { body: { actief: !p.actief } }))}>
-                  <span className="baan" /> {p.actief ? 'Actief' : 'Inactief'}
-                </button>
-              </div>
+                </div>
               )
             })}
           </div>
         )
-      ) : !d ? <Laden /> : (
+      ) : !afgerond ? <Laden /> : (
         <div className="tabel-kaart">
           <table className="tabel">
-            <thead><tr><th>#</th><th>Tijd</th><th>Platenspeler</th><th>Titels</th><th>Status</th><th style={{ textAlign: 'center' }}>Acties</th></tr></thead>
+            <thead><tr><th>#</th><th>Tijd</th><th>Platenspeler</th><th>Titels</th><th>Status</th><th style={{ textAlign: 'center' }}></th></tr></thead>
             <tbody>
-              {d.aanvragen.length === 0 && <tr><td colSpan={6} className="muted" style={{ textAlign: 'center', padding: 40 }}>{tab === 'actief' ? 'Geen open aanvragen.' : 'Nog niets afgerond in de afgelopen twee dagen.'}</td></tr>}
-              {d.aanvragen.map((a: any) => (
-                <tr key={a.id} className={`klikbaar ${nieuw === a.bestelnummer ? 'nieuw-binnen' : ''} ${a.lang_open ? 'lang-open' : ''}`} onClick={() => nav(`/medewerker/aanvraag/${a.id}`)}>
-                  <td className="bestelnr">#{a.bestelnummer}{a.lang_open && <div className="lang-label"><Clock size={13} /> &gt; {d.markering_min} min</div>}</td>
-                  <td>{tijd(a.ingediend_op)}<div className="dim tekst-klein">{minutenOpen(a.ingediend_op)} min open</div></td>
+              {afgerond.aanvragen.length === 0 && <tr><td colSpan={6} className="muted" style={{ textAlign: 'center', padding: 40 }}>Nog niets afgerond in de afgelopen twee dagen.</td></tr>}
+              {afgerond.aanvragen.map((a: any) => (
+                <tr key={a.id} className="klikbaar" onClick={() => nav(`/medewerker/aanvraag/${a.id}`)}>
+                  <td className="bestelnr">#{a.bestelnummer}</td>
+                  <td>{tijd(a.ingediend_op)}</td>
                   <td><span className="nr-bol">{a.platenspeler}</span></td>
                   <td><div className="duimen">{a.hoezen.map((h: string, i: number) => <Hoes key={i} src={h} />)}<span style={{ marginLeft: 6 }}>{a.aantal} {a.aantal === 1 ? 'titel' : 'titels'}</span></div></td>
                   <td><span className={`status status-${a.weergave_status}`}>{STATUS[a.weergave_status]}</span></td>
-                  <td style={{ textAlign: 'center' }}>
-                    {tab === 'actief' && (
-                      <button className={`btn btn-gray ${a.weergave_status === 'bezig' ? 'zacht' : ''}`} style={{ minWidth: 190, minHeight: 56, fontSize: 17 }}
-                        onClick={(e) => { e.stopPropagation(); actie(a) }}>{actieTekst(a.weergave_status)}</button>
-                    )}
-                    {tab === 'afgerond' && <span className="muted tekst-klein">{a.afgesloten_door ? `door ${a.afgesloten_door}` : a.reden ?? ''}</span>}
-                  </td>
+                  <td style={{ textAlign: 'center' }}><span className="muted tekst-klein">{a.afgesloten_door ? `door ${a.afgesloten_door}` : a.reden ?? ''}</span></td>
                 </tr>
               ))}
             </tbody>

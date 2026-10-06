@@ -49,7 +49,7 @@ img { display: block; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
 /* ------------------------------------------------------------------ logo */
-.logo { display: block; height: 34px; width: auto; }
+.logo { display: block; height: 38px; width: auto; }
 .logo-s { height: 26px; }
 
 /* ------------------------------------------------------------------ knoppen */
@@ -135,7 +135,7 @@ img { display: block; }
   position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 24px;
   padding: 20px 32px; background: linear-gradient(var(--bg) 70%, rgba(4, 10, 30, 0));
 }
-.kiosk-header .logo { height: 36px; }
+.kiosk-header .logo { height: 40px; }
 .kiosk-header .rechts { margin-left: auto; display: flex; gap: 12px; align-items: center; }
 .kiosk-inhoud { padding: 0 32px 48px; }
 
@@ -299,6 +299,13 @@ img { display: block; }
 .speler .klein { position: absolute; bottom: 7px; left: 0; right: 0; font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
 .speler.gekozen .klein { color: #4a0838; }
 .speler:disabled { opacity: .3; cursor: not-allowed; text-decoration: line-through; }
+.nieuwsbrief-blok { border-top: 1px solid var(--line); margin: 4px 0 20px; padding-top: 18px; }
+.nieuwsbrief-blok .vinkje { display: flex; gap: 14px; align-items: center; font-size: 17px; cursor: pointer; min-height: 48px; }
+.nieuwsbrief-blok .vinkje input { width: 28px; height: 28px; accent-color: var(--pink); flex: none; }
+.nieuwsbrief-velden { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.kiosk-veld { height: 56px; border-radius: 14px; border: 1px solid var(--line-2); background: #fff; color: #0b1226; font-size: 18px; padding: 0 18px; outline: none; }
+.kiosk-veld[aria-invalid="true"] { border-color: var(--red); }
+.nieuwsbrief-velden .privacy { margin-top: 4px; }
 .legenda { display: flex; gap: 16px; justify-content: center; color: var(--dim); font-size: 13px; margin: -8px 0 18px; }
 
 /* hero / rustscherm / bevestiging / nieuwsbrief: vormen rechts */
@@ -398,11 +405,21 @@ table.tabel { width: 100%; border-collapse: collapse; }
 .detail-regel.weg .namen { text-decoration: line-through; }
 .acties-paneel { padding: 28px; display: flex; flex-direction: column; gap: 16px; justify-content: center; min-height: 300px; }
 .acties-paneel .btn { min-height: 60px; font-size: 18px; }
-.spelers-tegels { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; }
-.speler-tegel { padding: 20px; display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
-.speler-tegel .groot { font-size: 30px; font-weight: 800; }
-.speler-tegel .speler-aanvraag { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; background: none; border: 0; padding: 0; color: var(--text); font: inherit; font-size: 14px; cursor: pointer; }
-.speler-tegel.lang-open { box-shadow: inset 0 0 0 2px var(--amber, #e3a21a); }
+.spelers-tegels { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
+.speler-tegel { padding: 20px; display: flex; flex-direction: column; gap: 14px; min-height: 260px; }
+.speler-tegel .tegel-kop { display: flex; justify-content: space-between; align-items: center; }
+.speler-tegel .groot { font-size: 34px; font-weight: 800; }
+.tegel-status { border-radius: 999px; padding: 4px 12px; font-size: 14px; font-weight: 700; background: var(--surface-3); color: var(--muted); }
+.tegel-status.tegel-vrij { background: #0f3b2a; color: #4ee39b; }
+.tegel-status.tegel-ingediend { background: var(--pink); color: #fff; }
+.tegel-status.tegel-uitgegeven { background: #12405a; color: #7fdcf5; }
+.speler-tegel .speler-aanvraag { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; background: none; border: 0; padding: 0; color: var(--text); font: inherit; font-size: 15px; cursor: pointer; text-align: left; }
+.speler-tegel .speler-aanvraag .bestelnr { font-size: 22px; font-weight: 800; }
+.speler-tegel .tegel-leeg { flex: 1; }
+.speler-tegel .toggle { margin-top: auto; }
+.speler-tegel.inactief { opacity: .6; }
+.speler-tegel.lang-open { box-shadow: inset 0 0 0 2px var(--amber); }
+.speler-tegel.nieuw-binnen { animation: flits 1s ease 3; }
 .toggle { display: inline-flex; align-items: center; gap: 10px; background: none; border: 0; padding: 0; min-height: 44px; font-weight: 600; }
 .toggle .baan { width: 50px; height: 28px; border-radius: 14px; background: #2b3550; position: relative; transition: background .15s; flex: none; }
 .toggle .baan::after { content: ''; position: absolute; width: 22px; height: 22px; border-radius: 50%; background: #fff; top: 3px; left: 3px; transition: left .15s; }
@@ -518,3 +535,4 @@ pre.rapport { background: #07111f; border: 1px solid var(--line); border-radius:
   .detail-regel { grid-template-columns: 36px 64px 1fr; }
   .detail-regel .info { grid-column: 3; }
 }
+.fout-tekst { color: #ff8a98; font-size: 15px; margin-top: 4px; }

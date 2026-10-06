@@ -1,4 +1,4 @@
-// Aanvraaglijst en afronden (7.8, 7.9): titels, platenspeler kiezen, aanvraag bevestigen.
+// Aanvraaglijst en afronden (7.8, 7.9): titels, platenspeler kiezen, nieuwsbrief (optioneel), aanvraag versturen.
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, ArrowRight, Trash2, X } from 'lucide-react'
@@ -6,6 +6,7 @@ import { api, ApiFout } from '../api'
 import { Hoes } from '../components/Hoes'
 import { useKiosk } from './KioskApp'
 import { KioskKopTerug } from './Kop'
+import { EMAIL_RE, NieuwsbriefBlok, type NieuwsbriefKeuze } from './Nieuwsbrief'
 
 export function Aanvraag() {
   const { mand, verwijder, leegMand, config, beschikbaar } = useKiosk()
@@ -14,6 +15,8 @@ export function Aanvraag() {
   const [fout, setFout] = useState<string | null>(null)
   const [vraagBezet, setVraagBezet] = useState(false)
   const [nietBeschikbaar, setNietBeschikbaar] = useState<number[]>([])
+  const [nb, setNb] = useState<NieuwsbriefKeuze>({ aan: false, naam: '', email: '' })
+  const [nbFout, setNbFout] = useState<string | null>(null)
   const nav = useNavigate()
   const spelers = config.platenspelers
   const ongeldig = (id: number) => nietBeschikbaar.includes(id) || beschikbaar[id]?.beschikbaar === false
@@ -21,13 +24,17 @@ export function Aanvraag() {
 
   const verstuur = async (bezetAfsluiten = false) => {
     if (!speler) return
+    if (nb.aan && !EMAIL_RE.test(nb.email.trim())) { setNbFout('Dit lijkt geen geldig e-mailadres. Controleer het nog even.'); return }
     setBezig(true)
     setFout(null)
     try {
       const r = await api<{ bestelnummer: number; platenspeler: number }>('/kiosk/aanvraag', {
         body: { platenspeler: speler, bezetAfsluiten, titels: mand.map((m) => ({ titel_id: m.titel_id, exemplaar_id: m.exemplaar_id ?? null })) },
       })
-      nav('/verstuurd', { state: r, replace: true })
+      // Nieuwsbrief los van de aanvraag doorsturen; een storing mag de aanvraag niet tegenhouden (11).
+      let aangemeld = false
+      if (nb.aan) aangemeld = await api('/kiosk/nieuwsbrief', { body: { email: nb.email.trim(), naam: nb.naam.trim() || undefined } }).then(() => true, () => false)
+      nav('/verstuurd', { state: { ...r, aangemeld }, replace: true })
     } catch (e) {
       const f = e as ApiFout
       if (f.data?.code === 'bezet') setVraagBezet(true)
@@ -94,8 +101,9 @@ export function Aanvraag() {
                 {spelers.some((p) => !p.actief) && <span>Doorgestreept = niet beschikbaar</span>}
               </div>
             )}
-            <button className="btn btn-pink btn-l btn-block" disabled={!kanVersturen} onClick={() => verstuur(false)}>
-              {bezig ? 'Bezig met versturen…' : <>Aanvraag bevestigen <ArrowRight size={22} /></>}
+            {config.instellingen.nieuwsbrief && <NieuwsbriefBlok waarde={nb} wijzig={(w) => { setNb(w); setNbFout(null) }} fout={nbFout} />}
+            <button className="btn btn-pink btn-l btn-block" disabled={!kanVersturen || (nb.aan && !nb.email.trim())} onClick={() => verstuur(false)}>
+              {bezig ? 'Bezig met versturen…' : <>Aanvraag versturen <ArrowRight size={22} /></>}
             </button>
             {mand.length > 0 && speler == null && <p className="melding">Kies eerst je platenspeler.</p>}
             {fout && (
