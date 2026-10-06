@@ -262,9 +262,12 @@ def connect(db: Path) -> sqlite3.Connection:
     return conn
 
 
+CODE_HEADERS = {"titelnummer", "titlenumber", "titelnr", "catalogusnummer", "catalogusnr"}
+
+
 def read_codes(items: list[str]) -> list[str]:
     """Catalogusnummers uit argumenten, .txt-bestanden (één per regel) of .xlsx-bestanden
-    (alle kolommen met kop 'Titelnummer', op alle tabbladen behalve OUD_*)."""
+    (alle kolommen met kop 'Titelnummer'/'titlenumber', op alle tabbladen behalve OUD_*)."""
     codes = []
     for item in items:
         path = Path(item)
@@ -277,7 +280,7 @@ def read_codes(items: list[str]) -> list[str]:
                     continue
                 rows = ws.iter_rows(values_only=True)
                 header = next(rows, ())
-                idx = [i for i, h in enumerate(header) if h and str(h).strip().lower() == "titelnummer"]
+                idx = [i for i, h in enumerate(header) if h and str(h).strip().lower() in CODE_HEADERS]
                 for row in rows:
                     for i in idx:
                         if i < len(row) and row[i]:
@@ -462,6 +465,8 @@ def main(argv: list[str] | None = None) -> None:
     a.add_argument("codes", nargs="+")
     pr = sub.add_parser("prioritize", help="albums vóór de rest ophalen (codes, .txt of .xlsx)")
     pr.add_argument("items", nargs="+")
+    pr.add_argument("--priority", type=int,
+                    help="voorrangsniveau (hoger gaat eerst); standaard boven alle bestaande lijsten")
     c = sub.add_parser("crawl")
     c.add_argument("--limit", type=int)
     c.add_argument("--workers", type=int, default=1)
@@ -492,7 +497,7 @@ def main(argv: list[str] | None = None) -> None:
         print(f"{n} albums in de wachtrij")
     elif args.cmd == "prioritize":
         codes = read_codes(args.items)
-        top = (conn.execute("SELECT MAX(priority) FROM scrape_queue").fetchone()[0] or 0) + 1
+        top = args.priority or (conn.execute("SELECT MAX(priority) FROM scrape_queue").fetchone()[0] or 0) + 1
         conn.executemany("INSERT OR IGNORE INTO scrape_queue (album_code) VALUES (?)", [(c,) for c in codes])
         conn.executemany("UPDATE scrape_queue SET priority = ? WHERE album_code = ?", [(top, c) for c in codes])
         conn.commit()

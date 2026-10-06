@@ -178,12 +178,15 @@ def test_prioritize_from_xlsx_and_crawl_order(tmp_path, monkeypatch):
     ws.append(["Plessey", "Titelnummer"])
     ws.append([101177246, "AA00052"])
     ws.append([100064217, "aa00132 "])
+    pop = wb.create_sheet("jin KA-KL")
+    pop.append(["objectnummer", "titlenumber"])
+    pop.append([101172762, "KA00017"])
     old = wb.create_sheet("OUD_AA-AF")
     old.append(["Titelnummer"])
     old.append(["ZZ99999"])
     xlsx = tmp_path / "lijst.xlsx"
     wb.save(xlsx)
-    assert ms.read_codes([str(xlsx), "JK278043"]) == ["AA00052", "AA00132", "JK278043"]
+    assert ms.read_codes([str(xlsx), "JK278043"]) == ["AA00052", "AA00132", "KA00017", "JK278043"]
 
     db = tmp_path / "t.db"
     conn = ms.connect(db)
@@ -193,4 +196,4 @@ def test_prioritize_from_xlsx_and_crawl_order(tmp_path, monkeypatch):
     fetched = []
     monkeypatch.setattr(ms, "fetch", lambda code, delay: (fetched.append(code), (code, 404, None, None, None))[1])
     ms.crawl(conn, limit=None, workers=1, delay=0)
-    assert fetched == ["AA00132", "AA00052", "ZZ00001"]
+    assert fetched == ["AA00132", "AA00052", "KA00017", "ZZ00001"]
