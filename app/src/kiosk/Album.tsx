@@ -89,7 +89,7 @@ export function AlbumWeergave({ a, voorbeeld = false }: { a: AlbumData; voorbeel
         </div>
         <h1>{v.titel}</h1>
         <div className="tags">
-          {a.jaar && <span className="pill">{a.jaar}</span>}
+          {(a.jaar || v.uitgave) && <span className="pill">{a.jaar ?? v.uitgave}</span>}
           {(v.genres ?? []).slice(0, 2).map((g) => <span key={g} className="pill">{g}</span>)}
           {v.drager && <span className="pill">{dragerTekst(v.drager, v.aantal)}</span>}
         </div>

@@ -25,7 +25,16 @@ export async function laadExports(map = process.env.FONOS_DUMP_DIR ?? join(ROOT,
     await run("INSERT INTO planner (taak, datum) VALUES (?, ?) ON CONFLICT (taak) DO UPDATE SET datum = excluded.datum", `export:${d}`, new Date().toISOString().slice(0, 10))
     voortgang(`  ${d}: ${rapport.in_dump} records (${Math.round((Date.now() - t0) / 1000)} s)`)
   }
-  return rondImportAf(importId, rapport, WIE, `exportmap (${te.length} delen)`)
+  return rondImportAf(importId, rapport, WIE, `exportmap (${te.length} delen)`, te.length === delen.length)
+}
+
+/** Eenmalige correctie: "voor 1988" gaf ten onrechte jaar 1988. */
+export async function herstelJaren(voortgang = console.log) {
+  if (await get("SELECT 1 FROM planner WHERE taak = 'herstel:jaar-voor'")) return
+  const r = await run(`UPDATE titels SET d_jaar = NULL WHERE d_jaar IS NOT NULL
+    AND COALESCE(NULLIF(fonos_data::jsonb->>'uitgave', ''), mw_data::jsonb->>'uitgave') ~* '^\\s*(voor|vóór)\\M'`)
+  await run("INSERT INTO planner (taak, datum) VALUES ('herstel:jaar-voor', ?) ON CONFLICT (taak) DO NOTHING", new Date().toISOString().slice(0, 10))
+  voortgang(`Jaren hersteld: ${r.changes} titels zonder bekend jaar`)
 }
 
 /** De gebruikscollectie uit collectie/gebruikscollectie.csv (objectnummer, titelnummer, bron[, vindcode]). */

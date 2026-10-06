@@ -198,10 +198,12 @@ export async function voerDoor(token: string, keuze: Categorie[], wie: Wie) {
             SELECT objectnummer, titelnummer, vindcode, bron FROM jsonb_to_recordset(?::jsonb) AS x(objectnummer text, titelnummer text, vindcode text, bron text)
             ON CONFLICT (objectnummer) DO NOTHING`, recordset(nieuw.slice(j, j + 5000)))
         }
-        const bij = items.filter((i) => i.bestaand).map((i) => ({ id: i.bestaand!.id, titelnummer: i.titelnummer, vindcode: i.vindcode }))
+        // Bestaande exemplaren in een open aanvraag blijven ongemoeid (net als bij "gewijzigd").
+        const bij = items.filter((i) => i.bestaand && (!open.has(i.bestaand.id) || (overgeslagenInGebruik.push(i.objectnummer!), false)))
+          .map((i) => ({ id: i.bestaand!.id, titelnummer: i.titelnummer, vindcode: i.vindcode }))
         if (bij.length) await run(`UPDATE exemplaren e SET titelnummer = x.titelnummer, titel_id = NULL, vindcode = COALESCE(x.vindcode, e.vindcode), gewijzigd = nu()
             FROM jsonb_to_recordset(?::jsonb) AS x(id int, titelnummer text, vindcode text) WHERE e.id = x.id`, recordset(bij))
-        telling[k] = items.length
+        telling[k] = nieuw.length + bij.length
       } else if (k === 'gewijzigd' || k === 'ontbrekend') {
         const vrij = items.filter((i) => { if (open.has(i.bestaand!.id)) { overgeslagenInGebruik.push(i.objectnummer!); return false } return true })
         if (k === 'gewijzigd' && vrij.length) await run(`UPDATE exemplaren e SET titelnummer = x.titelnummer,

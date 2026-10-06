@@ -140,7 +140,7 @@ function VeldBewerker({ def, d, genres, opslaan, terug, besluit, upload }: {
           <div>
             <input ref={file} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
             <button className="btn btn-ghost btn-s" onClick={() => file.current?.click()}><Upload size={14} /> Eigen afbeelding uploaden</button>
-            <div className="dim tekst-klein" style={{ marginTop: 6 }}>jpg, png of webp, maximaal 10 MB. Vervangt de Muziekweb-hoes.</div>
+            <div className="dim tekst-klein" style={{ marginTop: 6 }}>jpg, png of webp, maximaal 4 MB. Vervangt de Muziekweb-hoes.</div>
           </div>
         </div>
       )}

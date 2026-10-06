@@ -7,15 +7,17 @@ import { useKiosk } from './KioskApp'
 
 export function Verstuurd() {
   const st = useLocation().state as { bestelnummer: number; platenspeler: number } | null
-  const { leegMand, config } = useKiosk()
+  const { leegMand, config, wisSessie } = useKiosk()
+  // Zonder nieuwsbriefkoppeling (O-4) direct sessie wissen en terug naar de homepagina (7.9).
+  const verder = () => (config.instellingen.nieuwsbrief ? nav('/nieuwsbrief', { replace: true }) : wisSessie('/home'))
   const nav = useNavigate()
   const klaar = useRef(false)
   useEffect(() => { if (st) leegMand() }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!st) return
-    const t = setTimeout(() => { if (!klaar.current) nav('/nieuwsbrief', { replace: true }) }, config.instellingen.bevestiging_sec * 1000)
+    const t = setTimeout(() => { if (!klaar.current) verder() }, config.instellingen.bevestiging_sec * 1000)
     return () => clearTimeout(t)
-  }, [st, nav, config.instellingen.bevestiging_sec])
+  }, [st, config.instellingen.bevestiging_sec]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!st) return <Navigate to="/home" replace />
   return (
     <div className="hero vormen-smal">
@@ -28,7 +30,7 @@ export function Verstuurd() {
         <div className="label">Bestelnummer</div>
         <div className="nummer-groot">#{st.bestelnummer}</div>
         <p>Een FONOS-medewerker haalt de platen voor je op.<br />Deze worden gebracht naar platenspeler {st.platenspeler}.</p>
-        <button className="btn btn-ghost btn-l" style={{ minWidth: 260, background: '#0d1529' }} onClick={() => { klaar.current = true; nav('/nieuwsbrief', { replace: true }) }}>Verder zoeken</button>
+        <button className="btn btn-ghost btn-l" style={{ minWidth: 260, background: '#0d1529' }} onClick={() => { klaar.current = true; verder() }}>Verder zoeken</button>
       </div>
     </div>
   )

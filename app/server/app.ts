@@ -42,7 +42,7 @@ app.get('/api/versies', async (c) => {
 app.get('/api/cron', async (c) => {
   const geheim = process.env.CRON_SECRET
   if (geheim && c.req.header('authorization') !== `Bearer ${geheim}`) return c.json({ fout: 'Niet toegestaan' }, 401)
-  await tik({ backup: true })
+  await tik({ backup: true, cron: true })
   return c.json({ ok: true })
 })
 

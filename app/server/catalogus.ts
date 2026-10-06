@@ -69,6 +69,7 @@ export async function kioskConfig() {
       max_titels: inst.max_titels, inactiviteit_sec: inst.inactiviteit_sec, waarschuwing_sec: inst.waarschuwing_sec,
       bevestiging_sec: inst.bevestiging_sec, fonos_paginas: inst.fonos_paginas, privacy_tekst: inst.privacy_tekst,
       privacy_url: inst.privacy_url, nl_weergave: inst.nl_weergave, bumper_video_url: inst.bumper_video_url,
+      nieuwsbrief: inst.nieuwsbrief_koppeling !== 'geen', // O-4: zonder koppeling geen aanmeldscherm
     },
     platenspelers: await platenspelers(),
   }
@@ -91,7 +92,8 @@ export async function selectieIds(s: any, alleenBeschikbaar: boolean, limiet = s
   if (s.soort === 'nieuw') return (await all(`SELECT t.id FROM titels t WHERE ${filter}
       ORDER BY (SELECT MIN(e.aangemaakt) FROM exemplaren e WHERE e.titel_id = t.id AND e.status = 'in_collectie') DESC, t.d_jaar DESC NULLS LAST, t.id DESC LIMIT ?`, limiet)).map((r) => r.id)
   if (s.soort === 'vaak') {
-    const dagen = s.periode_dagen || inst.vaak_periode_dagen
+    // De periode staat in Instellingen (10.10); de kolom per selectie is alleen nog een terugval.
+    const dagen = Number(inst.vaak_periode_dagen) || s.periode_dagen
     return (await all(`SELECT i.titel_id AS id FROM aanvraag_items i JOIN aanvragen a ON a.id = i.aanvraag_id JOIN titels t ON t.id = i.titel_id
         WHERE a.ingediend_op > nu(?::interval) AND ${filter} GROUP BY i.titel_id ORDER BY COUNT(*) DESC LIMIT ?`, `-${dagen} days`, limiet)).map((r) => r.id)
   }

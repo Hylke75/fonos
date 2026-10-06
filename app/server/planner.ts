@@ -21,7 +21,8 @@ async function claim(taak: string): Promise<boolean> {
 
 let laatsteTik = 0
 
-export async function tik(opts: { backup?: boolean } = {}) {
+/** cron: aangeroepen door Vercel Cron; dat moment is de nachtelijke back-up, ongeacht het ingestelde tijdstip. */
+export async function tik(opts: { backup?: boolean; cron?: boolean } = {}) {
   const inst = await instellingen()
   const tijd = nuHHMM()
   if (tijd >= inst.sluitingstijd && (await claim('sluiten'))) {
@@ -33,9 +34,12 @@ export async function tik(opts: { backup?: boolean } = {}) {
     AND ((ingediend_op || '+00')::timestamptz AT TIME ZONE 'Europe/Amsterdam')::date < (now() AT TIME ZONE 'Europe/Amsterdam')::date`)
   for (const a of oud) await sluitAf(a.id, 'sluitingstijd', { ...SYSTEEM, naam: 'Automatisch (sluitingstijd)' })
   if (oud.length) { await aanvragenGewijzigd(); await beschikbaarheidGewijzigd() }
-  if (opts.backup && tijd >= inst.backup_tijd) {
+  if (opts.backup && (opts.cron || tijd >= inst.backup_tijd)) {
     const al = await get(`SELECT 1 FROM backups WHERE soort = 'dagelijks' AND status = 'gelukt' AND left(tijd, 10) = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD')`)
-    if (!al && (await claim('backup'))) await maakBackup('dagelijks').catch((e) => console.error('[planner] back-up mislukt', e))
+    if (!al && (await claim('backup'))) {
+      // Mislukt: claim vrijgeven, zodat een volgende tik het dezelfde dag opnieuw probeert (12.3).
+      await maakBackup('dagelijks').catch(async (e) => { console.error('[planner] back-up mislukt', e); await run("DELETE FROM planner WHERE taak = 'backup'") })
+    }
   }
   await probeerWachtrij().catch(() => {})
 }

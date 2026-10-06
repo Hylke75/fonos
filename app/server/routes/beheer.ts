@@ -36,7 +36,7 @@ beheer.get('/tellers', async (c) => {
     titels: await n('SELECT COUNT(*) AS n FROM titels'),
     exemplaren: await n("SELECT COUNT(*) AS n FROM exemplaren WHERE status = 'in_collectie'"),
     datakwaliteit: Object.values(await dqTellingen()).reduce((a, b) => a + b, 0),
-    laatste_import: (await get<any>("SELECT tijd FROM imports WHERE soort = 'muziekweb' ORDER BY id DESC LIMIT 1"))?.tijd ?? null,
+    laatste_import: (await get<any>("SELECT tijd FROM imports WHERE soort = 'muziekweb' AND rapport::jsonb->>'afgerond' = 'true' ORDER BY id DESC LIMIT 1"))?.tijd ?? null,
     laatste_backup: (await get<any>("SELECT tijd FROM backups WHERE status = 'gelukt' ORDER BY id DESC LIMIT 1"))?.tijd ?? null,
   })
 })

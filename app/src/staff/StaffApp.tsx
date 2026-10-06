@@ -62,14 +62,22 @@ function StafKop({ ik, uit }: { ik: Ik; uit: () => void }) {
   )
 }
 
+/** "Hoelang al open" (9), in hele minuten. */
+const minutenOpen = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000))
+
 function Lijst() {
   const [tab, setTab] = useState<'actief' | 'afgerond' | 'spelers'>('actief')
   const [d, setD] = useState<any>(null)
   const [spelers, setSpelers] = useState<any[] | null>(null)
+  const [openPerSpeler, setOpenPerSpeler] = useState<Record<number, any>>({})
   const [nieuw, setNieuw] = useState<number | null>(null)
   const nav = useNavigate()
   const laad = useCallback(() => {
-    if (tab === 'spelers') api('/medewerker/platenspelers').then(setSpelers)
+    if (tab === 'spelers') {
+      // Tegels per platenspeler (9): vrij, ingediend of uitgegeven, met de open aanvraag erbij.
+      api('/medewerker/platenspelers').then(setSpelers)
+      api<any>('/medewerker/aanvragen?tab=actief').then((x) => setOpenPerSpeler(Object.fromEntries(x.aanvragen.map((a: any) => [a.platenspeler, a]))))
+    }
     else api(`/medewerker/aanvragen?tab=${tab}`).then(setD)
   }, [tab])
   useEffect(() => { laad() }, [laad])
@@ -99,16 +107,24 @@ function Lijst() {
       {tab === 'spelers' ? (
         !spelers ? <Laden /> : (
           <div className="spelers-tegels">
-            {spelers.map((p) => (
-              <div key={p.nummer} className="card speler-tegel">
+            {spelers.map((p) => {
+              const a = openPerSpeler[p.nummer]
+              return (
+              <div key={p.nummer} className={`card speler-tegel ${a?.lang_open ? 'lang-open' : ''}`}>
                 <div className="groot">{p.nummer}</div>
-                <div className="muted">{!p.actief ? 'Inactief' : p.bezet ? 'Bezet' : 'Vrij'}</div>
+                {a ? (
+                  <button className="speler-aanvraag" onClick={() => nav(`/medewerker/aanvraag/${a.id}`)}>
+                    <span className={`status status-${a.weergave_status}`}>{a.status === 'uitgegeven' ? 'Uitgegeven' : 'Ingediend'}</span>
+                    <span>#{a.bestelnummer} · {minutenOpen(a.ingediend_op)} min</span>
+                  </button>
+                ) : <div className="muted">{!p.actief ? 'Inactief' : p.bezet ? 'Bezet' : 'Vrij'}</div>}
                 <button className={`toggle ${p.actief ? 'aan' : ''}`} aria-pressed={p.actief}
                   onClick={async () => setSpelers(await api(`/medewerker/platenspeler/${p.nummer}`, { body: { actief: !p.actief } }))}>
                   <span className="baan" /> {p.actief ? 'Actief' : 'Inactief'}
                 </button>
               </div>
-            ))}
+              )
+            })}
           </div>
         )
       ) : !d ? <Laden /> : (
@@ -120,7 +136,7 @@ function Lijst() {
               {d.aanvragen.map((a: any) => (
                 <tr key={a.id} className={`klikbaar ${nieuw === a.bestelnummer ? 'nieuw-binnen' : ''} ${a.lang_open ? 'lang-open' : ''}`} onClick={() => nav(`/medewerker/aanvraag/${a.id}`)}>
                   <td className="bestelnr">#{a.bestelnummer}{a.lang_open && <div className="lang-label"><Clock size={13} /> &gt; {d.markering_min} min</div>}</td>
-                  <td>{tijd(a.ingediend_op)}</td>
+                  <td>{tijd(a.ingediend_op)}<div className="dim tekst-klein">{minutenOpen(a.ingediend_op)} min open</div></td>
                   <td><span className="nr-bol">{a.platenspeler}</span></td>
                   <td><div className="duimen">{a.hoezen.map((h: string, i: number) => <Hoes key={i} src={h} />)}<span style={{ marginLeft: 6 }}>{a.aantal} {a.aantal === 1 ? 'titel' : 'titels'}</span></div></td>
                   <td><span className={`status status-${a.weergave_status}`}>{STATUS[a.weergave_status]}</span></td>
@@ -164,7 +180,7 @@ function Detail() {
         <h1>Aanvraag #{a.bestelnummer}</h1>
         <span className={`status status-${a.weergave_status}`} style={{ height: 40, minWidth: 110, fontSize: 16 }}>{STATUS[a.weergave_status]}</span>
         <span className="speler-label">Platenspeler<b>{a.platenspeler}</b></span>
-        <span className="tijd">{tijd(a.ingediend_op)}</span>
+        <span className="tijd">{tijd(a.ingediend_op)}{open && <span className="dim tekst-klein"> · {minutenOpen(a.ingediend_op)} min open</span>}</span>
       </div>
       {fout && <div className="melding-blok fout">{fout}</div>}
       <div className="detail-grid">

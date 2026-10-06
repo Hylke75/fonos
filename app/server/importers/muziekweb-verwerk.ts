@@ -48,14 +48,15 @@ export async function verwerkRecords(records: MwRecord[], importId: number, rapp
 }
 
 /** Sluit een import af: losse exemplaren koppelen, rapport vastleggen, log. */
-export async function rondImportAf(importId: number, rapport: MwRapport, wie: Wie, bron: string) {
+/** volledig = deze import bevat de hele dump; alleen dan telt "niet (meer) in de dump" ook titels die er eerder wel in stonden. */
+export async function rondImportAf(importId: number, rapport: MwRapport, wie: Wie, bron: string, volledig = true) {
   rapport.nieuwe_titels += await koppelLosseExemplaren()
   const niet = await all<{ titelnummer: string }>(
     `SELECT t.titelnummer FROM titels t LEFT JOIN mw_dump m ON m.titelnummer = t.titelnummer
-      WHERE t.titelnummer IS NOT NULL AND (m.titelnummer IS NULL OR m.import_id <> ?)`, importId)
+      WHERE t.titelnummer IS NOT NULL AND (m.titelnummer IS NULL OR (?::int = 1 AND m.import_id <> ?))`, volledig, importId)
   rapport.niet_in_dump = niet.length
   rapport.niet_in_dump_voorbeelden = niet.slice(0, 50).map((r) => r.titelnummer)
-  await run('UPDATE imports SET rapport = ? WHERE id = ?', JSON.stringify({ ...rapport, bron }), importId)
+  await run('UPDATE imports SET rapport = ? WHERE id = ?', JSON.stringify({ ...rapport, bron, volledig, afgerond: true }), importId)
   await log(wie, 'Muziekweb-import', { type: 'import', id: importId, label: bron, nieuw: rapport })
   return rapport
 }
@@ -114,5 +115,6 @@ export async function koppelLosseExemplaren(): Promise<number> {
 }
 
 export async function laatsteImportId() {
-  return (await get<{ id: number | null }>("SELECT MAX(id) AS id FROM imports WHERE soort = 'muziekweb'"))?.id ?? 0
+  // Alleen afgeronde, volledige imports; anders telt een gedeeltelijke import alle andere titels als "niet in dump".
+  return (await get<{ id: number | null }>("SELECT MAX(id) AS id FROM imports WHERE soort = 'muziekweb' AND rapport::jsonb->>'volledig' = 'true'"))?.id ?? 0
 }

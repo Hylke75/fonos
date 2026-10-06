@@ -41,6 +41,8 @@ export const TWEELAAGS: { veld: keyof TitelVelden; label: string; soort: 'tekst'
 export const VELD_LABEL: Record<string, string> = Object.fromEntries(TWEELAAGS.map((v) => [v.veld, v.label]))
 
 export function jaarUit(uitgave?: string | null): number | null {
+  // Muziekweb gebruikt "voor 1988" voor oude uitgaven zonder bekende datum: geen jaar.
+  if (/^\s*(voor|vóór)\b/i.test(uitgave ?? '')) return null
   const m = /(\d{4})/.exec(uitgave ?? '')
   return m ? Number(m[1]) : null
 }
