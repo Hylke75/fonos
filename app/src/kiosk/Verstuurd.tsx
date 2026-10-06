@@ -1,0 +1,35 @@
+// Bevestigingsscherm (7.9): bestelnummer en platenspeler. Daarna de vraag over de nieuwsbrief.
+import { useEffect, useRef } from 'react'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { Check } from 'lucide-react'
+import { Logo } from '../components/Logo'
+import { useKiosk } from './KioskApp'
+
+export function Verstuurd() {
+  const st = useLocation().state as { bestelnummer: number; platenspeler: number } | null
+  const { leegMand, config } = useKiosk()
+  const nav = useNavigate()
+  const klaar = useRef(false)
+  useEffect(() => { if (st) leegMand() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!st) return
+    const t = setTimeout(() => { if (!klaar.current) nav('/nieuwsbrief', { replace: true }) }, config.instellingen.bevestiging_sec * 1000)
+    return () => clearTimeout(t)
+  }, [st, nav, config.instellingen.bevestiging_sec])
+  if (!st) return <Navigate to="/home" replace />
+  return (
+    <div className="hero vormen-smal">
+      <div className="vorm vorm-b" />
+      <div className="vorm vorm-c" />
+      <div style={{ position: 'absolute', top: 40, left: 56, zIndex: 3 }}><Logo /></div>
+      <div className="midden" role="status">
+        <div className="vink"><Check size={56} color="#bdf2fb" strokeWidth={2.5} /></div>
+        <h1>Aanvraag verstuurd!</h1>
+        <div className="label">Bestelnummer</div>
+        <div className="nummer-groot">#{st.bestelnummer}</div>
+        <p>Een FONOS-medewerker haalt de platen voor je op.<br />Deze worden gebracht naar platenspeler {st.platenspeler}.</p>
+        <button className="btn btn-ghost btn-l" style={{ minWidth: 260, background: '#0d1529' }} onClick={() => { klaar.current = true; nav('/nieuwsbrief', { replace: true }) }}>Verder zoeken</button>
+      </div>
+    </div>
+  )
+}

@@ -1,0 +1,245 @@
+// Importeren: bulkimport collectie (10.6), Muziekweb-import en datakwaliteit (10.7).
+import { Fragment, useEffect, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Upload } from 'lucide-react'
+import { api, ApiFout, datumTijd } from '../api'
+import { Laden } from '../components/Iconen'
+import { Melding } from './ui'
+
+export function Importeren({ beheerder }: { beheerder: boolean }) {
+  const [p, setP] = useSearchParams()
+  const tab = p.get('tab') ?? 'collectie'
+  const tabs = [['collectie', 'Collectie (bulk)'], ...(beheerder ? [['muziekweb', 'Muziekweb-import']] : []), ['datakwaliteit', 'Datakwaliteit'], ['historie', 'Historie']]
+  return (
+    <>
+      <h1>Importeren</h1>
+      <div className="tabs">{tabs.map(([k, l]) => <button key={k} className={`tab ${tab === k ? 'aan' : ''}`} onClick={() => setP({ tab: k })}>{l}</button>)}</div>
+      {tab === 'collectie' && <BulkImport />}
+      {tab === 'muziekweb' && beheerder && <MuziekwebImport />}
+      {tab === 'datakwaliteit' && <Datakwaliteit />}
+      {tab === 'historie' && <Historie />}
+    </>
+  )
+}
+
+function BestandKiezer({ accept, onKies, tekst }: { accept: string; onKies: (f: File) => void; tekst: string }) {
+  const ref = useRef<HTMLInputElement>(null)
+  return (
+    <>
+      <input ref={ref} type="file" accept={accept} hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) onKies(f); e.target.value = '' }} />
+      <button className="btn btn-cyan" onClick={() => ref.current?.click()}><Upload size={18} /> {tekst}</button>
+    </>
+  )
+}
+
+function BulkImport() {
+  const [a, setA] = useState<any>(null)
+  const [keuze, setKeuze] = useState<Set<string>>(new Set())
+  const [bezig, setBezig] = useState(false)
+  const [rapport, setRapport] = useState<any>(null)
+  const [m, setM] = useState<any>(null)
+  const [open, setOpen] = useState<string | null>(null)
+  const upload = async (f: File) => {
+    setM(null); setA(null); setRapport(null); setBezig(true)
+    const fd = new FormData(); fd.append('bestand', f)
+    try {
+      const r = await api('/beheer/import/collectie', { form: fd })
+      setA(r)
+      setKeuze(new Set(r.categorieen.filter((c: any) => c.aantal > 0 && c.sleutel !== 'ontbrekend').map((c: any) => c.sleutel)))
+    } catch (e) { setM({ soort: 'fout', tekst: (e as ApiFout).message }) } finally { setBezig(false) }
+  }
+  const voerDoor = async () => {
+    setBezig(true)
+    try { setRapport(await api(`/beheer/import/collectie/${a.token}`, { body: { categorieen: [...keuze] } })); setA(null) } catch (e) { setM({ soort: 'fout', tekst: (e as ApiFout).message }) } finally { setBezig(false) }
+  }
+  return (
+    <>
+      <div className="card paneel">
+        <p style={{ marginTop: 0 }}>Upload een Excel- of CSV-bestand met de kolommen <b>objectnummer</b> en <b>titelnummer</b> (en optioneel <b>vindcode</b>). Je ziet eerst een controle-overzicht; er wordt nog niets gewijzigd.</p>
+        <p className="muted tekst-klein">Tabbladen waarvan de naam begint met OUD_ worden overgeslagen (open punt O-6). Regels als "AA00052;123456789" en ";123456789" (zonder titelnummer) worden herkend.</p>
+        <BestandKiezer accept=".xlsx,.csv,.txt" onKies={upload} tekst="Bestand kiezen" />
+      </div>
+      <Melding m={m} />
+      {bezig && <Laden tekst="Bezig met verwerken…" />}
+      {a && (
+        <div className="card paneel">
+          <h2 style={{ marginTop: 0 }}>Controle-overzicht: {a.bestand}</h2>
+          <p className="muted">{a.totaal.toLocaleString('nl-NL')} regels gelezen.{a.overgeslagen.length ? ` Overgeslagen tabbladen: ${a.overgeslagen.join(', ')}.` : ''} Kies per categorie wat er doorgevoerd wordt.</p>
+          {a.categorieen.map((c: any) => (
+            <div key={c.sleutel} className="veld-twee">
+              <div className="kop">
+                <label className="check"><input type="checkbox" disabled={c.aantal === 0} checked={keuze.has(c.sleutel)} onChange={(e) => { const n = new Set(keuze); e.target.checked ? n.add(c.sleutel) : n.delete(c.sleutel); setKeuze(n) }} /> {c.naam}</label>
+                <span className="acties"><b>{c.aantal.toLocaleString('nl-NL')}</b>{c.aantal > 0 && <button className="btn btn-ghost btn-s" onClick={() => setOpen(open === c.sleutel ? null : c.sleutel)}>{open === c.sleutel ? 'Verberg' : 'Bekijk'}</button>}</span>
+              </div>
+              <div className="dim tekst-klein">{UITLEG[c.sleutel]}</div>
+              {open === c.sleutel && (
+                <table className="btabel" style={{ marginTop: 8 }}>
+                  <thead><tr><th>Objectnummer</th><th>Titelnummer</th><th>Vindcode</th><th>Nu</th><th>Bron</th></tr></thead>
+                  <tbody>{c.voorbeelden.map((r: any, i: number) => (
+                    <tr key={i}><td>{r.objectnummer}</td><td>{r.titelnummer ?? '—'}</td><td>{r.vindcode ?? ''}</td><td className="dim">{r.bestaand ? `${r.bestaand.titelnummer ?? '—'} ${r.bestaand.vindcode ?? ''}` : ''}</td><td className="dim tekst-klein">{r.bron}{r.regel ? `, regel ${r.regel}` : ''}</td></tr>
+                  ))}</tbody>
+                </table>
+              )}
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <button className="btn btn-ghost" onClick={() => setA(null)}>Annuleren</button>
+            <button className="btn btn-pink" disabled={keuze.size === 0 || bezig} onClick={voerDoor}>Doorvoeren</button>
+          </div>
+        </div>
+      )}
+      {rapport && <div className="card paneel"><h2 style={{ marginTop: 0 }}>Rapport</h2><RapportWeergave r={rapport} /></div>}
+    </>
+  )
+}
+
+const UITLEG: Record<string, string> = {
+  nieuw: 'Worden toegevoegd en gekoppeld aan de titel uit de Muziekweb-import.',
+  gewijzigd: 'Het exemplaar krijgt het nieuwe titelnummer en/of de nieuwe vindcode. Exemplaren in een open aanvraag worden overgeslagen.',
+  ontbrekend: 'Staan in de collectie maar niet in dit bestand. Doorvoeren = afvoeren met reden "overig".',
+  onbekend: 'Titelnummer niet in de Muziekweb-import. Worden toegevoegd zonder titel en komen in de datakwaliteitslijst.',
+  dubbel: 'Het objectnummer komt meer dan eens voor. De eerste regel telt; de rest komt in de datakwaliteitslijst.',
+  zonder_titelnummer: 'Worden toegevoegd zonder titelnummer en komen in de datakwaliteitslijst.',
+}
+
+const NAMEN: Record<string, string> = {
+  nieuw: 'Nieuwe exemplaren', gewijzigd: 'Gewijzigde koppeling', ontbrekend: 'Afgevoerd', onbekend: 'Onbekende titelnummers', dubbel: 'Dubbele objectnummers', zonder_titelnummer: 'Zonder titelnummer',
+  in_dump: 'Records in de dump', bijgewerkt: 'Titels bijgewerkt', ongewijzigd: 'Ongewijzigd', nieuwe_titels: 'Nieuwe titels aangemaakt', nieuwe_conflicten: 'Nieuwe conflicten', niet_in_dump: 'Titels uit de collectie niet in de dump',
+}
+
+function RapportWeergave({ r }: { r: any }) {
+  const rijen: [string, any][] = []
+  for (const [k, v] of Object.entries(r)) {
+    if (k === 'doorgevoerd') for (const [k2, v2] of Object.entries(v as any)) rijen.push([NAMEN[k2] ?? k2, v2])
+    else if (typeof v === 'number' && k !== 'import_id') rijen.push([NAMEN[k] ?? k, v])
+  }
+  return (
+    <>
+      <dl className="meer-info" style={{ marginTop: 0 }}>{rijen.map(([k, v]) => <Fragment key={k}><dt>{k}</dt><dd>{Number(v).toLocaleString('nl-NL')}</dd></Fragment>)}</dl>
+      {r.overgeslagen_in_gebruik?.length > 0 && <p className="tekst-klein muted">Overgeslagen omdat ze in een open aanvraag zitten: {r.overgeslagen_in_gebruik.join(', ')}</p>}
+      {r.niet_in_dump_voorbeelden?.length > 0 && <p className="tekst-klein muted">Bijvoorbeeld: {r.niet_in_dump_voorbeelden.slice(0, 20).join(', ')}</p>}
+    </>
+  )
+}
+
+function MuziekwebImport() {
+  const [s, setS] = useState<any>(null)
+  const [m, setM] = useState<any>(null)
+  const laad = () => api('/beheer/import/muziekweb/status').then(setS)
+  useEffect(() => { laad() }, [])
+  useEffect(() => { if (!s?.bezig) return; const t = setInterval(laad, 1500); return () => clearInterval(t) }, [s?.bezig])
+  const upload = async (f: File) => {
+    setM(null)
+    const fd = new FormData(); fd.append('bestand', f)
+    try { setS(await api('/beheer/import/muziekweb', { form: fd })) } catch (e) { setM({ soort: 'fout', tekst: (e as ApiFout).message }) }
+  }
+  const server = async () => { setM(null); try { setS(await api('/beheer/import/muziekweb/server', { method: 'POST' })) } catch (e) { setM({ soort: 'fout', tekst: (e as ApiFout).message }) } }
+  return (
+    <>
+      <div className="card paneel">
+        <p style={{ marginTop: 0 }}>Een nieuwe Muziekweb-dump werkt de Muziekweb-waarden van alle titels bij. <b>Fonos-waarden worden nooit overschreven</b>; verandert Muziekweb een veld dat Fonos heeft aangepast, dan ontstaat een conflict.</p>
+        <p className="muted tekst-klein">Formaten: zip met de exportmap (part-*/album_pages.jsonl.gz enz.), muziekweb.db of een .jsonl-bestand. Het definitieve dumpformaat is nog open (O-2).</p>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <BestandKiezer accept=".zip,.db,.sqlite,.jsonl,.gz" onKies={upload} tekst="Dump uploaden" />
+          <button className="btn btn-ghost" onClick={server}>Ophalen uit servermap</button>
+        </div>
+      </div>
+      <Melding m={m} />
+      {s?.bezig && <div className="card paneel"><Laden tekst={`Bezig: ${s.verwerkt.toLocaleString('nl-NL')} records verwerkt…`} /></div>}
+      {s?.fout && <Melding m={{ soort: 'fout', tekst: `Import mislukt: ${s.fout}` }} />}
+      {s?.rapport && !s.bezig && <div className="card paneel"><h2 style={{ marginTop: 0 }}>Rapport laatste import</h2><RapportWeergave r={s.rapport} /></div>}
+    </>
+  )
+}
+
+function Datakwaliteit() {
+  const [lijsten, setLijsten] = useState<any[] | null>(null)
+  const [p, setP] = useSearchParams()
+  const lijst = p.get('lijst')
+  const [d, setD] = useState<any>(null)
+  const [pagina, setPagina] = useState(1)
+  const nav = useNavigate()
+  const laad = () => api('/beheer/datakwaliteit').then(setLijsten)
+  useEffect(() => { laad() }, [])
+  useEffect(() => { setD(null); if (lijst) api(`/beheer/datakwaliteit/${lijst}?pagina=${pagina}`).then(setD) }, [lijst, pagina])
+  return (
+    <>
+      {!lijsten ? <Laden /> : (
+        <div className="dq-lijst">
+          {lijsten.map((l) => (
+            <button key={l.sleutel} className={`dq-item ${lijst === l.sleutel ? 'aan' : ''}`} onClick={() => { setPagina(1); setP({ tab: 'datakwaliteit', lijst: l.sleutel }) }}>
+              <div className="w" style={{ color: l.aantal ? 'var(--amber)' : 'var(--green)' }}>{l.aantal.toLocaleString('nl-NL')}</div>
+              <div className="l">{l.naam}</div>
+            </button>
+          ))}
+        </div>
+      )}
+      {lijst && !d && <Laden />}
+      {d && (
+        <div className="tabel-kaart" style={{ background: '#030f1b' }}>
+          <table className="btabel">
+            <thead><tr>{d.rijen[0] ? Object.keys(d.rijen[0]).filter((k) => !k.endsWith('_id')).map((k) => <th key={k}>{k.replace(/_/g, ' ')}</th>) : <th>{d.naam}</th>}<th /></tr></thead>
+            <tbody>
+              {d.rijen.length === 0 && <tr><td className="muted" style={{ padding: 24 }}>Niets te doen.</td></tr>}
+              {d.rijen.map((r: any, i: number) => (
+                <tr key={i} className={r.titel_id || r.genre ? 'klikbaar' : ''} onClick={() => (r.titel_id ? nav(`/beheer/titel/${r.titel_id}`) : r.genre ? nav('/beheer/genreknoppen') : null)}>
+                  {Object.entries(r).filter(([k]) => !k.endsWith('_id')).map(([k, v]) => <td key={k} className="tekst-klein">{Array.isArray(v) ? v.join(', ') : String(v ?? '')}</td>)}
+                  <td onClick={(e) => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
+                    {r.issue_id && <button className="btn btn-ghost btn-s" onClick={async () => { await api(`/beheer/issue/${r.issue_id}/afgehandeld`, { method: 'POST' }); laad(); api(`/beheer/datakwaliteit/${lijst}?pagina=${pagina}`).then(setD) }}>Afgehandeld</button>}
+                    {r.exemplaar_id && !r.titel_id && <ExemplaarKoppel id={r.exemplaar_id} klaar={() => { laad(); api(`/beheer/datakwaliteit/${lijst}?pagina=${pagina}`).then(setD) }} />}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {d.totaal > 100 && (
+            <div className="paginering">
+              {d.totaal.toLocaleString('nl-NL')} regels
+              <button className="btn btn-ghost btn-s" disabled={pagina <= 1} onClick={() => setPagina(pagina - 1)}>Vorige</button>
+              <button className="btn btn-ghost btn-s" disabled={pagina * 100 >= d.totaal} onClick={() => setPagina(pagina + 1)}>Volgende</button>
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  )
+}
+
+/** Een los exemplaar alsnog aan een titelnummer koppelen. */
+function ExemplaarKoppel({ id, klaar }: { id: number; klaar: () => void }) {
+  const [tn, setTn] = useState('')
+  const [fout, setFout] = useState<string | null>(null)
+  return (
+    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+      <input className="invoer" style={{ minHeight: 36, width: 140, padding: '4px 10px' }} value={tn} onChange={(e) => setTn(e.target.value.toUpperCase())} placeholder="Titelnummer" />
+      <button className="btn btn-ghost btn-s" disabled={!tn} onClick={async () => { try { await api(`/beheer/exemplaar/${id}`, { method: 'PATCH', body: { titelnummer: tn } }); klaar() } catch (e) { setFout((e as ApiFout).message) } }}>Koppel</button>
+      {fout && <span className="tekst-klein" style={{ color: 'var(--red)' }}>{fout}</span>}
+    </span>
+  )
+}
+
+function Historie() {
+  const [l, setL] = useState<any[] | null>(null)
+  useEffect(() => { api('/beheer/imports').then(setL) }, [])
+  if (!l) return <Laden />
+  return (
+    <div className="tabel-kaart" style={{ background: '#030f1b' }}>
+      <table className="btabel">
+        <thead><tr><th>Wanneer</th><th>Soort</th><th>Door</th><th>Samenvatting</th></tr></thead>
+        <tbody>
+          {l.length === 0 && <tr><td colSpan={4} className="muted" style={{ padding: 24 }}>Nog geen imports.</td></tr>}
+          {l.map((i) => (
+            <tr key={i.id}>
+              <td className="tekst-klein">{datumTijd(i.tijd)}</td>
+              <td>{i.soort === 'muziekweb' ? 'Muziekweb' : 'Collectie'}</td>
+              <td className="tekst-klein">{i.gebruiker}</td>
+              <td className="tekst-klein">{i.soort === 'muziekweb'
+                ? `${(i.rapport.in_dump ?? 0).toLocaleString('nl-NL')} records, ${i.rapport.bijgewerkt ?? 0} bijgewerkt, ${i.rapport.nieuwe_conflicten ?? 0} nieuwe conflicten`
+                : `${i.rapport.bestand ?? ''}: ${Object.entries(i.rapport.doorgevoerd ?? {}).map(([k, v]) => `${NAMEN[k] ?? k} ${v}`).join(', ')}`}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}

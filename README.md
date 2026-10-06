@@ -1,5 +1,7 @@
 # fonos – Muziekweb-database
 
+> De Fonotheek-app zelf (kiosk, medewerkersscherm, beheer) staat in [`app/`](app/README.md).
+
 Bouwt een SQLite-database (`muziekweb.db`) uit de volledige Linked Open Data van
 [Muziekweb](https://data.muziekweb.nl/MuziekwebOrganization/Muziekweb), de muziekbibliotheek van
 Nederland. Bron: de N-Triples-dump van data.muziekweb.nl (~38 miljoen triples), licentie

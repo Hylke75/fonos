@@ -1,0 +1,1471 @@
+[
+ {
+  "naam": "Pop",
+  "kleur": "#ff2fa8",
+  "nederlands": 0,
+  "koppelingen": [
+   {
+    "mw_genre": "Pop",
+    "weergavenaam": "Pop"
+   },
+   {
+    "mw_genre": "Boyband/Girlgroup",
+    "weergavenaam": "Boyband/Girlgroup"
+   }
+  ]
+ },
+ {
+  "naam": "Rock",
+  "kleur": "#1f8f7a",
+  "nederlands": 0,
+  "koppelingen": [
+   {
+    "mw_genre": "Indie/Alternative",
+    "weergavenaam": "Indie/Alternative"
+   },
+   {
+    "mw_genre": "Industrial",
+    "weergavenaam": "Industrial"
+   },
+   {
+    "mw_genre": "Progrock/Symfo",
+    "weergavenaam": "Progrock/Symfo"
+   },
+   {
+    "mw_genre": "Psychedelisch",
+    "weergavenaam": "Psychedelisch"
+   },
+   {
+    "mw_genre": "Punk/Hardcore",
+    "weergavenaam": "Punk/Hardcore"
+   },
+   {
+    "mw_genre": "Rock",
+    "weergavenaam": "Rock"
+   },
+   {
+    "mw_genre": "Sixties/Beat",
+    "weergavenaam": "Sixties/Beat"
+   },
+   {
+    "mw_genre": "Hardrock/Metal",
+    "weergavenaam": "Hardrock/Metal"
+   }
+  ]
+ },
+ {
+  "naam": "Jazz",
+  "kleur": "#16b6cf",
+  "nederlands": 0,
+  "koppelingen": [
+   {
+    "mw_genre": "Oude jazz revival",
+    "weergavenaam": "Traditionele jazz"
+   },
+   {
+    "mw_genre": "New Orleans jazz/Dixieland",
+    "weergavenaam": "Traditionele jazz"
+   },
+   {
+    "mw_genre": "Ragtime/Stride/Boogie-woogie",
+    "weergavenaam": "Traditionele jazz"
+   },
+   {
+    "mw_genre": "Mainstream en swing",
+    "weergavenaam": "Swing"
+   },
+   {
+    "mw_genre": "Big band",
+    "weergavenaam": "Swing"
+   },
+   {
+    "mw_genre": "Gypsy jazz",
+    "weergavenaam": "Swing"
+   },
+   {
+    "mw_genre": "Jazz",
+    "weergavenaam": "Moderne jazz"
+   },
+   {
+    "mw_genre": "Bebop",
+    "weergavenaam": "Moderne jazz"
+   },
+   {
+    "mw_genre": "Hard bop/Soul jazz",
+    "weergavenaam": "Moderne jazz"
+   },
+   {
+    "mw_genre": "Cool jazz/West coast",
+    "weergavenaam": "Moderne jazz"
+   },
+   {
+    "mw_genre": "Modal jazz/Spiritual jazz",
+    "weergavenaam": "Moderne jazz"
+   },
+   {
+    "mw_genre": "Post-bop",
+    "weergavenaam": "Moderne jazz"
+   },
+   {
+    "mw_genre": "Neo-bop",
+    "weergavenaam": "Moderne jazz"
+   },
+   {
+    "mw_genre": "Free jazz/Avantgarde",
+    "weergavenaam": "Moderne jazz"
+   },
+   {
+    "mw_genre": "Modern creative",
+    "weergavenaam": "Moderne jazz"
+   },
+   {
+    "mw_genre": "Third stream/Orkestrale jazz",
+    "weergavenaam": "Moderne jazz"
+   },
+   {
+    "mw_genre": "Fusion",
+    "weergavenaam": "Fusion"
+   },
+   {
+    "mw_genre": "Jazzrock",
+    "weergavenaam": "Fusion"
+   },
+   {
+    "mw_genre": "Smooth jazz",
+    "weergavenaam": "Fusion"
+   },
+   {
+    "mw_genre": "Nu jazz",
+    "weergavenaam": "Fusion"
+   },
+   {
+    "mw_genre": "Latin jazz",
+    "weergavenaam": "Wereldjazz"
+   },
+   {
+    "mw_genre": "Bossa nova/Brazilian jazz",
+    "weergavenaam": "Wereldjazz"
+   },
+   {
+    "mw_genre": "Jazz vocaal",
+    "weergavenaam": "Vocale jazz"
+   },
+   {
+    "mw_genre": "Jazz vocaal dames",
+    "weergavenaam": "Vocale jazz"
+   },
+   {
+    "mw_genre": "Jazz vocaal heren",
+    "weergavenaam": "Vocale jazz"
+   },
+   {
+    "mw_genre": "Jazz vocaal groepen",
+    "weergavenaam": "Vocale jazz"
+   }
+  ]
+ },
+ {
+  "naam": "Klassiek",
+  "kleur": "#e8169a",
+  "nederlands": 0,
+  "koppelingen": [
+   {
+    "mw_genre": "Symfonie",
+    "weergavenaam": "Orkest & symfonie"
+   },
+   {
+    "mw_genre": "Symfonisch gedicht",
+    "weergavenaam": "Orkest & symfonie"
+   },
+   {
+    "mw_genre": "Overige orkestwerken",
+    "weergavenaam": "Orkest & symfonie"
+   },
+   {
+    "mw_genre": "Orkestwerken uit opera/operette",
+    "weergavenaam": "Orkest & symfonie"
+   },
+   {
+    "mw_genre": "Ballet",
+    "weergavenaam": "Orkest & symfonie"
+   },
+   {
+    "mw_genre": "Suite/serenade/divertimento",
+    "weergavenaam": "Orkest & symfonie"
+   },
+   {
+    "mw_genre": "Toneelmuziek",
+    "weergavenaam": "Orkest & symfonie"
+   },
+   {
+    "mw_genre": "Mars en dansmuziek",
+    "weergavenaam": "Orkest & symfonie"
+   },
+   {
+    "mw_genre": "Filmmuziek",
+    "weergavenaam": "Orkest & symfonie"
+   },
+   {
+    "mw_genre": "Concerto grosso",
+    "weergavenaam": "Orkest & symfonie"
+   },
+   {
+    "mw_genre": "Piano/klavecimbel met orkest",
+    "weergavenaam": "Concerten"
+   },
+   {
+    "mw_genre": "Viool/altviool met orkest",
+    "weergavenaam": "Concerten"
+   },
+   {
+    "mw_genre": "Cello met orkest",
+    "weergavenaam": "Concerten"
+   },
+   {
+    "mw_genre": "Fluit met orkest",
+    "weergavenaam": "Concerten"
+   },
+   {
+    "mw_genre": "Klarinet met orkest",
+    "weergavenaam": "Concerten"
+   },
+   {
+    "mw_genre": "Hobo met orkest",
+    "weergavenaam": "Concerten"
+   },
+   {
+    "mw_genre": "Trompet met orkest",
+    "weergavenaam": "Concerten"
+   },
+   {
+    "mw_genre": "Hoorn met orkest",
+    "weergavenaam": "Concerten"
+   },
+   {
+    "mw_genre": "Orgel met orkest",
+    "weergavenaam": "Concerten"
+   },
+   {
+    "mw_genre": "Gitaar met orkest",
+    "weergavenaam": "Concerten"
+   },
+   {
+    "mw_genre": "Overige instrumenten met orkest",
+    "weergavenaam": "Concerten"
+   },
+   {
+    "mw_genre": "Piano/klavecimbel",
+    "weergavenaam": "Kamermuziek & solo"
+   },
+   {
+    "mw_genre": "Viool/altviool",
+    "weergavenaam": "Kamermuziek & solo"
+   },
+   {
+    "mw_genre": "Cello",
+    "weergavenaam": "Kamermuziek & solo"
+   },
+   {
+    "mw_genre": "Orgel",
+    "weergavenaam": "Kamermuziek & solo"
+   },
+   {
+    "mw_genre": "Luit/gitaar",
+    "weergavenaam": "Kamermuziek & solo"
+   },
+   {
+    "mw_genre": "Fluit",
+    "weergavenaam": "Kamermuziek & solo"
+   },
+   {
+    "mw_genre": "Blokfluit",
+    "weergavenaam": "Kamermuziek & solo"
+   },
+   {
+    "mw_genre": "Klarinet",
+    "weergavenaam": "Kamermuziek & solo"
+   },
+   {
+    "mw_genre": "Hobo",
+    "weergavenaam": "Kamermuziek & solo"
+   },
+   {
+    "mw_genre": "Trompet",
+    "weergavenaam": "Kamermuziek & solo"
+   },
+   {
+    "mw_genre": "Overige solo-instrumenten",
+    "weergavenaam": "Kamermuziek & solo"
+   },
+   {
+    "mw_genre": "Strijkkwartet",
+    "weergavenaam": "Kamermuziek & solo"
+   },
+   {
+    "mw_genre": "Piano met strijkers",
+    "weergavenaam": "Kamermuziek & solo"
+   },
+   {
+    "mw_genre": "Piano met blazers",
+    "weergavenaam": "Kamermuziek & solo"
+   },
+   {
+    "mw_genre": "Overige strijkensembles",
+    "weergavenaam": "Kamermuziek & solo"
+   },
+   {
+    "mw_genre": "Blaasensembles",
+    "weergavenaam": "Kamermuziek & solo"
+   },
+   {
+    "mw_genre": "Overige kamermuziekensembles",
+    "weergavenaam": "Kamermuziek & solo"
+   },
+   {
+    "mw_genre": "Elektronische muziek",
+    "weergavenaam": "Kamermuziek & solo"
+   },
+   {
+    "mw_genre": "Opera/operette",
+    "weergavenaam": "Opera & vocaal"
+   },
+   {
+    "mw_genre": "Aria's en koren uit opera/operette",
+    "weergavenaam": "Opera & vocaal"
+   },
+   {
+    "mw_genre": "Liederen",
+    "weergavenaam": "Opera & vocaal"
+   },
+   {
+    "mw_genre": "Overige vocale werken",
+    "weergavenaam": "Opera & vocaal"
+   },
+   {
+    "mw_genre": "Missen",
+    "weergavenaam": "Opera & vocaal"
+   },
+   {
+    "mw_genre": "Cantates",
+    "weergavenaam": "Opera & vocaal"
+   },
+   {
+    "mw_genre": "Oratoria",
+    "weergavenaam": "Opera & vocaal"
+   },
+   {
+    "mw_genre": "Koorliederen",
+    "weergavenaam": "Opera & vocaal"
+   },
+   {
+    "mw_genre": "Gregoriaans",
+    "weergavenaam": "Opera & vocaal"
+   },
+   {
+    "mw_genre": "Liturgie",
+    "weergavenaam": "Opera & vocaal"
+   },
+   {
+    "mw_genre": "Arrangementen",
+    "weergavenaam": null
+   }
+  ]
+ },
+ {
+  "naam": "Wereld",
+  "kleur": "#e3a21a",
+  "nederlands": 0,
+  "koppelingen": [
+   {
+    "mw_genre": "Latin",
+    "weergavenaam": "Latin"
+   },
+   {
+    "mw_genre": "Mestizo",
+    "weergavenaam": "Mestizo"
+   },
+   {
+    "mw_genre": "Salsa/Timba",
+    "weergavenaam": "Salsa/Timba"
+   },
+   {
+    "mw_genre": "Dub",
+    "weergavenaam": "Dub"
+   },
+   {
+    "mw_genre": "Reggae/Ska/Dancehall",
+    "weergavenaam": "Reggae/Ska/Dancehall"
+   },
+   {
+    "mw_genre": "Reggaeton",
+    "weergavenaam": "Reggaeton"
+   },
+   {
+    "mw_genre": "Afghanistan",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Afrika",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Afrobeat",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Albanië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Algerije",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Andes muziek",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Angola",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Antillen",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Argentinië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Armenië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Australië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Azerbeidzjan",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Azië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Bahama-eilanden",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Bali",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Balkangebied",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Bangladesh",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Baskenland",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "België",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Belize",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Bellydance",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Benin",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Bhangra/Asian underground/Bollywood",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Bolivia",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Bosnië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Brazil",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Brazilië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Bretagne",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Bulgarije",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Burkina Faso",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Cambodja",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Canada",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Caribisch gebied",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Catalonië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Celtic",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Centraal-Afrikaanse Republiek",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Chili",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "China",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Colombia",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Comoren",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Congo",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Congo-Brazzaville",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Corsica",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Costa Rica",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Cuba",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Cyprus",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Denemarken",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Desert blues",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Dominicaanse Republiek",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Duitsland",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Ecuador",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Egypte",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Engeland",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Estland",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Ethiopië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Europa",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Fado",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Filippijnen",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Finland",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Flamenco",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Frankrijk",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Frans Guyana",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Gabon",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Gambia",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Georgië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Ghana",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Griekenland",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Groot-Brittannië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Guadeloupe",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Guatemala",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Guinee",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Guinee-Bissau",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Hawaii",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Haïti",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Highlife",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Hongarije",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "IJsland",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Ierland",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "India",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Indiase klassieke muziek",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Indonesië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Irak",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Iran",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Israël",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Italië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Ivoorkust",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Jamaica",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Japan",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Java",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Jemen",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Joegoslavië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Kaapverdië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Kameroen",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Kazachstan",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Kenia",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Klezmer/Joods/Ladino",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Koerdistan",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Kora/Griotmuziek",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Korea",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Kosovo",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Kroatië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Laos",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Lapland",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Latijns-Amerika",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Letland",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Libanon",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Litouwen",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Lusofoon",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Macedonië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Madagaskar",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Malawi",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Maleisië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Mali",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Marokko",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Martinique",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Mauritanië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Mauritius",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Merengue/Bachata",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Mexico",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Midden- en Zuid-Afrika",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Midden- en Zuid-Amerika",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Midden-Amerika",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Midden-Oosten",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Moldavië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Molukken",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Mongolië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Mozambique",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Native American",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Nepal",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Nieuw-Zeeland",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Niger",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Nigeria",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Noord-Afrika",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Noord-Afrika en Midden-Oosten",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Noord-Amerika",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Noorwegen",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Oceanië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Oekraïne",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Oost-Afrika",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Oost-Europa",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Oostenrijk",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Ottomaanse Muziek",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Overige gebieden en verzamelcd's",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Pacific eilanden",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Pakistan",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Palestina",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Panama",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Paraguay",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Peru",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Perzië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Polen",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Polynesië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Portugal",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Puerto Rico",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Rai",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Roemenië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Romamuziek",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Rusland",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Rwanda",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Réunion",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Saoedi-Arabië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Sardinië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Scandinavië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Schotland",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Senegal",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Servië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Seychellen",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Siberië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Sicilië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Sierra Leone",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Slovenië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Slowakije",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Soca/Calypso/Mento",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Son/Danzón",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Soukous/Rumba congolaise/Ndombolo",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Spanje",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Sudan",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Suriname",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Syrië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Tadzjikistan",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Taiwan",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Tango",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Tanzania",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Thailand",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Tibet",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Tirol",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Tobago",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Toeareg",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Togo",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Trinidad",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Tsjechië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Tsjechoslowakije",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Tunesië",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Turkije",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Tuva",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Uganda",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Uruguay",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Venezuela",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Verenigde Staten",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Vietnam",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Wales",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "West-Afrika",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "West-Europa",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "West-Sahara",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Wit-Rusland",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "World fusion",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Zambia",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Zanzibar",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Zaïre",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Zimbabwe",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Zouk/Afrozouk",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Zuid- en Zuidoost-Europa",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Zuid-Afrika",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Zuid-Amerika",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Zuid-Europa",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Zweden",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "Zwitserland",
+    "weergavenaam": null
+   },
+   {
+    "mw_genre": "mandingobeat",
+    "weergavenaam": null
+   }
+  ]
+ },
+ {
+  "naam": "HipHop",
+  "kleur": "#c4167f",
+  "nederlands": 0,
+  "koppelingen": [
+   {
+    "mw_genre": "Hiphop",
+    "weergavenaam": "Hiphop"
+   },
+   {
+    "mw_genre": "Grime",
+    "weergavenaam": "Grime"
+   },
+   {
+    "mw_genre": "Nederhop",
+    "weergavenaam": "Nederhop"
+   },
+   {
+    "mw_genre": "Triphop",
+    "weergavenaam": "Triphop"
+   }
+  ]
+ },
+ {
+  "naam": "Elektronisch",
+  "kleur": "#6c2bd9",
+  "nederlands": 0,
+  "koppelingen": [
+   {
+    "mw_genre": "Dance",
+    "weergavenaam": "Dance"
+   },
+   {
+    "mw_genre": "Drum & Bass",
+    "weergavenaam": "Drum & Bass"
+   },
+   {
+    "mw_genre": "Electro/Synthpop",
+    "weergavenaam": "Electro/Synthpop"
+   },
+   {
+    "mw_genre": "House/Techno/Trance",
+    "weergavenaam": "House/Techno/Trance"
+   },
+   {
+    "mw_genre": "Downtempo/Lounge",
+    "weergavenaam": "Downtempo/Lounge"
+   },
+   {
+    "mw_genre": "Ambient",
+    "weergavenaam": "Ambient"
+   },
+   {
+    "mw_genre": "IDM/Elektronica",
+    "weergavenaam": "IDM/Elektronica"
+   }
+  ]
+ },
+ {
+  "naam": "Soul & funk",
+  "kleur": "#ff7a1a",
+  "nederlands": 0,
+  "koppelingen": [
+   {
+    "mw_genre": "Disco",
+    "weergavenaam": "Disco"
+   },
+   {
+    "mw_genre": "Funk",
+    "weergavenaam": "Funk"
+   },
+   {
+    "mw_genre": "Neo-soul",
+    "weergavenaam": "Neo-soul"
+   },
+   {
+    "mw_genre": "R&B",
+    "weergavenaam": "R&B"
+   },
+   {
+    "mw_genre": "Soul",
+    "weergavenaam": "Soul"
+   }
+  ]
+ },
+ {
+  "naam": "Roots & blues",
+  "kleur": "#2c6fd6",
+  "nederlands": 0,
+  "koppelingen": [
+   {
+    "mw_genre": "Americana",
+    "weergavenaam": "Americana"
+   },
+   {
+    "mw_genre": "Bluegrass",
+    "weergavenaam": "Bluegrass"
+   },
+   {
+    "mw_genre": "Country",
+    "weergavenaam": "Country"
+   },
+   {
+    "mw_genre": "Countryrock",
+    "weergavenaam": "Countryrock"
+   },
+   {
+    "mw_genre": "Folk",
+    "weergavenaam": "Folk"
+   },
+   {
+    "mw_genre": "Folkrock",
+    "weergavenaam": "Folkrock"
+   },
+   {
+    "mw_genre": "Nederfolk",
+    "weergavenaam": "Nederfolk"
+   },
+   {
+    "mw_genre": "Rock-'n-roll/Rockabilly",
+    "weergavenaam": "Rock-'n-roll/Rockabilly"
+   },
+   {
+    "mw_genre": "Singer-songwriter",
+    "weergavenaam": "Singer-songwriter"
+   },
+   {
+    "mw_genre": "Blues",
+    "weergavenaam": "Blues"
+   },
+   {
+    "mw_genre": "Doowop",
+    "weergavenaam": "Doowop"
+   },
+   {
+    "mw_genre": "Rhythm & Blues",
+    "weergavenaam": "Rhythm & Blues"
+   }
+  ]
+ },
+ {
+  "naam": "Film & musical",
+  "kleur": "#13a86b",
+  "nederlands": 0,
+  "koppelingen": [
+   {
+    "mw_genre": "Musical",
+    "weergavenaam": "Musical"
+   },
+   {
+    "mw_genre": "Soundtrack",
+    "weergavenaam": "Soundtrack"
+   },
+   {
+    "mw_genre": "Televisieserie",
+    "weergavenaam": "Televisieserie"
+   }
+  ]
+ },
+ {
+  "naam": "Nederlandse muziek",
+  "kleur": "#ff4d6d",
+  "nederlands": 1,
+  "koppelingen": [
+   {
+    "mw_genre": "Nederlands product",
+    "weergavenaam": "Nederlands product"
+   },
+   {
+    "mw_genre": "Nederlandstalig",
+    "weergavenaam": "Nederlandstalig"
+   },
+   {
+    "mw_genre": "Cabaret",
+    "weergavenaam": "Cabaret"
+   },
+   {
+    "mw_genre": "Levenslied",
+    "weergavenaam": "Levenslied"
+   },
+   {
+    "mw_genre": "Luisterlied",
+    "weergavenaam": "Luisterlied"
+   },
+   {
+    "mw_genre": "Nederhop",
+    "weergavenaam": "Nederhop"
+   },
+   {
+    "mw_genre": "Nederfolk",
+    "weergavenaam": "Nederfolk"
+   }
+  ]
+ }
+]
