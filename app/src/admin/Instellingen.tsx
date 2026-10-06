@@ -23,6 +23,7 @@ const GROEPEN: { naam: string; velden: Veld[] }[] = [
     { k: 'waarschuwing_sec', label: 'Zonder gekozen platenspeler: waarschuwing vooraf (seconden)', soort: 'getal' },
     { k: 'bevestiging_sec', label: 'Duur bevestigingsscherm (seconden)', soort: 'getal' },
     { k: 'vaak_periode_dagen', label: 'Periode "Vaak aangevraagd" (dagen)', soort: 'getal' },
+    { k: 'spotify_aan', label: 'Spotify-speler en QR-code op de albumpagina', soort: 'bool', uitleg: 'Ook het menu Spotify-koppelingen. Bestaande koppelingen blijven bewaard.' },
     { k: 'bumper_video_url', label: 'Bumper op het rustscherm (adres van de video)', soort: 'tekst', uitleg: 'Leeg = het welkomstscherm "De Fonotheek".' },
   ] },
   { naam: 'Nieuwsbrief en privacy', velden: [

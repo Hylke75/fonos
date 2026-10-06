@@ -215,7 +215,7 @@ export async function album(id: number, voorbeeld = false) {
     id, titelnummer: t.titelnummer, soort: t.soort, velden: v, jaar: t.d_jaar,
     fonos_verhaal: t.fonos_verhaal, ai_tekst: !!t.ai_tekst, tip: !!t.tip,
     // Alleen goedgekeurde koppelingen (automatisch goed of handmatig) tonen; anders niets.
-    spotify_album_id: t.spotify_album_id && ['auto_goed', 'handmatig'].includes(t.spotify_status) && /^[A-Za-z0-9]{22}$/.test(t.spotify_album_id) ? t.spotify_album_id : null,
+    spotify_album_id: (await instellingen()).spotify_aan && t.spotify_album_id && ['auto_goed', 'handmatig'].includes(t.spotify_status) && /^[A-Za-z0-9]{22}$/.test(t.spotify_album_id) ? t.spotify_album_id : null,
     beschikbaar: exemplaren.some((e) => e.deze_titel && e.beschikbaar),
     exemplaren,
   }

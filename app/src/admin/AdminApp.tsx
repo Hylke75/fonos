@@ -1,5 +1,6 @@
 // Beheeromgeving (10): zijbalk, rollen en pagina's.
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { api } from '../api'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import { Activity, Archive, Disc3, History, Import, LayoutGrid, LibraryBig, ListMusic, LogOut, Mail, Settings, Users, Headphones } from 'lucide-react'
 import { Logo } from '../components/Logo'
@@ -27,13 +28,15 @@ export function AdminApp() {
 
 function Beheer({ ik, uit }: { ik: Ik; uit: () => void }) {
   const [menu, setMenu] = useState(false)
+  const [spotify, setSpotify] = useState(false)
+  useEffect(() => { api<{ spotify: boolean }>('/beheer/functies').then((f) => setSpotify(f.spotify)).catch(() => {}) }, [])
   const beheerder = heeftRol(ik, 'beheerder')
   const items = [
     { naar: 'collectie', label: 'Collectie', icoon: LibraryBig },
     { naar: 'importeren', label: 'Importeren', icoon: Import },
     ...(beheerder ? [{ naar: 'genreknoppen', label: 'Genreknoppen', icoon: LayoutGrid }] : []),
     { naar: 'selecties', label: 'Selecties', icoon: ListMusic },
-    { naar: 'spotify', label: 'Spotify-koppelingen', icoon: Disc3 },
+    ...(spotify ? [{ naar: 'spotify', label: 'Spotify-koppelingen', icoon: Disc3 }] : []),
     ...(beheerder ? [
       { naar: 'nieuwsbrief', label: 'Nieuwsbrief', icoon: Mail },
       { naar: 'status', label: 'Status', icoon: Activity },
