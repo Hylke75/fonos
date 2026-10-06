@@ -2,7 +2,7 @@
 //
 //   npm run spotify:koppel -- --proef 150             proef op 150 willekeurige titels, schrijft NIETS (rapport)
 //   npm run spotify:koppel -- --proef 150 --schrijf   idem, maar slaat de uitkomst op
-//   npm run spotify:koppel -- --alles [--max 2000]    de hele collectie (of hooguit N titels), slaat alles op
+//   npm run spotify:koppel -- --alles [--max 2000] [--max-minuten 50]   de hele collectie (of hooguit N titels/minuten), slaat alles op
 //
 // Nodig: DATABASE_URL, SPOTIFY_CLIENT_ID en SPOTIFY_CLIENT_SECRET (uit .env.local of de omgeving).
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
@@ -26,6 +26,8 @@ const proef = arg('--proef') ? Number(arg('--proef')) : null
 const alles = process.argv.includes('--alles')
 const schrijf = alles || process.argv.includes('--schrijf')
 const max = arg('--max') ? Number(arg('--max')) : Infinity
+// Tijdslimiet (voor de geplande GitHub Action): netjes stoppen; de volgende run gaat verder waar deze stopte.
+const eindtijd = arg('--max-minuten') ? Date.now() + Number(arg('--max-minuten')) * 60_000 : Infinity
 const rapportPad = arg('--rapport') ?? 'spotify-rapport.json'
 
 if (!heeftSleutels()) { console.error('SPOTIFY_CLIENT_ID en SPOTIFY_CLIENT_SECRET ontbreken.'); process.exit(1) }
@@ -41,7 +43,7 @@ const t0 = Date.now()
 
 const verwerk = async (titels: any[]) => {
   for (const t of titels) {
-    if (gedaan >= max) return false
+    if (gedaan >= max || Date.now() >= eindtijd) return false
     const u = await beoordeel(t, generiek, klassiek)
     verzoeken += u.zoekopdrachten
     telling[u.status]++
