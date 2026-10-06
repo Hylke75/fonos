@@ -598,11 +598,14 @@ pre.rapport { background: #07111f; border: 1px solid var(--line); border-radius:
 .spotify-regel .kandidaat.huidig { border-color: #1ed760; box-shadow: inset 0 0 0 1px #1ed760; }
 .spotify-regel .acties { display: flex; flex-direction: column; gap: 8px; }
 @media (max-width: 1200px) { .spotify-regel { grid-template-columns: 1fr; } }
-.spotify-blok { margin-top: 32px; }
-.spotify-blok h2 { font-size: 20px; margin: 0 0 12px; }
-.spotify-rij { display: grid; grid-template-columns: 1fr 150px; gap: 20px; align-items: center; }
-.spotify-rij iframe { width: 100%; border: 0; border-radius: 12px; background: var(--surface-2); }
-.spotify-qr { text-align: center; }
-.spotify-qr .code { width: 130px; height: 130px; margin: 0 auto; border-radius: 10px; overflow: hidden; background: #fff; }
+/* Spotify op de albumpagina: zelfde opbouw als "Nummers" en de kaart "Beschikbare exemplaren"
+   (kaart met rijen, scheidingslijn, tekst en grijze subtekst). */
+.spotify-blok h2 { font-size: 20px; margin: 40px 0 12px; }
+.spotify-kaart { padding: 14px 14px 0; }
+.spotify-kaart .spotify-speler { border-radius: var(--radius-s); overflow: hidden; background: var(--surface-2); height: 152px; }
+.spotify-kaart iframe { display: block; width: 100%; height: 152px; border: 0; }
+.spotify-qr { display: grid; grid-template-columns: 96px 1fr; gap: 16px; align-items: center; padding: 14px 4px; margin-top: 14px; border-top: 1px solid var(--line); }
+.spotify-qr .code { width: 96px; height: 96px; padding: 5px; border-radius: var(--radius-s); background: #fff; }
 .spotify-qr .code svg { width: 100%; height: 100%; display: block; }
-.spotify-qr p { font-size: 13px; color: var(--muted); margin: 8px 0 0; line-height: 1.35; }
+.spotify-qr .wat { font-size: 16px; color: #e6e9f1; }
+.spotify-qr .uitleg { color: var(--muted); font-size: 15px; margin-top: 4px; }
