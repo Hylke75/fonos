@@ -194,3 +194,19 @@ test('verbeteringen: status voor de bezoeker, looplijst, terugzetten, vandaag, b
   assert.equal(sluitingVandaag({ sluitingstijd: '17:00', sluitingstijd_ma: '' }, maandag), '17:00')
   assert.equal(sluitingVandaag({ sluitingstijd: '17:00', sluitingstijd_ma: '22:00' }, maandag), '22:00')
 })
+
+test('Spotify-koppelingen inlezen uit het bestand: alleen titels met nog_niet', async () => {
+  const { laadSpotifyKoppelingen } = await import('../server/vulling.ts')
+  const { gzipSync } = await import('node:zlib')
+  const { writeFileSync } = await import('node:fs')
+  const a = await titelMetExemplaar('SP00001', 'Rumours', 'Fleetwood Mac')
+  const b = await titelMetExemplaar('SP00002', 'Tusk', 'Fleetwood Mac')
+  await run("UPDATE titels SET spotify_status = 'handmatig', spotify_album_id = 'HANDMATIGHANDMATIG1234' WHERE id = ?", b)
+  const pad = join(mkdtempSync(join(tmpdir(), 'spotify-')), 'k.jsonl.gz')
+  const rij = (tn: string, s: string, id: string | null) => JSON.stringify({ tn, s, a: id, sc: 1, k: '[]', g: '2026-10-06 12:00:00' })
+  writeFileSync(pad, gzipSync([rij('SP00001', 'auto_goed', '1111111111111111111111'), rij('SP00002', 'geen', null), rij('ONBEKEND', 'auto_goed', 'x')].join('\n')))
+  await laadSpotifyKoppelingen(pad, () => {})
+  assert.equal((await get<any>('SELECT spotify_status, spotify_album_id FROM titels WHERE id = ?', a))!.spotify_album_id, '1111111111111111111111')
+  // Een handmatige keuze in productie blijft staan.
+  assert.equal((await get<any>('SELECT spotify_status FROM titels WHERE id = ?', b))!.spotify_status, 'handmatig')
+})

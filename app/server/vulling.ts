@@ -1,6 +1,7 @@
 // Eerste vulling: Muziekweb-exports, gebruikscollectie (of demo-exemplaren) en de eerste beheerder.
 // Wordt gebruikt door de opdrachtregel (scripts/) en bij elke Vercel-build (scripts/vercel-vul.ts); idempotent.
 import { existsSync, readFileSync } from 'node:fs'
+import { gunzipSync } from 'node:zlib'
 import { basename, join } from 'node:path'
 import { all, get, run, ROOT } from './db.ts'
 import { exportDelen, leesExportDeel } from './importers/muziekweb-lezers.ts'
@@ -26,6 +27,21 @@ export async function laadExports(map = process.env.FONOS_DUMP_DIR ?? join(ROOT,
     voortgang(`  ${d}: ${rapport.in_dump} records (${Math.round((Date.now() - t0) / 1000)} s)`)
   }
   return rondImportAf(importId, rapport, WIE, `exportmap (${te.length} delen)`, te.length === delen.length)
+}
+
+/** Spotify-koppelingen uit spotify/koppelingen.jsonl.gz (gemaakt met scripts/spotify-export.ts).
+ *  Alleen titels die nog op 'nog_niet' staan; handmatige keuzes in productie blijven dus altijd staan. */
+export async function laadSpotifyKoppelingen(pad = join(ROOT, '..', 'spotify', 'koppelingen.jsonl.gz'), voortgang = console.log) {
+  if (!existsSync(pad)) return
+  const regels = gunzipSync(readFileSync(pad)).toString('utf8').split('\n').filter(Boolean).map((r) => JSON.parse(r))
+  let n = 0
+  for (let i = 0; i < regels.length; i += 2000) {
+    const r = await run(`UPDATE titels t SET spotify_status = x.s, spotify_album_id = x.a, spotify_score = x.sc, spotify_kandidaat = x.k, spotify_gecontroleerd_op = x.g
+      FROM jsonb_to_recordset(?::jsonb) AS x(tn text, s text, a text, sc numeric, k text, g text)
+      WHERE t.titelnummer = x.tn AND t.spotify_status = 'nog_niet' AND x.s IN ('auto_goed', 'twijfel', 'geen', 'uitgesloten')`, JSON.stringify(regels.slice(i, i + 2000)))
+    n += r.changes
+  }
+  voortgang(`Spotify-koppelingen: ${n} nieuw van ${regels.length} in het bestand`)
 }
 
 /** Eenmalige correctie: "voor 1988" gaf ten onrechte jaar 1988. */
