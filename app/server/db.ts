@@ -73,6 +73,7 @@ export function plaatshouders(sql: string): string {
 export function db(): Promise<Verbinding> {
   if (!verbinding) {
     verbinding = (async () => {
+      if (!process.env.DATABASE_URL && process.env.VERCEL) throw new Error('DATABASE_URL ontbreekt in de omgevingsvariabelen van Vercel')
       const v = process.env.DATABASE_URL ? await eersteBereikbare(process.env.DATABASE_URL) : await maakPglite()
       await zorgVoorSchema(v)
       return v

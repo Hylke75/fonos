@@ -49,8 +49,15 @@ export function KioskApp() {
   const mandRef = useRef(mand)
   mandRef.current = mand
 
-  const laadConfig = useCallback(() => api<Config>('/kiosk/config').then(setConfig).catch(() => {}), [])
+  const [onbereikbaar, setOnbereikbaar] = useState(false)
+  const laadConfig = useCallback(() => api<Config>('/kiosk/config').then((c) => { setConfig(c); setOnbereikbaar(false) }).catch(() => setOnbereikbaar(true)), [])
   useEffect(() => { laadConfig() }, [laadConfig])
+  // Lukt de eerste keer laden niet, dan elke 10 seconden opnieuw proberen.
+  useEffect(() => {
+    if (config || !onbereikbaar) return
+    const t = setTimeout(laadConfig, 10000)
+    return () => clearTimeout(t)
+  }, [config, onbereikbaar, laadConfig])
 
   // Beschikbaarheid van de titels in de aanvraaglijst bijhouden (7.8).
   const controleerMand = useCallback(() => {
@@ -110,7 +117,7 @@ export function KioskApp() {
     leegMand: () => setMand([]),
   }, [config, mand, beschikbaar, versie, toast, wisSessie])
 
-  if (!ctx) return <div className="kiosk"><Laden tekst="De Fonotheek wordt geladen…" /></div>
+  if (!ctx) return <div className="kiosk"><Laden tekst={onbereikbaar ? 'De Fonotheek is even niet bereikbaar. We proberen het zo opnieuw…' : 'De Fonotheek wordt geladen…'} /></div>
 
   return (
     <KioskCtx.Provider value={ctx}>
