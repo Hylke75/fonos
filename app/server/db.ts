@@ -23,7 +23,11 @@ async function maakPostgres(url: string): Promise<Verbinding> {
     max: Number(process.env.FONOS_DB_MAX ?? 5),
     idle_timeout: 20,
     connect_timeout: 15,
-    types: { bigint: { to: 20, from: [20], serialize: (x: any) => String(x), parse: (x: string) => Number(x) } } as any,
+    types: {
+      bigint: { to: 20, from: [20], serialize: (x: any) => String(x), parse: (x: string) => Number(x) },
+      // JSON gaat als tekst de query in (?::jsonb); niet nogmaals coderen.
+      json: { to: 3802, from: [114, 3802], serialize: (x: any) => (typeof x === 'string' ? x : JSON.stringify(x)), parse: (x: string) => JSON.parse(x) },
+    } as any,
     onnotice: () => {},
   })
   const uit = (s: any): Uitvoerder => ({ query: async (q, p) => { const r = await s.unsafe(q, p as any[]); return { rows: r as Rij[], count: r.count ?? r.length } } })
