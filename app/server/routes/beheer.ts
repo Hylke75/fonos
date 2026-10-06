@@ -188,12 +188,12 @@ beheer.get('/dump/:titelnummer', async (c) => {
   return c.json({ titelnummer: tn, ...JSON.parse(d.data), bestaande_titel: bestaand?.id ?? null })
 })
 
-const OBJECT_RE = /^\d{5,}$/
+const OBJECT_RE = /^[A-Za-z0-9]{5,}$/
 
 beheer.post('/titels', async (c) => {
   const b = await c.req.json<{ titelnummer?: string; objectnummer?: string; vindcode?: string; handmatig?: TitelVelden }>()
   const obj = b.objectnummer?.trim()
-  if (obj && !OBJECT_RE.test(obj)) return fout(c, 'Een objectnummer bestaat uit cijfers')
+  if (obj && !OBJECT_RE.test(obj)) return fout(c, 'Een objectnummer bestaat uit minstens 5 letters of cijfers')
   if (obj && await get('SELECT id FROM exemplaren WHERE objectnummer = ?', obj)) return fout(c, `Objectnummer ${obj} bestaat al`, 409)
   let id: number
   try {
@@ -231,7 +231,7 @@ beheer.post('/titels', async (c) => {
 beheer.post('/exemplaren', async (c) => {
   const b = await c.req.json<{ titel_id: number; objectnummer: string; vindcode?: string }>()
   const obj = b.objectnummer?.trim()
-  if (!obj || !OBJECT_RE.test(obj)) return fout(c, 'Vul een geldig objectnummer in (cijfers)')
+  if (!obj || !OBJECT_RE.test(obj)) return fout(c, 'Vul een geldig objectnummer in')
   if (await get('SELECT id FROM exemplaren WHERE objectnummer = ?', obj)) return fout(c, `Objectnummer ${obj} bestaat al`, 409)
   const t = await get<any>('SELECT id, titelnummer, d_titel FROM titels WHERE id = ?', b.titel_id)
   if (!t) return fout(c, 'Titel niet gevonden', 404)
@@ -256,7 +256,7 @@ beheer.patch('/exemplaar/:id', async (c) => {
   const wijz: [string, any][] = []
   if (b.objectnummer !== undefined && b.objectnummer.trim() !== e.objectnummer) {
     const o = b.objectnummer.trim()
-    if (!OBJECT_RE.test(o)) return fout(c, 'Een objectnummer bestaat uit cijfers')
+    if (!OBJECT_RE.test(o)) return fout(c, 'Een objectnummer bestaat uit minstens 5 letters of cijfers')
     if (await get('SELECT id FROM exemplaren WHERE objectnummer = ? AND id <> ?', o, id)) return fout(c, `Objectnummer ${o} bestaat al`, 409)
     wijz.push(['objectnummer', o])
   }

@@ -11,6 +11,8 @@ import { OPEN_ITEMS_SQL } from '../titels.ts'
 export type Regel = { objectnummer: string | null; titelnummer: string | null; vindcode: string | null; bron: string; regel: number }
 
 const RE_OBJECT = /^\d{5,}$/
+// In de kolom objectnummer ook afwijkende waarden uit de bron (bv. z100190255, 80A241355).
+const RE_OBJECT_KOLOM = /^[A-Z0-9]{5,}$/
 const RE_TITEL = /^[A-Z]{2,4}\d{3,}$/
 const KOP_VINDCODE = /^(vindcode|standplaats|locatie)$/i
 const KOP_OBJECT = /^(objectnummer|objectnr|object|plessey)$/i
@@ -22,9 +24,10 @@ function ontleedRegel(cellen: string[], kop: { vindcode: number; object: number;
   let titelnummer: string | null = null
   const vindcode = kop.vindcode >= 0 ? (cellen[kop.vindcode]?.trim() || null) : null
   const kandidaten = (i: number) => (cellen[i] ?? '').split(';').map((x) => x.trim().toUpperCase())
-  if (kop.object >= 0) objectnummer = kandidaten(kop.object).find((x) => RE_OBJECT.test(x)) ?? null
+  if (kop.object >= 0) objectnummer = kandidaten(kop.object).find((x) => RE_OBJECT_KOLOM.test(x)) ?? null
   if (kop.titel >= 0) titelnummer = kandidaten(kop.titel).find((x) => RE_TITEL.test(x)) ?? null
-  cellen.forEach((_, i) => {
+  // Met bekende kolomkoppen alleen die kolommen; anders alle cellen doorzoeken.
+  if (!(kop.object >= 0 && kop.titel >= 0)) cellen.forEach((_, i) => {
     if (i === kop.vindcode) return
     for (const x of kandidaten(i)) {
       if (!objectnummer && RE_OBJECT.test(x)) objectnummer = x
@@ -78,7 +81,23 @@ function regelsUitTabel(rijen: string[][], bron: string, overgeslagen: string[] 
 }
 
 /** Leest een .xlsx of .csv. Tabbladen met prefix OUD_ worden overgeslagen (open punt O-6). */
+/**
+ * Oude lijsten (open punt O-6) niet importeren: tabbladen met prefix OUD_, en tabbladen waarin geen
+ * enkele regel een titelnummer heeft (in de Populair-lijst heten die gewoon "HA-HL" e.d.).
+ */
+function zonderOudeLijsten(r: { regels: Regel[]; overgeslagen: string[] }) {
+  const metTitel = new Map<string, number>()
+  for (const x of r.regels) metTitel.set(x.bron, (metTitel.get(x.bron) ?? 0) + (x.titelnummer ? 1 : 0))
+  const oud = new Set([...metTitel].filter(([, n]) => n === 0).map(([b]) => b))
+  for (const b of oud) if (!r.overgeslagen.includes(b)) r.overgeslagen.push(b)
+  return { regels: r.regels.filter((x) => !oud.has(x.bron)), overgeslagen: r.overgeslagen }
+}
+
 export async function leesBestand(buf: Buffer, naam: string): Promise<{ regels: Regel[]; overgeslagen: string[] }> {
+  return zonderOudeLijsten(await leesBestandRuw(buf, naam))
+}
+
+async function leesBestandRuw(buf: Buffer, naam: string): Promise<{ regels: Regel[]; overgeslagen: string[] }> {
   const overgeslagen: string[] = []
   if (/\.xlsx$/i.test(naam)) {
     const wb = new ExcelJS.Workbook()

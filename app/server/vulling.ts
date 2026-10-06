@@ -35,6 +35,10 @@ export async function laadCollectie(pad = join(ROOT, '..', 'collectie', 'gebruik
   if (echte > 0) { voortgang('Gebruikscollectie: al geladen'); return true }
   // Eerder geladen demo-exemplaren maken plaats voor de echte collectie.
   await run("DELETE FROM exemplaren WHERE bron = 'demo' AND id NOT IN (SELECT exemplaar_id FROM aanvraag_items)")
+  // Titels die alleen voor de demo bestonden (geen exemplaren, niet door Fonos aangepast) ook weg.
+  await run(`DELETE FROM titels t WHERE NOT EXISTS (SELECT 1 FROM exemplaren e WHERE e.titel_id = t.id) AND t.heeft_fonos = 0
+    AND NOT EXISTS (SELECT 1 FROM aanvraag_items i WHERE i.titel_id = t.id) AND NOT EXISTS (SELECT 1 FROM selectie_titels s WHERE s.titel_id = t.id)`)
+  await run('UPDATE titels SET uitgelicht = 0')
   const { regels, overgeslagen } = await leesBestand(readFileSync(pad), basename(pad))
   const a = await analyseer(regels, basename(pad), overgeslagen)
   const r = await voerDoor(a.token, ['nieuw', 'gewijzigd', 'onbekend', 'dubbel', 'zonder_titelnummer'], WIE)

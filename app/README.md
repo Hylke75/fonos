@@ -9,15 +9,29 @@ functioneel ontwerp v1.0 (6 oktober 2026) en de vormgeving uit de bijlage.
 | Medewerkersscherm | `/medewerker` | rol medewerker |
 | Beheeromgeving | `/beheer` | rollen redacteur en beheerder |
 
-## Starten
+## Productie: Vercel + Supabase
 
-Vereist Node.js 22.13 of nieuwer (gebruikt de ingebouwde SQLite van Node).
+- **Database:** Supabase-project `fonos` (Postgres), databaserol `fonos_app` via de pooler.
+- **Hosting:** Vercel-project `fonos`. `vercel.json` (repo-root) bouwt met `npm run vercel-build`:
+  frontend (Vite), één API-functie in regio Dublin (Build Output API, `scripts/bouw-vercel.mjs`) en daarna
+  de vulling (`scripts/vercel-vul.ts`): schema, nieuwe Muziekweb-exportdelen, gebruikscollectie
+  (`collectie/gebruikscollectie.csv`) en de eerste beheerder. Alles idempotent; elke build laadt alleen wat nieuw is.
+- **Bestanden:** geüploade hoezen en back-ups in Vercel Blob (`BLOB_READ_WRITE_TOKEN`), los van de database.
+- **Planner:** Vercel Cron roept elke nacht `/api/cron` aan (back-up, sluitingstijd); daarnaast loopt de planner mee met verzoeken.
+- **Realtime:** kiosk en medewerkersscherm vragen elke paar seconden `/api/versies` op.
+
+Omgevingsvariabelen in Vercel: `DATABASE_URL` (mag meerdere adressen bevatten, gescheiden door spaties),
+`FONOS_BEHEERDER_EMAIL`, `FONOS_START_WACHTWOORD`, `CRON_SECRET`, en `BLOB_READ_WRITE_TOKEN` (via de Blob-koppeling).
+
+## Lokaal starten
+
+Vereist Node.js 22.13 of nieuwer. Zonder `DATABASE_URL` draait de app op PGlite (Postgres in het proces, map `data/pglite`).
 
 ```bash
 cd app
 npm install
 npm run import:muziekweb -- ../exports     # Muziekweb-gegevens inlezen (± 30 s)
-npm run import:collectie -- Klassiek.xlsx Populair.xlsx   # eerste vulling exemplaren
+npm run import:collectie -- ../collectie/gebruikscollectie.csv   # eerste vulling exemplaren
 npm run gebruiker -- naam@beeldengeluid.nl "Voornaam Achternaam" <wachtwoord>
 npm run build && npm start                  # http://localhost:3000
 ```
@@ -42,10 +56,9 @@ Gebruik de demovulling niet in productie.
 |---|---|---|
 | `PORT` | 3000 | poort van de server |
 | `FONOS_DATA_DIR` | `app/data` | map voor database en uploads |
-| `FONOS_DB` | `$FONOS_DATA_DIR/fonotheek.db` | databasebestand |
-| `FONOS_UPLOAD_DIR` | `$FONOS_DATA_DIR/uploads` | door Fonos geüploade hoezen |
-| `FONOS_BACKUP_DIR` | `$FONOS_DATA_DIR/backups` | back-ups; zet dit in productie op een **andere schijf of share** (12.3) |
-| `FONOS_DUMP_DIR` | – | map waar een Muziekweb-levering klaarstaat ("Ophalen uit servermap") |
+| `DATABASE_URL` | – | Postgres; zonder: PGlite in `$FONOS_DATA_DIR/pglite` |
+| `FONOS_OPSLAG_DIR` | `$FONOS_DATA_DIR/opslag` | hoezen en back-ups zonder Vercel Blob |
+| `FONOS_DUMP_DIR` | `../exports` | exportmap van de Muziekweb-scraper |
 | `FONOS_BASIS_URL` | adres van het verzoek | basis voor links in e-mails (wachtwoord-reset) |
 | `RESEND_API_KEY` | – | e-mail via Resend; zonder sleutel komen mails alleen in het serverlog |
 | `FONOS_MAIL_AFZENDER` | `Fonotheek <fonotheek@fonos.nl>` | afzender |
@@ -85,5 +98,5 @@ app/
 
 - Beheer en medewerkersscherm alleen na inloggen (persoonlijk account, wachtwoord met scrypt, sessiecookie httpOnly).
 - Elke API-route controleert de rol; de bezoekersapp kan alleen de catalogus lezen en aanvragen aanmaken.
-- De database is alleen via de server bereikbaar (geen directe toegang vanaf de tablets).
+- Row level security staat aan op alle tabellen, zonder policies: de publieke Supabase-API kan niets lezen of schrijven; alleen de server (rol `fonos_app`, eigenaar van de tabellen) heeft toegang.
 - Aanvragen bevatten geen persoonsgegevens; nieuwsbriefgegevens worden niet opgeslagen.
