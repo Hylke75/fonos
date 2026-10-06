@@ -3,11 +3,11 @@
 import { api } from '../api'
 
 export async function uploadBestand(f: File, voortgang?: (pct: number) => void): Promise<string> {
-  const { blob } = await api<{ blob: boolean }>('/beheer/opslag')
+  const { blob, toegang } = await api<{ blob: boolean; toegang: 'public' | 'private' }>('/beheer/opslag')
   if (blob) {
     const { upload } = await import('@vercel/blob/client')
     const r = await upload(`uploads/${f.name.replace(/[^\w.-]/g, '_')}`, f, {
-      access: 'public', handleUploadUrl: '/api/beheer/blob', multipart: f.size > 20 * 1024 * 1024,
+      access: toegang, handleUploadUrl: '/api/beheer/blob', multipart: f.size > 20 * 1024 * 1024,
       onUploadProgress: (p) => voortgang?.(Math.round(p.percentage)),
     })
     return r.url

@@ -8,6 +8,7 @@ import { auth } from './routes/auth.ts'
 import { versies } from './events.ts'
 import { COOKIE, gebruikerBijToken } from './auth.ts'
 import { tik, tikTerloops } from './planner.ts'
+import { openBlob } from './opslag.ts'
 
 export const app = new Hono()
 
@@ -43,6 +44,23 @@ app.get('/api/cron', async (c) => {
   if (geheim && c.req.header('authorization') !== `Bearer ${geheim}`) return c.json({ fout: 'Niet toegestaan' }, 401)
   await tik({ backup: true })
   return c.json({ ok: true })
+})
+
+/** Bestanden uit de privé Blob-store. Hoezen zijn voor iedereen; back-ups en uploads alleen voor beheerders. */
+app.get('/api/bestand/*', async (c) => {
+  const pad = decodeURIComponent(c.req.path.slice('/api/bestand/'.length))
+  if (pad.includes('..') || !/^(hoezen|backups|uploads)\//.test(pad)) return c.json({ fout: 'Niet gevonden' }, 404)
+  if (!pad.startsWith('hoezen/')) {
+    const g = await gebruikerBijToken(getCookie(c, COOKIE))
+    if (!g?.rollen.includes('beheerder')) return c.json({ fout: 'Geen rechten' }, 403)
+  }
+  const r = await openBlob(pad)
+  if (!r || r.statusCode !== 200) return c.json({ fout: 'Niet gevonden' }, 404)
+  return new Response(r.stream as any, { headers: {
+    'Content-Type': r.blob.contentType ?? 'application/octet-stream',
+    'Cache-Control': pad.startsWith('hoezen/') ? 'public, max-age=86400' : 'private, no-store',
+    ...(pad.startsWith('hoezen/') ? {} : { 'Content-Disposition': `attachment; filename="${pad.split('/').pop()}"` }),
+  } })
 })
 
 app.get('/api/gezond', (c) => c.json({ ok: true }))

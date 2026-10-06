@@ -7,14 +7,17 @@ import { DATA_DIR } from './db.ts'
 
 export const OPSLAG_DIR = process.env.FONOS_OPSLAG_DIR ?? join(DATA_DIR, 'opslag')
 const blob = () => !!process.env.BLOB_READ_WRITE_TOKEN
+/** De Blob-store is privé (standaard): bestanden gaan via /api/bestand/…, met rechtencontrole voor back-ups. */
+export const BLOB_TOEGANG = (process.env.FONOS_BLOB_ACCESS === 'public' ? 'public' : 'private') as 'public' | 'private'
+export const BESTAND_PREFIX = '/api/bestand/'
 
-/** Slaat een bestand op en geeft het adres terug (publiek, met onraadbare naam). */
+/** Slaat een bestand op en geeft het adres terug, met een onraadbare naam. */
 export async function bewaar(map: 'hoezen' | 'backups' | 'uploads', naam: string, data: Buffer, type: string): Promise<string> {
   const veilig = `${randomUUID()}-${basename(naam).replace(/[^\w.-]/g, '_')}`
   if (blob()) {
     const { put } = await import('@vercel/blob')
-    const r = await put(`${map}/${veilig}`, data, { access: 'public', contentType: type, addRandomSuffix: true })
-    return r.url
+    const r = await put(`${map}/${veilig}`, data, { access: BLOB_TOEGANG, contentType: type, addRandomSuffix: false })
+    return BLOB_TOEGANG === 'public' ? r.url : BESTAND_PREFIX + r.pathname
   }
   const pad = join(OPSLAG_DIR, map, veilig)
   mkdirSync(dirname(pad), { recursive: true })
@@ -22,7 +25,18 @@ export async function bewaar(map: 'hoezen' | 'backups' | 'uploads', naam: string
   return `/uploads/${map}/${veilig}`
 }
 
+/** Opent een bestand uit Vercel Blob als stroom (voor /api/bestand). */
+export async function openBlob(pathOfUrl: string) {
+  const { get } = await import('@vercel/blob')
+  return get(pathOfUrl, { access: BLOB_TOEGANG })
+}
+
 export async function lees(adres: string): Promise<Buffer> {
+  if (adres.startsWith(BESTAND_PREFIX) || (blob() && /\.blob\.vercel-storage\.com\//.test(adres))) {
+    const r = await openBlob(adres.startsWith(BESTAND_PREFIX) ? adres.slice(BESTAND_PREFIX.length) : adres)
+    if (!r) throw new Error('Bestand niet gevonden in de opslag')
+    return Buffer.from(await new Response(r.stream as any).arrayBuffer())
+  }
   if (/^https?:\/\//.test(adres)) {
     const r = await fetch(adres)
     if (!r.ok) throw new Error(`Bestand niet te lezen (${r.status})`)
@@ -32,6 +46,10 @@ export async function lees(adres: string): Promise<Buffer> {
 }
 
 export async function verwijder(adres: string) {
+  if (adres.startsWith(BESTAND_PREFIX)) {
+    if (blob()) { const { del } = await import('@vercel/blob'); await del(adres.slice(BESTAND_PREFIX.length)).catch(() => {}) }
+    return
+  }
   if (/^https?:\/\//.test(adres)) {
     if (blob()) { const { del } = await import('@vercel/blob'); await del(adres).catch(() => {}) }
     return
@@ -48,7 +66,7 @@ export function lokaalPad(adres: string) {
 
 /** Door Fonos geüploade hoezen: de adressen die in de database voorkomen. */
 export function isEigenUpload(adres?: string | null) {
-  return !!adres && (adres.startsWith('/uploads/') || /\.public\.blob\.vercel-storage\.com\//.test(adres))
+  return !!adres && (adres.startsWith('/uploads/') || adres.startsWith(BESTAND_PREFIX) || /\.blob\.vercel-storage\.com\//.test(adres))
 }
 
 export function lokaleBestanden(map: string): string[] {

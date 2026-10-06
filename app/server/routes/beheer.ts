@@ -18,7 +18,7 @@ import { exportDelen, leesExportDeel, leesStandaard } from '../importers/muziekw
 import { laatsteImportId, leegRapport, rondImportAf, startImport, verwerkRecords } from '../importers/muziekweb-verwerk.ts'
 import { backupAdres, leesBackup, maakBackup, maakZip, vergelijk, zetTerug } from '../backup.ts'
 import { beschikbaarheidGewijzigd, catalogusVersieOmhoog } from '../events.ts'
-import { bewaar, lees } from '../opslag.ts'
+import { bewaar, lees, BLOB_TOEGANG } from '../opslag.ts'
 import { stuurMail } from '../mail.ts'
 
 export const beheer = new Hono()
@@ -760,7 +760,7 @@ beheer.post('/blob', alleenBeheerder, async (c) => {
   const body = await c.req.json()
   const r = await handleUpload({
     body, request: c.req.raw,
-    onBeforeGenerateToken: async () => ({ allowedContentTypes: ['application/zip', 'application/json', 'application/gzip', 'application/x-gzip', 'application/octet-stream', 'text/plain'], addRandomSuffix: true, maximumSizeInBytes: 500 * 1024 * 1024 }),
+    onBeforeGenerateToken: async () => ({ access: BLOB_TOEGANG, allowedContentTypes: ['application/zip', 'application/json', 'application/gzip', 'application/x-gzip', 'application/octet-stream', 'text/plain'], addRandomSuffix: true, maximumSizeInBytes: 500 * 1024 * 1024 }),
     onUploadCompleted: async () => {},
   })
   return c.json(r)
@@ -774,7 +774,7 @@ beheer.post('/upload', alleenBeheerder, async (c) => {
   return c.json({ adres: await bewaar('uploads', f.name, Buffer.from(await f.arrayBuffer()), f.type || 'application/octet-stream') })
 })
 
-beheer.get('/opslag', (c) => c.json({ blob: !!process.env.BLOB_READ_WRITE_TOKEN }))
+beheer.get('/opslag', (c) => c.json({ blob: !!process.env.BLOB_READ_WRITE_TOKEN, toegang: BLOB_TOEGANG }))
 
 beheer.post('/terugzetten/controle', alleenBeheerder, async (c) => {
   try {

@@ -16,7 +16,8 @@ functioneel ontwerp v1.0 (6 oktober 2026) en de vormgeving uit de bijlage.
   frontend (Vite), één API-functie in regio Dublin (Build Output API, `scripts/bouw-vercel.mjs`) en daarna
   de vulling (`scripts/vercel-vul.ts`): schema, nieuwe Muziekweb-exportdelen, gebruikscollectie
   (`collectie/gebruikscollectie.csv`) en de eerste beheerder. Alles idempotent; elke build laadt alleen wat nieuw is.
-- **Bestanden:** geüploade hoezen en back-ups in Vercel Blob (`BLOB_READ_WRITE_TOKEN`), los van de database.
+- **Bestanden:** geüploade hoezen en back-ups in Vercel Blob (`BLOB_READ_WRITE_TOKEN`), los van de database. De store is privé;
+  bestanden gaan via `/api/bestand/…` (hoezen openbaar, back-ups alleen voor beheerders). `FONOS_BLOB_ACCESS=public` voor een openbare store.
 - **Planner:** Vercel Cron roept elke nacht `/api/cron` aan (back-up, sluitingstijd); daarnaast loopt de planner mee met verzoeken.
 - **Realtime:** kiosk en medewerkersscherm vragen elke paar seconden `/api/versies` op.
 
@@ -62,7 +63,7 @@ Gebruik de demovulling niet in productie.
 | `FONOS_BASIS_URL` | adres van het verzoek | basis voor links in e-mails (wachtwoord-reset) |
 | `RESEND_API_KEY` | – | e-mail via Resend; zonder sleutel komen mails alleen in het serverlog |
 | `FONOS_MAIL_AFZENDER` | `Fonotheek <fonotheek@fonos.nl>` | afzender |
-| `TZ` | `Europe/Amsterdam` | tijdzone voor sluitingstijd en back-ups |
+| `TZ` | `Europe/Amsterdam` | tijdzone (lokaal; op Vercel niet nodig, de planner rekent zelf in Europe/Amsterdam) |
 
 ## Kiosktablet
 
