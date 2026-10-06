@@ -17,6 +17,7 @@
     "demo": "tsx scripts/demo.ts",
     "gebruiker": "tsx scripts/gebruiker.ts",
     "spotify:koppel": "tsx scripts/spotify-koppel.ts",
+    "spotify:export": "tsx scripts/spotify-export.ts",
     "vercel-build": "vite build && node scripts/bouw-vercel.mjs && tsx scripts/vercel-vul.ts"
   },
   "engines": {
