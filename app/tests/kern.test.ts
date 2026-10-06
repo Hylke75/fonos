@@ -11,7 +11,7 @@ delete process.env.DATABASE_URL
 
 const { useMemoryDb, get, run, zetInstelling } = await import('../server/db.ts')
 const { maakTitel, zetFonosWaarde, verwerkMuziekweb, besluitConflict, getoond } = await import('../server/titels.ts')
-const { dienAanvraagIn, AanvraagFout, uitgeven, vrijgeven, verwijderItem, sluitAllesAf } = await import('../server/aanvragen.ts')
+const { dienAanvraagIn, AanvraagFout, uitgeven, vrijgeven, verwijderItem, sluitAllesAf, kiesSpeler, houdSpelerVast, geefSpelerVrij, geefInactieveSpelersVrij } = await import('../server/aanvragen.ts')
 const { leesBestand, analyseer, voerDoor } = await import('../server/importers/collectie.ts')
 const { verwerkMuziekwebImport } = await import('../server/importers/muziekweb-verwerk.ts')
 const { dragerUit } = await import('../server/importers/muziekweb-lezers.ts')
@@ -46,39 +46,61 @@ test('tweelagenmodel: import overschrijft nooit een Fonos-waarde en meldt een co
   assert.equal(t2.heeft_fonos, 0)
 })
 
-test('aanvragen: reserveren, bezette speler, in gebruik, maximum', async () => {
+test('aanvragen: eerst platenspeler kiezen, reserveren, in gebruik, maximum, vrijgeven', async () => {
   const a = await titelMetExemplaar('BB00001', 'Pastel Blues', 'Nina Simone')
   const b = await titelMetExemplaar('BB00002', 'Discovery', 'Daft Punk')
-  const r = await dienAanvraagIn({ platenspeler: 2, titels: [{ titel_id: a }] })
+  // Zonder gekozen speler (of met een verkeerde sessie) kan er niets aangevraagd worden.
+  await assert.rejects(() => dienAanvraagIn({ platenspeler: 2, titels: [{ titel_id: a }] }), (e: any) => e.code === 'speler_kwijt')
+  const s2 = await kiesSpeler(2)
+  // Een vastgehouden speler is niet door een ander te kiezen.
+  await assert.rejects(() => kiesSpeler(2), (e: any) => e.code === 'bezet')
+  const r = await dienAanvraagIn({ platenspeler: 2, sessie: s2, titels: [{ titel_id: a }] })
   assert.ok(r.bestelnummer > 1000)
   // Het enige exemplaar is nu in gebruik.
-  await assert.rejects(() => dienAanvraagIn({ platenspeler: 4, titels: [{ titel_id: a }] }), (e: any) => e instanceof AanvraagFout && e.code === 'niet_beschikbaar')
-  // Bezette speler: eerst vragen, met bevestiging de vorige afsluiten.
-  await assert.rejects(() => dienAanvraagIn({ platenspeler: 2, titels: [{ titel_id: b }] }), (e: any) => e.code === 'bezet')
-  const r2 = await dienAanvraagIn({ platenspeler: 2, titels: [{ titel_id: b }], bezetAfsluiten: true })
+  const s4 = await kiesSpeler(4)
+  await assert.rejects(() => dienAanvraagIn({ platenspeler: 4, sessie: s4, titels: [{ titel_id: a }] }), (e: any) => e instanceof AanvraagFout && e.code === 'niet_beschikbaar')
+  // Tweede aanvraag op dezelfde speler: eerst vragen, met bevestiging de vorige afsluiten.
+  await assert.rejects(() => dienAanvraagIn({ platenspeler: 2, sessie: s2, titels: [{ titel_id: b }] }), (e: any) => e.code === 'bezet')
+  const r2 = await dienAanvraagIn({ platenspeler: 2, sessie: s2, titels: [{ titel_id: b }], bezetAfsluiten: true })
   assert.equal(r2.vorigeAfgesloten, true)
   assert.equal((await get<any>('SELECT status, afgesloten_door FROM aanvragen WHERE id = ?', r.id))!.afgesloten_door, 'bezoeker')
-  // Titel a is weer beschikbaar.
-  const r3 = await dienAanvraagIn({ platenspeler: 5, titels: [{ titel_id: a }] })
+  // Bezoeker geeft de speler vrij: aanvraag afgesloten, speler weer vrij.
+  assert.equal(await houdSpelerVast(2, s2), true)
+  assert.equal(await geefSpelerVrij(2, 'bezoeker', IK, s2), true)
+  assert.equal((await get<any>('SELECT status FROM aanvragen WHERE id = ?', r2.id))!.status, 'afgesloten')
+  assert.equal(await houdSpelerVast(2, s2), false)
+  // Titel a is weer beschikbaar; de medewerker geeft de speler vrij.
+  const s5 = await kiesSpeler(5)
+  const r3 = await dienAanvraagIn({ platenspeler: 5, sessie: s5, titels: [{ titel_id: a }] })
   await uitgeven(r3.id, IK)
   await vrijgeven(r3.id, IK)
   assert.equal((await get<any>('SELECT status FROM aanvragen WHERE id = ?', r3.id))!.status, 'afgesloten')
+  assert.equal(await houdSpelerVast(5, s5), false)
   // Maximum titels per aanvraag.
   await zetInstelling('max_titels', 1)
-  await assert.rejects(() => dienAanvraagIn({ platenspeler: 6, titels: [{ titel_id: a }, { titel_id: b }] }), (e: any) => e.code === 'te_veel')
+  const s6 = await kiesSpeler(6)
+  await assert.rejects(() => dienAanvraagIn({ platenspeler: 6, sessie: s6, titels: [{ titel_id: a }, { titel_id: b }] }), (e: any) => e.code === 'te_veel')
   await zetInstelling('max_titels', 3)
   // Inactieve speler is niet te kiezen.
   await run('UPDATE platenspelers SET actief = 0 WHERE nummer = 7')
-  await assert.rejects(() => dienAanvraagIn({ platenspeler: 7, titels: [{ titel_id: a }] }), (e: any) => e.code === 'speler_inactief')
+  await assert.rejects(() => kiesSpeler(7), (e: any) => e.code === 'speler_inactief')
   await run('UPDATE platenspelers SET actief = 1 WHERE nummer = 7')
   // Laatste titel eruit halen = geannuleerd.
-  const r4 = await dienAanvraagIn({ platenspeler: 7, titels: [{ titel_id: a }] })
+  const s7 = await kiesSpeler(7)
+  const r4 = await dienAanvraagIn({ platenspeler: 7, sessie: s7, titels: [{ titel_id: a }] })
   const item = await get<any>('SELECT id FROM aanvraag_items WHERE aanvraag_id = ?', r4.id)!
   await verwijderItem(r4.id, item.id, 'niet te vinden', IK)
   assert.equal((await get<any>('SELECT status FROM aanvragen WHERE id = ?', r4.id))!.status, 'geannuleerd')
-  // Sluitingstijd sluit alles af.
+  // Te lang niet gebruikt: de planner geeft de speler vrij.
+  await run("UPDATE platenspelers SET laatst_actief = nu('-30 minutes') WHERE nummer = 7")
+  assert.equal(await geefInactieveSpelersVrij(), 1)
+  assert.equal(await houdSpelerVast(7, s7), false)
+  // Sluitingstijd sluit alles af en geeft alle spelers vrij.
+  const s8 = await kiesSpeler(8)
+  await dienAanvraagIn({ platenspeler: 8, sessie: s8, titels: [{ titel_id: a }] })
   assert.ok(await sluitAllesAf('sluitingstijd', IK) >= 1)
   assert.equal((await get<any>("SELECT COUNT(*) n FROM aanvragen WHERE status IN ('ingediend', 'uitgegeven')"))!.n, 0)
+  assert.equal((await get<any>('SELECT COUNT(*) n FROM platenspelers WHERE sessie IS NOT NULL'))!.n, 0)
 })
 
 test('bulkimport: controle-overzicht met categorieën, puntkomma-notatie en dubbelen', async () => {

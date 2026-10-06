@@ -2,7 +2,8 @@
 import { Hono } from 'hono'
 import { album, artiest, beschikbaarheid, home, kioskConfig, verrasMe, zoekCatalogus } from '../catalogus.ts'
 import { suggesties } from '../zoeken.ts'
-import { AanvraagFout, dienAanvraagIn } from '../aanvragen.ts'
+import { AanvraagFout, dienAanvraagIn, geefSpelerVrij, houdSpelerVast, kiesSpeler } from '../aanvragen.ts'
+import { BEZOEKER } from '../log.ts'
 import { EMAIL_RE, meldAan } from '../nieuwsbrief.ts'
 
 export const kiosk = new Hono()
@@ -43,6 +44,7 @@ kiosk.post('/aanvraag', async (c) => {
   try {
     const r = await dienAanvraagIn({
       platenspeler: Number(body.platenspeler),
+      sessie: typeof body.sessie === 'string' ? body.sessie : null,
       titels: (body.titels ?? []).map((t: any) => ({ titel_id: Number(t.titel_id), exemplaar_id: t.exemplaar_id ? Number(t.exemplaar_id) : null })),
       bezetAfsluiten: !!body.bezetAfsluiten,
     })
@@ -51,6 +53,25 @@ kiosk.post('/aanvraag', async (c) => {
     if (e instanceof AanvraagFout) return c.json({ fout: e.message, code: e.code, ...e.extra }, 409)
     throw e
   }
+})
+
+// Platenspeler kiezen (eerste stap), vasthouden tijdens gebruik en vrijgeven na gebruik.
+kiosk.post('/speler', async (c) => {
+  const { platenspeler } = await c.req.json<{ platenspeler: number }>()
+  try {
+    return c.json({ platenspeler: Number(platenspeler), sessie: await kiesSpeler(Number(platenspeler)) })
+  } catch (e) {
+    if (e instanceof AanvraagFout) return c.json({ fout: e.message, code: e.code }, 409)
+    throw e
+  }
+})
+kiosk.post('/speler/vasthouden', async (c) => {
+  const { platenspeler, sessie } = await c.req.json<{ platenspeler: number; sessie: string }>()
+  return c.json({ ok: await houdSpelerVast(Number(platenspeler), String(sessie ?? '')) })
+})
+kiosk.post('/speler/vrijgeven', async (c) => {
+  const { platenspeler, sessie, door } = await c.req.json<{ platenspeler: number; sessie: string; door?: string }>()
+  return c.json({ ok: await geefSpelerVrij(Number(platenspeler), door === 'inactiviteit' ? 'inactiviteit' : 'bezoeker', BEZOEKER, String(sessie ?? '')) })
 })
 
 kiosk.post('/nieuwsbrief', async (c) => {

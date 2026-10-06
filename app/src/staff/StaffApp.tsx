@@ -107,7 +107,7 @@ function Lijst() {
           <div className="spelers-tegels">
             {spelers.map((p) => {
               const a = openPerSpeler[p.nummer]
-              const status = !p.actief ? 'Inactief' : !a ? 'Vrij' : a.status === 'uitgegeven' ? 'Uitgegeven' : 'Ingediend'
+              const status = !p.actief ? 'Inactief' : !a ? (p.vastgehouden ? 'Bezet' : 'Vrij') : a.status === 'uitgegeven' ? 'Uitgegeven' : 'Ingediend'
               return (
                 <div key={p.nummer} className={`card speler-tegel ${a ? 'open' : ''} ${a?.lang_open ? 'lang-open' : ''} ${a && nieuw === a.bestelnummer ? 'nieuw-binnen' : ''} ${!p.actief ? 'inactief' : ''}`}>
                   <div className="tegel-kop">
@@ -121,7 +121,10 @@ function Lijst() {
                       {a.lang_open && <span className="lang-label"><Clock size={13} /> &gt; {d.markering_min} min</span>}
                       <span className="duimen">{a.hoezen.map((h: string, i: number) => <Hoes key={i} src={h} />)}</span>
                     </button>
+                  ) : p.vastgehouden ? (
+                    <div className="tegel-leeg muted" style={{ fontSize: 15 }}>Een bezoeker gebruikt deze speler{p.bezet_sinds ? ` sinds ${tijd(p.bezet_sinds)}` : ''}; nog geen aanvraag.</div>
                   ) : <div className="tegel-leeg" />}
+                  {!a && p.vastgehouden && <button className="btn btn-gray btn-block" style={{ minHeight: 52 }} onClick={async () => { if (confirm(`Platenspeler ${p.nummer} vrijgeven?`)) setSpelers(await api(`/medewerker/platenspeler/${p.nummer}/vrijgeven`, { method: 'POST' })) }}>Speler vrijgeven</button>}
                   {a && <button className="btn btn-gray btn-block" style={{ minHeight: 52 }} onClick={() => actie(a)}>{actieTekst(a.weergave_status)}</button>}
                   <button className={`toggle ${p.actief ? 'aan' : ''}`} aria-pressed={p.actief}
                     onClick={async () => setSpelers(await api(`/medewerker/platenspeler/${p.nummer}`, { body: { actief: !p.actief } }))}>

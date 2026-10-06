@@ -7,7 +7,7 @@ import { useKiosk } from './KioskApp'
 export function Rust() {
   const nav = useNavigate()
   const { config } = useKiosk()
-  const start = () => nav('/home')
+  const start = () => nav('/speler')
   const bumper = config.instellingen.bumper_video_url
   if (bumper) {
     // De bumper (B&G-logo dat verandert in het Fonos-logo) in een lus.

@@ -1,7 +1,8 @@
 // Aanvragen en hun statussen (7.9, 8).
 import { VINDCODE_LABEL } from '../shared/velden.ts'
 import { all, get, insert, instellingen, run, tx } from './db.ts'
-import { BEZOEKER, log, type Wie } from './log.ts'
+import { randomUUID } from 'node:crypto'
+import { BEZOEKER, log, SYSTEEM, type Wie } from './log.ts'
 import { OPEN_ITEMS_SQL, vindcoder } from './titels.ts'
 import { aanvragenGewijzigd, beschikbaarheidGewijzigd } from './events.ts'
 import { stuurMail } from './mail.ts'
@@ -22,9 +23,64 @@ export function openAanvraagVoorSpeler(nummer: number) {
   return get<any>(`SELECT * FROM aanvragen WHERE platenspeler = ? AND status IN ${OPEN} ORDER BY id DESC LIMIT 1`, nummer)
 }
 
+/** bezet = een bezoeker houdt de speler vast, of er loopt nog een aanvraag op. */
 export async function platenspelers() {
-  return (await all<any>(`SELECT p.nummer, p.actief, (SELECT a.id FROM aanvragen a WHERE a.platenspeler = p.nummer AND a.status IN ${OPEN} LIMIT 1) AS open_aanvraag
-    FROM platenspelers p ORDER BY p.nummer`)).map((p) => ({ nummer: p.nummer, actief: !!p.actief, bezet: p.open_aanvraag != null }))
+  return (await all<any>(`SELECT p.nummer, p.actief, p.sessie IS NOT NULL AS vast, p.bezet_sinds,
+      (SELECT a.id FROM aanvragen a WHERE a.platenspeler = p.nummer AND a.status IN ${OPEN} LIMIT 1) AS open_aanvraag
+    FROM platenspelers p ORDER BY p.nummer`)).map((p) => ({
+    nummer: p.nummer, actief: !!p.actief, bezet: !!p.vast || p.open_aanvraag != null, vastgehouden: !!p.vast, bezet_sinds: p.bezet_sinds ?? null,
+  }))
+}
+
+// ------------------------------------------------------------------ platenspeler kiezen, vasthouden, vrijgeven
+
+/** Bezoeker kiest een platenspeler (eerste stap in de kiosk). Geeft een sessiecode terug. */
+export async function kiesSpeler(nummer: number) {
+  const r = await tx(async () => {
+    await run('SELECT pg_advisory_xact_lock(4711)')
+    const p = await get<any>('SELECT * FROM platenspelers WHERE nummer = ?', nummer)
+    if (!p || !p.actief) throw new AanvraagFout('speler_inactief', 'Deze platenspeler is nu niet beschikbaar. Kies een andere.')
+    if (p.sessie || (await openAanvraagVoorSpeler(nummer))) throw new AanvraagFout('bezet', 'Deze platenspeler is bezet. Kies een andere.')
+    const sessie = randomUUID()
+    await run('UPDATE platenspelers SET sessie = ?, bezet_sinds = nu(), laatst_actief = nu() WHERE nummer = ?', sessie, nummer)
+    return sessie
+  })
+  await log(BEZOEKER, 'platenspeler gekozen', { type: 'platenspeler', id: nummer, label: `Platenspeler ${nummer}` })
+  await aanvragenGewijzigd()
+  return r
+}
+
+/** Houdt de speler vast (bij gebruik van de kiosk). false = de speler is intussen vrijgegeven. */
+export async function houdSpelerVast(nummer: number, sessie: string) {
+  const r = await run('UPDATE platenspelers SET laatst_actief = nu() WHERE nummer = ? AND sessie = ?', nummer, sessie)
+  return r.changes > 0
+}
+
+export async function spelerVanSessie(nummer: number, sessie?: string | null) {
+  return !!sessie && !!(await get('SELECT 1 FROM platenspelers WHERE nummer = ? AND sessie = ?', nummer, sessie))
+}
+
+/** Speler vrijgeven: open aanvragen op deze speler afsluiten (exemplaren weer beschikbaar) en de speler vrijmaken. */
+export async function geefSpelerVrij(nummer: number, door: 'bezoeker' | 'medewerker' | 'inactiviteit' | 'sluitingstijd', wie: Wie, sessie?: string) {
+  if (sessie && !(await spelerVanSessie(nummer, sessie))) return false
+  const open = await all<{ id: number }>(`SELECT id FROM aanvragen WHERE platenspeler = ? AND status IN ${OPEN}`, nummer)
+  for (const a of open) await sluitAf(a.id, door, wie)
+  const r = await run('UPDATE platenspelers SET sessie = NULL, bezet_sinds = NULL, laatst_actief = NULL WHERE nummer = ? AND sessie IS NOT NULL', nummer)
+  if (r.changes || open.length) {
+    await log(wie, 'platenspeler vrijgegeven', { type: 'platenspeler', id: nummer, label: `Platenspeler ${nummer}`, nieuw: door })
+    await aanvragenGewijzigd()
+    if (open.length) await beschikbaarheidGewijzigd()
+  }
+  return true
+}
+
+/** Planner: spelers die te lang niet gebruikt zijn automatisch vrijgeven (vangnet als de kiosk niet reageert). */
+export async function geefInactieveSpelersVrij() {
+  const inst = await instellingen()
+  const min = Number(inst.speler_inactief_min) + Number(inst.speler_reactie_min) + 1
+  const oud = await all<{ nummer: number }>(`SELECT nummer FROM platenspelers WHERE sessie IS NOT NULL AND laatst_actief < nu(?::interval)`, `-${min} minutes`)
+  for (const p of oud) await geefSpelerVrij(p.nummer, 'inactiviteit', { ...SYSTEEM, naam: 'Automatisch (inactiviteit)' })
+  return oud.length
 }
 
 /** Kiest per titel een beschikbaar exemplaar (of het gevraagde, als dat beschikbaar is). */
@@ -49,7 +105,7 @@ export async function sluitAf(id: number, door: string, wie: Wie) {
   return true
 }
 
-export async function dienAanvraagIn(inv: { platenspeler: number; titels: { titel_id: number; exemplaar_id?: number | null }[]; bezetAfsluiten?: boolean }) {
+export async function dienAanvraagIn(inv: { platenspeler: number; sessie?: string | null; titels: { titel_id: number; exemplaar_id?: number | null }[]; bezetAfsluiten?: boolean }) {
   const inst = await instellingen()
   const titels = inv.titels ?? []
   if (!titels.length) throw new AanvraagFout('leeg', 'Je aanvraag is leeg.')
@@ -59,9 +115,11 @@ export async function dienAanvraagIn(inv: { platenspeler: number; titels: { tite
     // Eén aanvraag tegelijk reserveren: zo kunnen twee tablets niet hetzelfde exemplaar krijgen.
     await run('SELECT pg_advisory_xact_lock(4711)')
     const speler = await get<any>('SELECT * FROM platenspelers WHERE nummer = ?', inv.platenspeler)
-    if (!speler || !speler.actief) throw new AanvraagFout('speler_inactief', 'Deze platenspeler is nu niet beschikbaar. Kies een andere.')
+    if (!speler || !speler.actief) throw new AanvraagFout('speler_inactief', 'Deze platenspeler is nu niet beschikbaar.')
+    // Alleen wie de speler vasthoudt, kan erop aanvragen.
+    if (!inv.sessie || speler.sessie !== inv.sessie) throw new AanvraagFout('speler_kwijt', 'Je platenspeler is vrijgegeven. Kies opnieuw een platenspeler.')
     const open = await openAanvraagVoorSpeler(inv.platenspeler)
-    if (open && !inv.bezetAfsluiten) throw new AanvraagFout('bezet', 'Op deze speler loopt nog een aanvraag. Wil je die afsluiten?')
+    if (open && !inv.bezetAfsluiten) throw new AanvraagFout('bezet', 'Je hebt nog een aanvraag lopen. Wil je die afsluiten? De platen daarvan gaan dan terug.')
     const keuze: { titel_id: number; exemplaar_id: number }[] = []
     const niet: number[] = []
     for (const t of titels) {
@@ -73,6 +131,7 @@ export async function dienAanvraagIn(inv: { platenspeler: number; titels: { tite
     if (open) await sluitAf(open.id, 'bezoeker', BEZOEKER)
     const nr = await volgendBestelnummer()
     const id = await insert('INSERT INTO aanvragen (bestelnummer, platenspeler) VALUES (?, ?)', nr, inv.platenspeler)
+    await run('UPDATE platenspelers SET laatst_actief = nu() WHERE nummer = ?', inv.platenspeler)
     for (const k of keuze) await run('INSERT INTO aanvraag_items (aanvraag_id, titel_id, exemplaar_id) VALUES (?, ?, ?)', id, k.titel_id, k.exemplaar_id)
     return { id, bestelnummer: nr, platenspeler: inv.platenspeler, vorigeAfgesloten: !!open, titelIds: keuze.map((k) => k.titel_id) }
   })
@@ -137,10 +196,11 @@ export const uitgeven = (id: number, wie: Wie) =>
   wijzigStatus(id, ['ingediend'], "UPDATE aanvragen SET status = 'uitgegeven', uitgegeven_op = nu(), opgepakt_op = COALESCE(opgepakt_op, nu()) WHERE id = ?", 'aanvraag uitgegeven', wie)
 export const annuleren = (id: number, reden: string | null, wie: Wie) =>
   wijzigStatus(id, ['ingediend', 'uitgegeven'], "UPDATE aanvragen SET status = 'geannuleerd', geannuleerd_op = nu(), reden = ? WHERE id = ?", 'aanvraag geannuleerd', wie, reden)
+/** "Speler vrijgeven" door een medewerker: aanvraag afsluiten en de platenspeler vrijmaken. */
 export async function vrijgeven(id: number, wie: Wie) {
-  if (!(await sluitAf(id, 'medewerker', wie))) throw new AanvraagFout('status', 'Deze aanvraag is al afgesloten.')
-  await aanvragenGewijzigd()
-  await beschikbaarheidGewijzigd()
+  const a = await get<any>('SELECT * FROM aanvragen WHERE id = ?', id)
+  if (!a || !['ingediend', 'uitgegeven'].includes(a.status)) throw new AanvraagFout('status', 'Deze aanvraag is al afgesloten.')
+  await geefSpelerVrij(a.platenspeler, 'medewerker', wie)
 }
 
 /** Eén titel uit de aanvraag halen (bv. niet te vinden). Is het de laatste, dan wordt de aanvraag geannuleerd. */
@@ -161,6 +221,9 @@ export async function verwijderItem(aanvraagId: number, itemId: number, reden: s
 export async function sluitAllesAf(door: string, wie: Wie): Promise<number> {
   const open = await all<{ id: number }>(`SELECT id FROM aanvragen WHERE status IN ${OPEN}`)
   for (const a of open) await sluitAf(a.id, door, wie)
+  // Bij sluitingstijd ook alle platenspelers vrijgeven.
+  const vast = await run('UPDATE platenspelers SET sessie = NULL, bezet_sinds = NULL, laatst_actief = NULL WHERE sessie IS NOT NULL')
+  if (vast.changes && !open.length) await aanvragenGewijzigd()
   if (open.length) { await aanvragenGewijzigd(); await beschikbaarheidGewijzigd() }
   return open.length
 }

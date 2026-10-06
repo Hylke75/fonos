@@ -1,7 +1,7 @@
 // Kopbalk van de kiosk: logo, zoekbalk met suggesties, taal en aanvraaglijst.
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Search, ShoppingBag, X } from 'lucide-react'
+import { ArrowLeft, Disc3, Search, ShoppingBag, X } from 'lucide-react'
 import { Logo } from '../components/Logo'
 import { Hoes } from '../components/Hoes'
 import { api } from '../api'
@@ -14,6 +14,17 @@ export function MandKnop() {
       <ShoppingBag size={22} />
       {mand.length > 0 && <span className="teller">{mand.length}</span>}
     </Link>
+  )
+}
+
+/** Gekozen platenspeler; tikken = vrijgeven (na bevestiging). */
+export function SpelerKnop() {
+  const { speler, vraagVrijgeven } = useKiosk()
+  if (!speler) return null
+  return (
+    <button className="speler-knop" onClick={vraagVrijgeven} aria-label={`Platenspeler ${speler.nummer} vrijgeven`}>
+      <Disc3 size={20} /> Speler <b>{speler.nummer}</b> · Vrijgeven
+    </button>
   )
 }
 
@@ -80,6 +91,7 @@ export function KioskKop({ zoekStart }: { zoekStart?: string }) {
       <Link to="/home" aria-label="Naar de homepagina"><Logo /></Link>
       <Zoekbalk start={zoekStart} />
       <div className="rechts" style={{ marginLeft: 0 }}>
+        <SpelerKnop />
         <span className="badge-nl" aria-label="Taal: Nederlands">NL</span>
         <MandKnop />
       </div>
@@ -95,6 +107,7 @@ export function KioskKopTerug({ tekst = 'Terug naar resultaten', naar, zoekIcoon
       <Link to="/home" aria-label="Naar de homepagina"><Logo /></Link>
       <button className="link-terug" onClick={() => (naar ? nav(naar) : window.history.length > 1 ? nav(-1) : nav('/home'))}><ArrowLeft size={20} /> {tekst}</button>
       <div className="rechts">
+        <SpelerKnop />
         {zoekIcoon && <Link to="/home" className="icon-btn" aria-label="Zoeken"><Search size={22} /></Link>}
         {mand && <MandKnop />}
       </div>

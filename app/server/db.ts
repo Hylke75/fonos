@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { AsyncLocalStorage } from 'node:async_hooks'
+import { createHash } from 'node:crypto'
 
 const here = dirname(fileURLToPath(import.meta.url))
 export const ROOT = resolve(here, '..')
@@ -123,6 +124,8 @@ export const STANDAARD_INSTELLINGEN = {
   aantal_platenspelers: 8,
   max_titels: 3, // open punt O-5
   inactiviteit_sec: 90,
+  speler_inactief_min: 20, // zonder aanraking: "Ben je er nog?" met vasthouden of vrijgeven
+  speler_reactie_min: 3, // geen reactie: platenspeler automatisch vrijgeven
   waarschuwing_sec: 15,
   bevestiging_sec: 8,
   sluitingstijd: '17:00', // invullen met de openingstijden van Fonos
@@ -184,11 +187,16 @@ function bestand(...kandidaten: string[]) {
 }
 
 async function zorgVoorSchema(v: Verbinding) {
-  // Het schema is idempotent; het draait opnieuw zodra de nieuwste tabel ontbreekt.
-  const heeft = await v.query("SELECT to_regclass('public.nieuwsbrief_aanmeldingen') AS t", [])
-  if (!heeft.rows[0]?.t) {
+  // Het schema is idempotent; het draait opnieuw zodra het bestand veranderd is (versie = hash in de tabel planner).
+  const sql = readFileSync(bestand('schema.sql', 'server/schema.sql'), 'utf8')
+  const versie = `schema:${createHash('sha1').update(sql).digest('hex').slice(0, 12)}`
+  const heeft = await v.query("SELECT to_regclass('public.planner') AS t", [])
+  const bekend = heeft.rows[0]?.t ? (await v.query('SELECT 1 FROM planner WHERE taak = $1', [versie])).rows.length > 0 : false
+  if (!bekend) {
     // Meerdere statements in één keer: zonder parameters.
-    await v.exec(readFileSync(bestand('schema.sql', 'server/schema.sql'), 'utf8'))
+    await v.exec(sql)
+    await v.query("DELETE FROM planner WHERE taak LIKE 'schema:%'", [])
+    await v.query('INSERT INTO planner (taak, datum) VALUES ($1, $2)', [versie, new Date().toISOString().slice(0, 10)])
   }
   await seed(v)
 }

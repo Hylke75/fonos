@@ -2,7 +2,7 @@
 // Op Vercel draait er geen proces continu: de planner loopt mee met verzoeken (hooguit eens per minuut)
 // en daarnaast via de Vercel Cron-job (/api/cron).
 import { all, instellingen, get, run } from './db.ts'
-import { sluitAf, sluitAllesAf } from './aanvragen.ts'
+import { sluitAf, sluitAllesAf, geefInactieveSpelersVrij } from './aanvragen.ts'
 import { aanvragenGewijzigd, beschikbaarheidGewijzigd } from './events.ts'
 import { maakBackup } from './backup.ts'
 import { probeerWachtrij } from './nieuwsbrief.ts'
@@ -34,6 +34,8 @@ export async function tik(opts: { backup?: boolean; cron?: boolean } = {}) {
     AND ((ingediend_op || '+00')::timestamptz AT TIME ZONE 'Europe/Amsterdam')::date < (now() AT TIME ZONE 'Europe/Amsterdam')::date`)
   for (const a of oud) await sluitAf(a.id, 'sluitingstijd', { ...SYSTEEM, naam: 'Automatisch (sluitingstijd)' })
   if (oud.length) { await aanvragenGewijzigd(); await beschikbaarheidGewijzigd() }
+  // Platenspelers die te lang niet gebruikt zijn automatisch vrijgeven.
+  await geefInactieveSpelersVrij().catch((e) => console.error('[planner] vrijgeven mislukt', e))
   if (opts.backup && (opts.cron || tijd >= inst.backup_tijd)) {
     const al = await get(`SELECT 1 FROM backups WHERE soort = 'dagelijks' AND status = 'gelukt' AND left(tijd, 10) = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD')`)
     if (!al && (await claim('backup'))) {

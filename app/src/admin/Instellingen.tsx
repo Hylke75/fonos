@@ -16,8 +16,10 @@ const GROEPEN: { naam: string; velden: Veld[] }[] = [
     { k: 'vindcode_bron', label: 'Vindcode', soort: 'keuze', opties: [['titelnummer', 'Catalogusnummer Muziekweb (titelnummer)'], ['objectnummer', 'Objectnummer'], ['veld', 'Apart veld vindcode']], uitleg: 'Open punt O-1: met welke code vindt de medewerker de plaat in het archief?' },
   ] },
   { naam: 'Kiosk', velden: [
-    { k: 'inactiviteit_sec', label: 'Inactiviteit tot sessie wissen (seconden)', soort: 'getal' },
-    { k: 'waarschuwing_sec', label: 'Waarschuwing "Ben je er nog?" vooraf (seconden)', soort: 'getal' },
+    { k: 'speler_inactief_min', label: 'Platenspeler: "Ben je er nog?" na (minuten zonder gebruik)', soort: 'getal' },
+    { k: 'speler_reactie_min', label: 'Platenspeler: automatisch vrijgeven na (minuten zonder reactie)', soort: 'getal' },
+    { k: 'inactiviteit_sec', label: 'Zonder gekozen platenspeler: sessie wissen na (seconden)', soort: 'getal' },
+    { k: 'waarschuwing_sec', label: 'Zonder gekozen platenspeler: waarschuwing vooraf (seconden)', soort: 'getal' },
     { k: 'bevestiging_sec', label: 'Duur bevestigingsscherm (seconden)', soort: 'getal' },
     { k: 'vaak_periode_dagen', label: 'Periode "Vaak aangevraagd" (dagen)', soort: 'getal' },
     { k: 'bumper_video_url', label: 'Bumper op het rustscherm (adres van de video)', soort: 'tekst', uitleg: 'Leeg = het welkomstscherm "De Fonotheek".' },

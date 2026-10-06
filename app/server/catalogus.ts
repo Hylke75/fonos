@@ -68,6 +68,7 @@ export async function kioskConfig() {
     knoppen: configCache.data,
     instellingen: {
       max_titels: inst.max_titels, inactiviteit_sec: inst.inactiviteit_sec, waarschuwing_sec: inst.waarschuwing_sec,
+      speler_inactief_min: Number(inst.speler_inactief_min), speler_reactie_min: Number(inst.speler_reactie_min),
       bevestiging_sec: inst.bevestiging_sec, fonos_paginas: inst.fonos_paginas, privacy_tekst: inst.privacy_tekst,
       privacy_url: inst.privacy_url, nl_weergave: inst.nl_weergave, bumper_video_url: inst.bumper_video_url,
       vindcode_label: VINDCODE_LABEL[inst.vindcode_bron] ?? 'Vindcode',

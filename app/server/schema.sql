@@ -85,6 +85,10 @@ CREATE TABLE IF NOT EXISTS platenspelers (
   nummer integer PRIMARY KEY,
   actief integer NOT NULL DEFAULT 1
 );
+-- Een bezoeker kiest eerst een platenspeler en houdt die vast tot hij hem vrijgeeft (of na inactiviteit).
+ALTER TABLE platenspelers ADD COLUMN IF NOT EXISTS sessie text;
+ALTER TABLE platenspelers ADD COLUMN IF NOT EXISTS bezet_sinds text;
+ALTER TABLE platenspelers ADD COLUMN IF NOT EXISTS laatst_actief text;
 
 CREATE TABLE IF NOT EXISTS aanvragen (
   id            serial PRIMARY KEY,

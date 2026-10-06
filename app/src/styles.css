@@ -412,6 +412,7 @@ table.tabel { width: 100%; border-collapse: collapse; }
 .tegel-status { border-radius: 999px; padding: 4px 12px; font-size: 14px; font-weight: 700; background: var(--surface-3); color: var(--muted); }
 .tegel-status.tegel-vrij { background: #0f3b2a; color: #4ee39b; }
 .tegel-status.tegel-ingediend { background: var(--pink); color: #fff; }
+.tegel-status.tegel-bezet { background: #3d2a05; color: var(--amber); }
 .tegel-status.tegel-uitgegeven { background: #12405a; color: #7fdcf5; }
 .speler-tegel .speler-aanvraag { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; background: none; border: 0; padding: 0; color: var(--text); font: inherit; font-size: 15px; cursor: pointer; text-align: left; }
 .speler-tegel .speler-aanvraag .bestelnr { font-size: 22px; font-weight: 800; }
@@ -536,3 +537,14 @@ pre.rapport { background: #07111f; border: 1px solid var(--line); border-radius:
   .detail-regel .info { grid-column: 3; }
 }
 .fout-tekst { color: #ff8a98; font-size: 15px; margin-top: 4px; }
+.speler-kiezen { max-width: 760px; margin: 0 auto; text-align: center; }
+.speler-kiezen h1 { font-size: 40px; margin: 24px 0 8px; }
+.speler-kiezen > p { font-size: 19px; margin: 0 0 28px; }
+.spelers.groot { gap: 22px; }
+.spelers.groot .speler { width: 112px; height: 112px; font-size: 38px; }
+.spelers.groot .speler .klein { font-size: 12px; bottom: 14px; }
+.speler.bezet:disabled { text-decoration: none; opacity: .55; }
+.speler-knop { display: inline-flex; align-items: center; gap: 8px; height: 48px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--text); font-size: 16px; font-weight: 600; white-space: nowrap; }
+.speler-knop b { color: var(--pink); font-size: 18px; }
+.mijn-speler { text-align: center; padding: 8px 0 20px; }
+.mijn-speler .nr { width: 96px; height: 96px; border-radius: 50%; display: grid; place-items: center; margin: 8px auto; background: var(--pink); color: #2a0020; font-size: 40px; font-weight: 800; box-shadow: 0 0 24px var(--pink-glow); }
