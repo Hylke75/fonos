@@ -6,4 +6,5 @@ data/
 __pycache__/
 .pytest_cache/
 *.csv
+!collectie/*.csv
 .vercel/
