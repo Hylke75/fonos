@@ -1,0 +1,35 @@
+# Nieuwe Muziekweb-exportdelen van de scraper-branch elk uur naar main halen, zodat de volgende build ze inleest.
+# Alleen als de nieuwe commits uitsluitend exports/ raken; anders stopt de taak met een melding (dan handmatig bekijken).
+name: Muziekweb-exports naar main
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  BRON: claude/bold-cori-74kzz2
+
+jobs:
+  exports:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Nieuwe exportdelen overnemen
+        run: |
+          git fetch origin "$BRON"
+          if git merge-base --is-ancestor "origin/$BRON" HEAD; then echo "Niets nieuws."; exit 0; fi
+          ANDERS=$(git diff --name-only "HEAD...origin/$BRON" | grep -v '^exports/' || true)
+          if [ -n "$ANDERS" ]; then
+            echo "::error::De scraper-branch bevat ook andere wijzigingen dan exports/. Bekijk die handmatig:"; echo "$ANDERS"; exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git merge --no-edit -m "Nieuwe Muziekweb-exportdelen van $BRON overnemen" "origin/$BRON"
+          git push origin HEAD:main
