@@ -228,6 +228,18 @@ CREATE TABLE IF NOT EXISTS nieuwsbrief_wachtrij (
   pogingen integer NOT NULL DEFAULT 1
 );
 
+-- Nieuwsbriefaanmeldingen, bewaard in de beheeromgeving (koppeling "beheer"). Alleen beheerders zien ze;
+-- ze gaan niet mee in back-ups en worden na export of op verzoek verwijderd.
+CREATE TABLE IF NOT EXISTS nieuwsbrief_aanmeldingen (
+  id           serial PRIMARY KEY,
+  email        text NOT NULL,
+  naam         text,
+  bron         text,
+  aangemeld_op text NOT NULL DEFAULT nu(),
+  geexporteerd_op text
+);
+CREATE UNIQUE INDEX IF NOT EXISTS nieuwsbrief_aanmeldingen_email ON nieuwsbrief_aanmeldingen (lower(email));
+
 -- Kortlevende status van imports en back-ups die meerdere verzoeken beslaan.
 CREATE TABLE IF NOT EXISTS taken (
   id     text PRIMARY KEY,
@@ -242,7 +254,7 @@ DECLARE t text;
 BEGIN
   FOREACH t IN ARRAY ARRAY['titels','zoekwoorden','mw_dump','exemplaren','import_issues','platenspelers','aanvragen',
     'aanvraag_items','genreknoppen','genre_koppelingen','selecties','selectie_titels','instellingen','gebruikers','sessies',
-    'wijzigingslog','imports','backups','versies','planner','nieuwsbrief_wachtrij','taken'] LOOP
+    'wijzigingslog','imports','backups','versies','planner','nieuwsbrief_wachtrij','nieuwsbrief_aanmeldingen','taken'] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
   END LOOP;
 END $$;

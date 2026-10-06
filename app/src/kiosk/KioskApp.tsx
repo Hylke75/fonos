@@ -17,7 +17,7 @@ export type Item = { titel_id: number; exemplaar_id?: number | null; titel: stri
 export type Knop = { id: number; naam: string; kleur: string; beeld: string | null; nederlands: boolean; subfilters: string[] }
 export type Config = {
   knoppen: Knop[]
-  instellingen: { max_titels: number; inactiviteit_sec: number; waarschuwing_sec: number; bevestiging_sec: number; fonos_paginas: { naam: string; url: string }[]; privacy_tekst: string; privacy_url: string; nl_weergave: string; bumper_video_url: string; nieuwsbrief: boolean }
+  instellingen: { max_titels: number; inactiviteit_sec: number; waarschuwing_sec: number; bevestiging_sec: number; fonos_paginas: { naam: string; url: string }[]; privacy_tekst: string; privacy_url: string; nl_weergave: string; bumper_video_url: string; nieuwsbrief: boolean; nieuwsbrief_bevestigingsmail: boolean; vindcode_label: string }
   platenspelers: { nummer: number; actief: boolean; bezet: boolean }[]
 }
 

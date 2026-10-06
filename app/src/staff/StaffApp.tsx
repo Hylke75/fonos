@@ -189,7 +189,7 @@ function Detail() {
               <span className="volg">{n + 1}</span>
               <Hoes src={i.hoes} />
               <div className="namen"><div>{i.artiesten}</div><div className="muted">{i.titel}</div>{i.verwijderd ? <div className="tekst-klein" style={{ color: 'var(--red)' }}>Uit aanvraag gehaald{i.reden ? `: ${i.reden}` : ''}</div> : null}</div>
-              <div className="info"><div>{[i.drager, i.jaar].filter(Boolean).join(' · ')}</div><div>Vindcode: <b>{i.vindcode ?? '–'}</b></div><div className="dim tekst-klein">Object {i.objectnummer}</div></div>
+              <div className="info"><div>{[i.drager, i.jaar].filter(Boolean).join(' · ')}</div><div>{a.vindcode_label ?? 'Vindcode'}: <b>{i.vindcode ?? '–'}</b></div><div className="dim tekst-klein">Object {i.objectnummer}</div></div>
               {open && !i.verwijderd ? <button className="icon-btn" title="Uit de aanvraag halen" aria-label={`Haal ${i.titel} uit de aanvraag`} onClick={() => { setReden(''); setVraag({ soort: 'item', item: i }) }}><X size={20} /></button> : <span />}
             </div>
           ))}
@@ -199,7 +199,7 @@ function Detail() {
           {a.status === 'uitgegeven' && <button className="btn btn-pink" onClick={() => doe('vrijgeven')}>Speler vrijgeven</button>}
           {open && <button className="btn btn-gray" onClick={() => { setReden(''); setVraag({ soort: 'annuleren' }) }}>Annuleren</button>}
           {!open && <p className="muted" style={{ textAlign: 'center' }}>Deze aanvraag is {a.status}{a.reden ? `: ${a.reden}` : ''}.</p>}
-          {a.status === 'ingediend' && a.weergave_status === 'nieuw' && <p className="muted tekst-klein" style={{ textAlign: 'center', margin: 0 }}><AlertTriangle size={13} /> Titels staan op volgorde van vindcode: één ronde door het archief.</p>}
+          {a.status === 'ingediend' && a.weergave_status === 'nieuw' && <p className="muted tekst-klein" style={{ textAlign: 'center', margin: 0 }}><AlertTriangle size={13} /> Titels staan op volgorde van {(a.vindcode_label ?? "vindcode").toLowerCase()}: één ronde door het archief.</p>}
         </div>
       </div>
       {vraag && (

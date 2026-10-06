@@ -13,7 +13,7 @@ const GROEPEN: { naam: string; velden: Veld[] }[] = [
     { k: 'sluitingstijd', label: 'Sluitingstijd (open aanvragen automatisch afsluiten)', soort: 'tijd', uitleg: 'Vul de openingstijden van Fonos in.' },
     { k: 'markering_min', label: 'Markering lang openstaande aanvraag (minuten)', soort: 'getal' },
     { k: 'geluid_aan', label: 'Geluidssignaal bij nieuwe aanvraag', soort: 'bool' },
-    { k: 'vindcode_bron', label: 'Vindcode', soort: 'keuze', opties: [['veld', 'Apart veld vindcode'], ['objectnummer', 'Objectnummer'], ['titelnummer', 'Titelnummer']], uitleg: 'Open punt O-1: welke code is de vindcode?' },
+    { k: 'vindcode_bron', label: 'Vindcode', soort: 'keuze', opties: [['titelnummer', 'Catalogusnummer Muziekweb (titelnummer)'], ['objectnummer', 'Objectnummer'], ['veld', 'Apart veld vindcode']], uitleg: 'Open punt O-1: met welke code vindt de medewerker de plaat in het archief?' },
   ] },
   { naam: 'Kiosk', velden: [
     { k: 'inactiviteit_sec', label: 'Inactiviteit tot sessie wissen (seconden)', soort: 'getal' },
@@ -25,7 +25,7 @@ const GROEPEN: { naam: string; velden: Veld[] }[] = [
   { naam: 'Nieuwsbrief en privacy', velden: [
     { k: 'privacy_tekst', label: 'Privacytekst', soort: 'lang' },
     { k: 'privacy_url', label: 'Link naar de privacyverklaring', soort: 'tekst' },
-    { k: 'nieuwsbrief_koppeling', label: 'Nieuwsbriefsysteem', soort: 'keuze', opties: [['geen', 'Nog geen koppeling'], ['webhook', 'Webhook (POST met e-mail, naam, bron)']], uitleg: 'Open punt O-4: welk nieuwsbriefsysteem gebruikt Fonos?' },
+    { k: 'nieuwsbrief_koppeling', label: 'Nieuwsbriefsysteem', soort: 'keuze', opties: [['beheer', 'Bewaren in de beheeromgeving (menu Nieuwsbrief)'], ['webhook', 'Webhook (POST met e-mail, naam, bron)'], ['geen', 'Geen aanmelding in de kiosk']], uitleg: 'Open punt O-4. Bij "bewaren" exporteert een beheerder de aanmeldingen als CSV naar het nieuwsbriefsysteem.' },
     { k: 'nieuwsbrief_url', label: 'Webhook-adres', soort: 'tekst' },
     { k: 'nieuwsbrief_bron', label: 'Bron die wordt meegegeven', soort: 'tekst' },
   ] },

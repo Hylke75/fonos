@@ -774,6 +774,46 @@ beheer.post('/upload', alleenBeheerder, async (c) => {
   return c.json({ adres: await bewaar('uploads', f.name, Buffer.from(await f.arrayBuffer()), f.type || 'application/octet-stream') })
 })
 
+// ---------- Nieuwsbriefaanmeldingen (11, koppeling "beheer"; alleen beheerders) ----------
+beheer.get('/nieuwsbrief', alleenBeheerder, async (c) => {
+  const zoek = (c.req.query('zoek') ?? '').trim().toLowerCase()
+  const alleenNieuw = c.req.query('nieuw') === '1'
+  const w: string[] = ['TRUE']
+  const p: unknown[] = []
+  if (zoek) { w.push("(lower(email) LIKE ? OR lower(COALESCE(naam, '')) LIKE ?)"); p.push(`%${zoek}%`, `%${zoek}%`) }
+  if (alleenNieuw) w.push('geexporteerd_op IS NULL')
+  const tel = await get<any>("SELECT COUNT(*)::int AS totaal, COUNT(*) FILTER (WHERE geexporteerd_op IS NULL)::int AS nieuw FROM nieuwsbrief_aanmeldingen")
+  const rijen = await all(`SELECT id, email, naam, bron, aangemeld_op, geexporteerd_op FROM nieuwsbrief_aanmeldingen WHERE ${w.join(' AND ')} ORDER BY aangemeld_op DESC, id DESC LIMIT 500`, ...p)
+  const inst = await instellingen()
+  return c.json({ ...tel, koppeling: inst.nieuwsbrief_koppeling, aanmeldingen: rijen })
+})
+
+/** Export als CSV (Excel-vriendelijk). Markeert de geëxporteerde aanmeldingen; gelogd zonder persoonsgegevens. */
+beheer.post('/nieuwsbrief/export', alleenBeheerder, async (c) => {
+  const { alleen_nieuw } = await c.req.json<{ alleen_nieuw?: boolean }>().catch(() => ({ alleen_nieuw: false }))
+  const rijen = await all<any>(`SELECT id, email, naam, bron,
+      to_char((aangemeld_op || '+00')::timestamptz AT TIME ZONE 'Europe/Amsterdam', 'YYYY-MM-DD HH24:MI') AS aangemeld_op
+    FROM nieuwsbrief_aanmeldingen ${alleen_nieuw ? 'WHERE geexporteerd_op IS NULL' : ''} ORDER BY aangemeld_op, id`)
+  const cel = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
+  const csv = '\ufeff' + [['email', 'naam', 'bron', 'aangemeld_op'].join(';'), ...rijen.map((r) => [r.email, r.naam, r.bron, r.aangemeld_op].map(cel).join(';'))].join('\r\n')
+  if (rijen.length) await run(`UPDATE nieuwsbrief_aanmeldingen SET geexporteerd_op = nu() WHERE id = ANY(?::int[])`, `{${rijen.map((r) => r.id).join(',')}}`)
+  await log(wie(c), 'nieuwsbriefaanmeldingen geëxporteerd', { type: 'nieuwsbrief', nieuw: `${rijen.length} aanmelding(en)${alleen_nieuw ? ', alleen nieuwe' : ''}` })
+  return new Response(csv, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="nieuwsbrief-aanmeldingen-${new Date().toISOString().slice(0, 10)}.csv"` } })
+})
+
+beheer.delete('/nieuwsbrief/:id', alleenBeheerder, async (c) => {
+  const r = await run('DELETE FROM nieuwsbrief_aanmeldingen WHERE id = ?', Number(c.req.param('id')))
+  if (!r.changes) return fout(c, 'Aanmelding niet gevonden', 404)
+  await log(wie(c), 'nieuwsbriefaanmelding verwijderd', { type: 'nieuwsbrief', nieuw: '1 aanmelding' })
+  return c.json({ ok: true })
+})
+
+beheer.post('/nieuwsbrief/verwijder-geexporteerd', alleenBeheerder, async (c) => {
+  const r = await run('DELETE FROM nieuwsbrief_aanmeldingen WHERE geexporteerd_op IS NOT NULL')
+  await log(wie(c), 'nieuwsbriefaanmeldingen verwijderd', { type: 'nieuwsbrief', nieuw: `${r.changes} geëxporteerde aanmelding(en)` })
+  return c.json({ verwijderd: r.changes })
+})
+
 beheer.get('/opslag', (c) => c.json({ blob: !!process.env.BLOB_READ_WRITE_TOKEN, toegang: BLOB_TOEGANG }))
 
 beheer.post('/terugzetten/controle', alleenBeheerder, async (c) => {

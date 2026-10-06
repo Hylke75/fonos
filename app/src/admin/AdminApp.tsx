@@ -1,7 +1,7 @@
 // Beheeromgeving (10): zijbalk, rollen en pagina's.
 import { useState } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
-import { Archive, History, Import, LayoutGrid, LibraryBig, ListMusic, LogOut, Settings, Users, Headphones } from 'lucide-react'
+import { Archive, History, Import, LayoutGrid, LibraryBig, ListMusic, LogOut, Mail, Settings, Users, Headphones } from 'lucide-react'
 import { Logo } from '../components/Logo'
 import { Afgeschermd, heeftRol, initialen, type Ik } from '../Login'
 import { Collectie } from './Collectie'
@@ -9,6 +9,7 @@ import { TitelBewerken } from './TitelBewerken'
 import { Importeren } from './Importeren'
 import { Genreknoppen } from './Genreknoppen'
 import { Selecties } from './Selecties'
+import { Nieuwsbrief } from './Nieuwsbrief'
 import { Gebruikers } from './Gebruikers'
 import { Instellingen } from './Instellingen'
 import { Backups } from './Backups'
@@ -31,6 +32,7 @@ function Beheer({ ik, uit }: { ik: Ik; uit: () => void }) {
     ...(beheerder ? [{ naar: 'genreknoppen', label: 'Genreknoppen', icoon: LayoutGrid }] : []),
     { naar: 'selecties', label: 'Selecties', icoon: ListMusic },
     ...(beheerder ? [
+      { naar: 'nieuwsbrief', label: 'Nieuwsbrief', icoon: Mail },
       { naar: 'gebruikers', label: 'Gebruikers', icoon: Users },
       { naar: 'instellingen', label: 'Instellingen', icoon: Settings },
       { naar: 'backups', label: 'Back-ups', icoon: Archive },
@@ -65,6 +67,7 @@ function Beheer({ ik, uit }: { ik: Ik; uit: () => void }) {
             <Route path="wijzigingslog" element={<Wijzigingslog />} />
             {beheerder && <>
               <Route path="genreknoppen" element={<Genreknoppen />} />
+              <Route path="nieuwsbrief" element={<Nieuwsbrief />} />
               <Route path="gebruikers" element={<Gebruikers ik={ik} />} />
               <Route path="instellingen" element={<Instellingen />} />
               <Route path="backups" element={<Backups />} />

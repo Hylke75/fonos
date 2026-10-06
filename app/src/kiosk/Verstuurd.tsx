@@ -28,7 +28,7 @@ export function Verstuurd() {
         <div className="label">Bestelnummer</div>
         <div className="nummer-groot">#{st.bestelnummer}</div>
         <p>Een FONOS-medewerker haalt de platen voor je op.<br />Deze worden gebracht naar platenspeler {st.platenspeler}.</p>
-        {st.aangemeld && <p className="tekst-klein" style={{ fontSize: 17, marginTop: -12 }}>Je ontvangt een e-mail om je aanmelding voor de nieuwsbrief te bevestigen.</p>}
+        {st.aangemeld && <p className="tekst-klein" style={{ fontSize: 17, marginTop: -12 }}>{config.instellingen.nieuwsbrief_bevestigingsmail ? 'Je ontvangt een e-mail om je aanmelding voor de nieuwsbrief te bevestigen.' : 'Je bent aangemeld voor de nieuwsbrief van Fonos.'}</p>}
         <button className="btn btn-ghost btn-l" style={{ minWidth: 260, background: '#0d1529' }} onClick={() => { klaar.current = true; verder() }}>Verder zoeken</button>
       </div>
     </div>

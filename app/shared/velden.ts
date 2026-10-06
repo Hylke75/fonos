@@ -66,3 +66,6 @@ export function normaliseer(s: string): string {
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
 }
+
+/** Hoe de vindcode heet op de schermen, afhankelijk van de bron (O-1). */
+export const VINDCODE_LABEL: Record<string, string> = { veld: 'Vindcode', objectnummer: 'Objectnr.', titelnummer: 'Catalogusnr.' }

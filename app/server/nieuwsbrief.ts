@@ -1,6 +1,8 @@
-// Nieuwsbrief-aanmelding (11). Losse module: het nieuwsbriefsysteem van Fonos is nog open (O-4).
-// De app slaat de gegevens niet op. Alleen als het systeem onbereikbaar is, blijft de aanmelding maximaal
-// 24 uur in een wachtrij voor een nieuwe poging; daarna vervalt ze (gelogd zonder persoonsgegevens).
+// Nieuwsbrief-aanmelding (11). Losse module met koppelingen (O-4):
+// - beheer: de aanmelding wordt bewaard in de beheeromgeving (Nieuwsbrief), waar een beheerder ze exporteert;
+// - webhook: direct doorsturen naar een extern nieuwsbriefsysteem (dat verstuurt de bevestigingsmail);
+// - geen: niets doen.
+// Bij een storing blijft de aanmelding maximaal 24 uur in een wachtrij; daarna vervalt ze (gelogd zonder persoonsgegevens).
 import { all, insert, instellingen, run } from './db.ts'
 import { log, SYSTEEM } from './log.ts'
 
@@ -10,6 +12,13 @@ export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 /** Koppelingen per nieuwsbriefsysteem. Een nieuw systeem = een nieuwe functie hier. */
 const koppelingen: Record<string, (a: Aanmelding) => Promise<void>> = {
   geen: async () => { console.log('[nieuwsbrief] geen koppeling ingesteld (open punt O-4); aanmelding niet doorgestuurd') },
+  beheer: async (a) => {
+    const inst = await instellingen()
+    // Opnieuw aanmelden met hetzelfde adres: naam bijwerken en opnieuw laten meetellen voor de volgende export.
+    await run(`INSERT INTO nieuwsbrief_aanmeldingen (email, naam, bron) VALUES (?, ?, ?)
+      ON CONFLICT (lower(email)) DO UPDATE SET naam = COALESCE(excluded.naam, nieuwsbrief_aanmeldingen.naam), aangemeld_op = nu(), geexporteerd_op = NULL`,
+      a.email, a.naam ?? null, inst.nieuwsbrief_bron || null)
+  },
   webhook: async (a) => {
     const inst = await instellingen()
     if (!inst.nieuwsbrief_url) throw new Error('Geen webhook-adres ingesteld')

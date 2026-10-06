@@ -135,8 +135,8 @@ export const STANDAARD_INSTELLINGEN = {
   privacy_tekst: 'We gebruiken je e-mailadres alleen voor de nieuwsbrief van Fonos. Je kunt je altijd weer afmelden.',
   privacy_url: 'https://www.beeldengeluid.nl/privacy',
   nl_weergave: 'knop', // open punt O-7: 'knop' of 'schakelaar'
-  vindcode_bron: 'veld', // open punt O-1: 'veld', 'objectnummer' of 'titelnummer'
-  nieuwsbrief_koppeling: 'geen', // open punt O-4: 'geen' of 'webhook'
+  vindcode_bron: 'titelnummer', // O-1: het Muziekweb-catalogusnummer (bv. JK278045) volstaat om de plaat in het archief te vinden
+  nieuwsbrief_koppeling: 'beheer', // O-4: 'beheer' (bewaren in de beheeromgeving), 'webhook' of 'geen'
   nieuwsbrief_url: '',
   nieuwsbrief_bron: 'Luisterbar',
   melding_email_aan: false, // open punt O-9
@@ -184,7 +184,8 @@ function bestand(...kandidaten: string[]) {
 }
 
 async function zorgVoorSchema(v: Verbinding) {
-  const heeft = await v.query("SELECT to_regclass('public.taken') AS t, to_regclass('public.versies') AS v", [])
+  // Het schema is idempotent; het draait opnieuw zodra de nieuwste tabel ontbreekt.
+  const heeft = await v.query("SELECT to_regclass('public.nieuwsbrief_aanmeldingen') AS t", [])
   if (!heeft.rows[0]?.t) {
     // Meerdere statements in één keer: zonder parameters.
     await v.exec(readFileSync(bestand('schema.sql', 'server/schema.sql'), 'utf8'))

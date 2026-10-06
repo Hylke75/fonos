@@ -144,7 +144,7 @@ export function AlbumWeergave({ a, voorbeeld = false }: { a: AlbumData; voorbeel
               <span className="radio">{keuze === e.exemplaar_id && <SpeelIcoon />}</span>
               <span>
                 <div className="wat">{e.drager ?? ''} {e.jaar ?? ''}{!e.deze_titel ? ' (andere uitgave)' : ''}</div>
-                <div className="code">Vindcode: {e.vindcode ?? '–'}</div>
+                <div className="code">{ctx.config.instellingen.vindcode_label}: {e.vindcode ?? '–'}</div>
                 {!e.beschikbaar && <div className="in-gebruik">In gebruik</div>}
               </span>
               <span className={`stip ${e.beschikbaar ? 'ja' : 'nee'}`} aria-label={e.beschikbaar ? 'Beschikbaar' : 'In gebruik'}>

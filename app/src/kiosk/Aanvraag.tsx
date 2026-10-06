@@ -76,7 +76,7 @@ export function Aanvraag() {
                 </div>
                 <div className="info">
                   <div>{[m.drager, m.jaar].filter(Boolean).join(' · ')}</div>
-                  {(m.vindcode ?? beschikbaar[m.titel_id]?.vindcode) && <div>Vindcode: {m.vindcode ?? beschikbaar[m.titel_id]?.vindcode}</div>}
+                  {(m.vindcode ?? beschikbaar[m.titel_id]?.vindcode) && <div>{config.instellingen.vindcode_label}: {m.vindcode ?? beschikbaar[m.titel_id]?.vindcode}</div>}
                 </div>
                 <button className="x" onClick={() => { verwijder(m.titel_id); setNietBeschikbaar((n) => n.filter((x) => x !== m.titel_id)); setFout(null) }} aria-label={`Haal ${m.titel} uit je aanvraag`}><X size={26} /></button>
               </div>

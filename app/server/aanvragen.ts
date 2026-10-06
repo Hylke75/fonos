@@ -1,4 +1,5 @@
 // Aanvragen en hun statussen (7.9, 8).
+import { VINDCODE_LABEL } from '../shared/velden.ts'
 import { all, get, insert, instellingen, run, tx } from './db.ts'
 import { BEZOEKER, log, type Wie } from './log.ts'
 import { OPEN_ITEMS_SQL, vindcoder } from './titels.ts'
@@ -97,7 +98,7 @@ export async function aanvraagDetail(id: number) {
     .map((i) => ({ ...i, vindcode: vc(i) }))
   // Gesorteerd op vindcode: zo kan de medewerker in één ronde door het archief (9).
   items.sort((x, y) => (x.verwijderd - y.verwijderd) || String(x.vindcode ?? '~').localeCompare(String(y.vindcode ?? '~'), 'nl', { numeric: true }))
-  return { ...a, weergave_status: weergaveStatus(a), items }
+  return { ...a, weergave_status: weergaveStatus(a), items, vindcode_label: VINDCODE_LABEL[(await instellingen()).vindcode_bron] ?? 'Vindcode' }
 }
 
 /** Status zoals op het medewerkersscherm: Nieuw, Bezig (wordt opgehaald), Klaar (bij de speler). */

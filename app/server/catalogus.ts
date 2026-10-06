@@ -1,4 +1,5 @@
 // Catalogus voor de bezoekersapp (7.3–7.7). Leest alleen.
+import { VINDCODE_LABEL } from '../shared/velden.ts'
 import { all, get, instellingen } from './db.ts'
 import { zoek } from './zoeken.ts'
 import { exemplarenVan, getoond, OPEN_ITEMS_SQL, ZICHTBAAR_SQL, vindcoder } from './titels.ts'
@@ -69,7 +70,9 @@ export async function kioskConfig() {
       max_titels: inst.max_titels, inactiviteit_sec: inst.inactiviteit_sec, waarschuwing_sec: inst.waarschuwing_sec,
       bevestiging_sec: inst.bevestiging_sec, fonos_paginas: inst.fonos_paginas, privacy_tekst: inst.privacy_tekst,
       privacy_url: inst.privacy_url, nl_weergave: inst.nl_weergave, bumper_video_url: inst.bumper_video_url,
-      nieuwsbrief: inst.nieuwsbrief_koppeling !== 'geen', // O-4: zonder koppeling geen aanmeldscherm
+      vindcode_label: VINDCODE_LABEL[inst.vindcode_bron] ?? 'Vindcode',
+      nieuwsbrief: inst.nieuwsbrief_koppeling !== 'geen', // O-4: zonder koppeling geen aanmelding
+      nieuwsbrief_bevestigingsmail: inst.nieuwsbrief_koppeling === 'webhook', // het externe systeem stuurt de bevestiging
     },
     platenspelers: await platenspelers(),
   }
