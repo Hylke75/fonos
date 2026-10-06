@@ -1,7 +1,7 @@
 // Beheeromgeving (10): zijbalk, rollen en pagina's.
 import { useState } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
-import { Activity, Archive, History, Import, LayoutGrid, LibraryBig, ListMusic, LogOut, Mail, Settings, Users, Headphones } from 'lucide-react'
+import { Activity, Archive, Disc3, History, Import, LayoutGrid, LibraryBig, ListMusic, LogOut, Mail, Settings, Users, Headphones } from 'lucide-react'
 import { Logo } from '../components/Logo'
 import { Afgeschermd, heeftRol, initialen, type Ik } from '../Login'
 import { Collectie } from './Collectie'
@@ -10,6 +10,7 @@ import { Importeren } from './Importeren'
 import { Genreknoppen } from './Genreknoppen'
 import { Selecties } from './Selecties'
 import { Nieuwsbrief } from './Nieuwsbrief'
+import { Spotify } from './Spotify'
 import { Status } from './Status'
 import { Gebruikers } from './Gebruikers'
 import { Instellingen } from './Instellingen'
@@ -32,6 +33,7 @@ function Beheer({ ik, uit }: { ik: Ik; uit: () => void }) {
     { naar: 'importeren', label: 'Importeren', icoon: Import },
     ...(beheerder ? [{ naar: 'genreknoppen', label: 'Genreknoppen', icoon: LayoutGrid }] : []),
     { naar: 'selecties', label: 'Selecties', icoon: ListMusic },
+    { naar: 'spotify', label: 'Spotify-koppelingen', icoon: Disc3 },
     ...(beheerder ? [
       { naar: 'nieuwsbrief', label: 'Nieuwsbrief', icoon: Mail },
       { naar: 'status', label: 'Status', icoon: Activity },
@@ -66,6 +68,7 @@ function Beheer({ ik, uit }: { ik: Ik; uit: () => void }) {
             <Route path="titel/:id" element={<TitelBewerken beheerder={beheerder} />} />
             <Route path="importeren" element={<Importeren beheerder={beheerder} />} />
             <Route path="selecties" element={<Selecties />} />
+            <Route path="spotify" element={<Spotify />} />
             <Route path="wijzigingslog" element={<Wijzigingslog />} />
             {beheerder && <>
               <Route path="genreknoppen" element={<Genreknoppen />} />

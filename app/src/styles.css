@@ -586,3 +586,23 @@ pre.rapport { background: #07111f; border: 1px solid var(--line); border-radius:
   .qr-nr { font-size: 28px; font-weight: 800; margin-top: 8px; }
   .qr-uitleg { font-size: 13px; }
 }
+.voortgang { height: 10px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.voortgang > div { height: 100%; background: #1ed760; }
+.spotify-lijst { display: flex; flex-direction: column; gap: 12px; }
+.spotify-regel { display: grid; grid-template-columns: 300px 1fr 150px; gap: 16px; padding: 16px; align-items: start; }
+.spotify-regel .eigen { display: grid; grid-template-columns: 84px 1fr; gap: 12px; }
+.spotify-regel .cover { width: 84px; height: 84px; }
+.spotify-regel .kandidaten { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.spotify-regel .kandidaat { display: grid; grid-template-columns: 64px 1fr; gap: 10px; padding: 8px; border-radius: 10px; border: 1px solid var(--line); }
+.spotify-regel .kandidaat .cover { width: 64px; height: 64px; }
+.spotify-regel .kandidaat.huidig { border-color: #1ed760; box-shadow: inset 0 0 0 1px #1ed760; }
+.spotify-regel .acties { display: flex; flex-direction: column; gap: 8px; }
+@media (max-width: 1200px) { .spotify-regel { grid-template-columns: 1fr; } }
+.spotify-blok { margin-top: 32px; }
+.spotify-blok h2 { font-size: 20px; margin: 0 0 12px; }
+.spotify-rij { display: grid; grid-template-columns: 1fr 150px; gap: 20px; align-items: center; }
+.spotify-rij iframe { width: 100%; border: 0; border-radius: 12px; background: var(--surface-2); }
+.spotify-qr { text-align: center; }
+.spotify-qr .code { width: 130px; height: 130px; margin: 0 auto; border-radius: 10px; overflow: hidden; background: #fff; }
+.spotify-qr .code svg { width: 100%; height: 100%; display: block; }
+.spotify-qr p { font-size: 13px; color: var(--muted); margin: 8px 0 0; line-height: 1.35; }

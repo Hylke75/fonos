@@ -37,6 +37,16 @@ CREATE TABLE IF NOT EXISTS titels (
   aangemaakt    text NOT NULL DEFAULT nu(),
   gewijzigd     text NOT NULL DEFAULT nu()
 );
+-- Koppeling met een Spotify-album (luisteren op de albumpagina en QR-code naar de telefoon).
+ALTER TABLE titels ADD COLUMN IF NOT EXISTS spotify_album_id text;
+ALTER TABLE titels ADD COLUMN IF NOT EXISTS spotify_status text NOT NULL DEFAULT 'nog_niet';
+ALTER TABLE titels ADD COLUMN IF NOT EXISTS spotify_score numeric;
+ALTER TABLE titels ADD COLUMN IF NOT EXISTS spotify_kandidaat text; -- JSON: de beste 3 kandidaten (id, artiest, titel, jaar, cover)
+ALTER TABLE titels ADD COLUMN IF NOT EXISTS spotify_gecontroleerd_op text;
+ALTER TABLE titels DROP CONSTRAINT IF EXISTS titels_spotify_status_check;
+ALTER TABLE titels ADD CONSTRAINT titels_spotify_status_check
+  CHECK (spotify_status IN ('nog_niet', 'auto_goed', 'twijfel', 'geen', 'handmatig', 'uitgesloten'));
+CREATE INDEX IF NOT EXISTS idx_titels_spotify_status ON titels(spotify_status);
 CREATE INDEX IF NOT EXISTS idx_titels_artiest ON titels(d_artiesten);
 CREATE INDEX IF NOT EXISTS idx_titels_titel ON titels(d_titel);
 CREATE INDEX IF NOT EXISTS idx_titels_zoek ON titels USING gin (zoek);

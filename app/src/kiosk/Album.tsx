@@ -10,7 +10,7 @@ import { KioskKopTerug } from './Kop'
 
 type Ex = { exemplaar_id: number; titel_id: number; drager: string | null; jaar: number | null; vindcode: string | null; beschikbaar: boolean; deze_titel: boolean }
 export type AlbumData = {
-  id: number; titelnummer: string | null; soort: string; jaar: number | null; fonos_verhaal: string | null; ai_tekst: boolean; beschikbaar: boolean
+  id: number; titelnummer: string | null; soort: string; jaar: number | null; fonos_verhaal: string | null; ai_tekst: boolean; beschikbaar: boolean; spotify_album_id?: string | null
   velden: { titel?: string; artiesten?: string[]; uitgave?: string; drager?: string; aantal?: number; label?: string; genres?: string[]; speelduur?: string; toelichting?: string; tracklist?: { pos: number; titel: string; duur?: string | null; componisten?: string[]; uitvoerenden?: string[] }[]; hoes_voor?: string; hoes_achter?: string; componisten?: string[]; uitvoerenden?: string[] }
   exemplaren: Ex[]
 }
@@ -132,6 +132,7 @@ export function AlbumWeergave({ a, voorbeeld = false }: { a: AlbumData; voorbeel
             ))}
           </section>
         )}
+        {a.spotify_album_id && <SpotifyBlok id={a.spotify_album_id} />}
       </div>
 
       <div className="exemplaren-kolom">
@@ -172,5 +173,38 @@ export function AlbumWeergave({ a, voorbeeld = false }: { a: AlbumData; voorbeel
         )}
       </div>
     </div>
+  )
+}
+
+/** Spotify-speler en QR-code naar het album op de eigen telefoon. Alleen bij een goedgekeurde koppeling.
+ *  Kioskmodus: de sandbox staat geen pop-ups en geen navigatie van de app toe, dus de speler kan de kiosk niet laten wegnavigeren. */
+function SpotifyBlok({ id }: { id: string }) {
+  const [qr, setQr] = useState<string | null>(null)
+  useEffect(() => {
+    let weg = false
+    import('qrcode').then((Q) => Q.toString(`https://open.spotify.com/album/${id}`, { type: 'svg', margin: 1, width: 160, color: { dark: '#040a1e', light: '#ffffff' } }))
+      .then((svg) => { if (!weg) setQr(svg) }).catch(() => {})
+    return () => { weg = true }
+  }, [id])
+  return (
+    <section className="spotify-blok" aria-label="Luisteren via Spotify">
+      <h2>Luister via Spotify</h2>
+      <div className="spotify-rij">
+        <iframe
+          title="Spotify-speler"
+          src={`https://open.spotify.com/embed/album/${id}?utm_source=generator&theme=0`}
+          height={152} loading="lazy"
+          allow="encrypted-media; autoplay"
+          sandbox="allow-scripts allow-same-origin"
+          referrerPolicy="strict-origin-when-cross-origin"
+        />
+        {qr && (
+          <div className="spotify-qr">
+            <div className="code" dangerouslySetInnerHTML={{ __html: qr }} />
+            <p>Scan om dit album op je telefoon te openen</p>
+          </div>
+        )}
+      </div>
+    </section>
   )
 }
