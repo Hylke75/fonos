@@ -189,21 +189,24 @@ function SpotifyBlok({ id }: { id: string }) {
   return (
     <section className="spotify-blok" aria-label="Luisteren via Spotify">
       <h2>Luister via Spotify</h2>
-      <div className="spotify-rij">
-        <iframe
-          title="Spotify-speler"
-          src={`https://open.spotify.com/embed/album/${id}?utm_source=generator&theme=0`}
-          height={152} loading="lazy"
-          allow="encrypted-media; autoplay"
-          sandbox="allow-scripts allow-same-origin"
-          referrerPolicy="strict-origin-when-cross-origin"
-        />
-        {qr && (
-          <div className="spotify-qr">
-            <div className="code" dangerouslySetInnerHTML={{ __html: qr }} />
-            <p>Scan om dit album op je telefoon te openen</p>
+      <div className="card spotify-kaart">
+        <div className="spotify-speler">
+          <iframe
+            title="Spotify-speler"
+            src={`https://open.spotify.com/embed/album/${id}?utm_source=generator&theme=0`}
+            height={152} loading="lazy"
+            allow="encrypted-media; autoplay"
+            sandbox="allow-scripts allow-same-origin"
+            referrerPolicy="strict-origin-when-cross-origin"
+          />
+        </div>
+        <div className="spotify-qr">
+          {qr ? <div className="code" dangerouslySetInnerHTML={{ __html: qr }} /> : <div className="code" />}
+          <div>
+            <div className="wat">Scan om dit album op je telefoon te openen</div>
+            <div className="uitleg">Luister het hele album in de Spotify-app.</div>
           </div>
-        )}
+        </div>
       </div>
     </section>
   )
