@@ -167,3 +167,30 @@ def test_export_restore_roundtrip(tmp_path):
     assert dst.execute("SELECT album_code, status FROM scrape_queue ORDER BY 1").fetchall() == [
         ("AAX10308", "done"), ("HAX2728", "done"), ("JK278043", "done"), ("JKE1", "missing")]
     assert dst.execute("SELECT content_z FROM album_pages").fetchall()[0] == (None,)
+
+
+def test_prioritize_from_xlsx_and_crawl_order(tmp_path, monkeypatch):
+    import openpyxl
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "AA-AF"
+    ws.append(["Plessey", "Titelnummer"])
+    ws.append([101177246, "AA00052"])
+    ws.append([100064217, "aa00132 "])
+    old = wb.create_sheet("OUD_AA-AF")
+    old.append(["Titelnummer"])
+    old.append(["ZZ99999"])
+    xlsx = tmp_path / "lijst.xlsx"
+    wb.save(xlsx)
+    assert ms.read_codes([str(xlsx), "JK278043"]) == ["AA00052", "AA00132", "JK278043"]
+
+    db = tmp_path / "t.db"
+    conn = ms.connect(db)
+    conn.executemany("INSERT INTO scrape_queue (album_code) VALUES (?)", [("ZZ00001",), ("AA00132",)])
+    conn.commit()
+    ms.main(["--db", str(db), "prioritize", str(xlsx)])
+    fetched = []
+    monkeypatch.setattr(ms, "fetch", lambda code, delay: (fetched.append(code), (code, 404, None, None, None))[1])
+    ms.crawl(conn, limit=None, workers=1, delay=0)
+    assert fetched == ["AA00132", "AA00052", "ZZ00001"]

@@ -255,7 +255,39 @@ def connect(db: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(db, timeout=60)
     conn.execute("PRAGMA journal_mode = WAL")
     conn.executescript(SCHEMA.read_text(encoding="utf-8"))
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(scrape_queue)")}
+    if "priority" not in cols:  # databases van vóór de prioriteitskolom
+        conn.execute("ALTER TABLE scrape_queue ADD COLUMN priority INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
     return conn
+
+
+def read_codes(items: list[str]) -> list[str]:
+    """Catalogusnummers uit argumenten, .txt-bestanden (één per regel) of .xlsx-bestanden
+    (alle kolommen met kop 'Titelnummer', op alle tabbladen behalve OUD_*)."""
+    codes = []
+    for item in items:
+        path = Path(item)
+        if path.suffix.lower() == ".xlsx" and path.is_file():
+            import openpyxl
+
+            wb = openpyxl.load_workbook(path, read_only=True)
+            for ws in wb.worksheets:
+                if ws.title.upper().startswith("OUD"):
+                    continue
+                rows = ws.iter_rows(values_only=True)
+                header = next(rows, ())
+                idx = [i for i, h in enumerate(header) if h and str(h).strip().lower() == "titelnummer"]
+                for row in rows:
+                    for i in idx:
+                        if i < len(row) and row[i]:
+                            codes.append(str(row[i]))
+        elif path.is_file():
+            codes += path.read_text(encoding="utf-8").split()
+        else:
+            codes.append(item)
+    codes = [c.strip().upper() for c in codes]
+    return list(dict.fromkeys(c for c in codes if re.fullmatch(r"[A-Z]{2,4}\d{3,}", c)))
 
 
 def save_page(conn: sqlite3.Connection, page: dict) -> None:
@@ -307,7 +339,7 @@ def fetch(code: str, delay: float) -> tuple[str, int | None, str | None, str | N
 
 
 def crawl(conn: sqlite3.Connection, limit: int | None, workers: int, delay: float) -> None:
-    sql = "SELECT album_code FROM scrape_queue WHERE status = 'pending' ORDER BY rowid"
+    sql = "SELECT album_code FROM scrape_queue WHERE status = 'pending' ORDER BY priority DESC, rowid"
     if limit:
         sql += f" LIMIT {int(limit)}"
     codes = [r[0] for r in conn.execute(sql)]
@@ -428,6 +460,8 @@ def main(argv: list[str] | None = None) -> None:
     e.add_argument("--newest", action="store_true", help="nieuwste albums eerst")
     a = sub.add_parser("add")
     a.add_argument("codes", nargs="+")
+    pr = sub.add_parser("prioritize", help="albums vóór de rest ophalen (codes, .txt of .xlsx)")
+    pr.add_argument("items", nargs="+")
     c = sub.add_parser("crawl")
     c.add_argument("--limit", type=int)
     c.add_argument("--workers", type=int, default=1)
@@ -456,6 +490,16 @@ def main(argv: list[str] | None = None) -> None:
                              (c.strip().upper(),)).rowcount for c in args.codes)
         conn.commit()
         print(f"{n} albums in de wachtrij")
+    elif args.cmd == "prioritize":
+        codes = read_codes(args.items)
+        top = (conn.execute("SELECT MAX(priority) FROM scrape_queue").fetchone()[0] or 0) + 1
+        conn.executemany("INSERT OR IGNORE INTO scrape_queue (album_code) VALUES (?)", [(c,) for c in codes])
+        conn.executemany("UPDATE scrape_queue SET priority = ? WHERE album_code = ?", [(top, c) for c in codes])
+        conn.commit()
+        pending = conn.execute("SELECT COUNT(*) FROM scrape_queue WHERE priority = ? AND status = 'pending'",
+                               (top,)).fetchone()[0]
+        print(f"{len(codes)} albums met voorrang {top}; {pending} nog op te halen "
+              f"(herstart een lopende crawl om ze direct mee te nemen)")
     elif args.cmd == "crawl":
         if args.retry_errors:
             conn.execute("UPDATE scrape_queue SET status='pending' WHERE status='error'")
