@@ -71,3 +71,15 @@ Niet opgehaald: de objectstatus (uitleenstatus). Die komt van `/Muziekweb/DUIT/`
 robots.txt voor crawlers is uitgesloten. E-albums (`JKE…`) geven HTTP 403 en worden overgeslagen.
 
 Ook in de bron ontbreekt bij 143 albums de titel; 16 daarvan zijn alleen verwijzingen zonder verdere gegevens.
+
+## Controle met een catalogusexport (collectie/catalogus_import.py)
+
+```bash
+python collectie/catalogus_import.py "Hylke export 06102026 v1.xml" --dry-run   # eerst tellen
+python collectie/catalogus_import.py "Hylke export 06102026 v1.xml"
+```
+
+Slaat de export op (`catalogus_albums`, `catalogus_bestelinfo`, `catalogus_tracks`), voegt
+`album_credits` (artiesten zoals in de catalogus) en `album_keywords` toe, en vult/corrigeert in
+`albums` titel, releasedatum, drager, aantal schijven en speelduur. Elke wijziging staat in
+`wijzigingen` (oud → nieuw). De view `album_overview_compleet` toont ook credits en trefwoorden.
