@@ -1,7 +1,7 @@
 // Bouwt de Vercel Build Output (v3): statische frontend + één Node-functie voor /api.
 // Zie https://vercel.com/docs/build-output-api/v3
 import { build } from 'esbuild'
-import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -36,9 +36,12 @@ writeFileSync(join(func, '.vc-config.json'), JSON.stringify({
   supportsResponseStreaming: true, maxDuration: 300, regions: ['dub1'],
 }, null, 2))
 
+// Beveiligingsheaders (IT-beleid 5.6) op alle antwoorden, ook de statische frontend.
+const beveiliging = JSON.parse(readFileSync(join(app, 'shared', 'beveiligingsheaders.json'), 'utf8'))
 writeFileSync(join(uit, 'config.json'), JSON.stringify({
   version: 3,
   routes: [
+    { src: '^/(.*)$', headers: beveiliging, continue: true },
     { src: '^/assets/(.*)$', headers: { 'cache-control': 'public, max-age=31536000, immutable' }, continue: true },
     { src: '^/api(/.*)?$', dest: '/api' },
     { handle: 'filesystem' },

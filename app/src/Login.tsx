@@ -18,20 +18,47 @@ export function useIk() {
 export const initialen = (naam: string) => naam.split(/\s+/).filter(Boolean).map((w) => w[0]).filter((c) => c === c.toUpperCase()).slice(0, 2).join('') || naam.slice(0, 2).toUpperCase()
 export const heeftRol = (ik: Ik, ...r: string[]) => r.some((x) => ik.rollen.includes(x) || (x === 'redacteur' && ik.rollen.includes('beheerder')))
 
+type Methoden = { google: boolean; wachtwoord: boolean; domein: string | null }
+type Stap = { stap: 'code' } | { stap: 'koppelen'; geheim: string; otpauth: string }
+
 export function Login({ titel, onIn }: { titel: string; onIn: (ik: Ik) => void }) {
   const [email, setEmail] = useState('')
   const [ww, setWw] = useState('')
+  const [code, setCode] = useState('')
   const [fout, setFout] = useState<string | null>(null)
   const [vergeten, setVergeten] = useState(false)
   const [verstuurd, setVerstuurd] = useState(false)
+  const [methoden, setMethoden] = useState<Methoden | null>(null)
+  const [stap, setStap] = useState<Stap | null>(null)
+  const [qr, setQr] = useState<string | null>(null)
+  const [bezig, setBezig] = useState(false)
+  const [p, setP] = useSearchParams()
+  useEffect(() => { api<Methoden>('/auth/methoden').then(setMethoden).catch(() => setMethoden({ google: false, wachtwoord: true, domein: null })) }, [])
+  // Terug van Google met een foutmelding.
+  useEffect(() => {
+    const f = p.get('login_fout')
+    if (f) { setFout(f); p.delete('login_fout'); setP(p, { replace: true }) }
+  }, [])
+  useEffect(() => {
+    if (stap?.stap !== 'koppelen') { setQr(null); return }
+    import('qrcode').then((m) => m.default.toString(stap.otpauth, { type: 'svg', margin: 1, width: 200 })).then(setQr).catch(() => setQr(null))
+  }, [stap])
   const in_ = async (e: React.FormEvent) => {
     e.preventDefault()
-    setFout(null)
+    setFout(null); setBezig(true)
     try {
       if (vergeten) { await api('/auth/reset-aanvraag', { body: { email } }); setVerstuurd(true); return }
-      onIn(await api<Ik>('/auth/login', { body: { email, wachtwoord: ww } }))
-    } catch (e) { setFout((e as ApiFout).message) }
+      if (stap) { onIn(await api<Ik>('/auth/code', { body: { code } })); return }
+      const r = await api<Ik | Stap>('/auth/login', { body: { email, wachtwoord: ww } })
+      if ('stap' in r) { setStap(r); setCode('') } else onIn(r)
+    } catch (e) {
+      const f = e as ApiFout
+      setFout(f.message)
+      if (stap && f.status === 401) { setStap(null); setWw('') }
+    } finally { setBezig(false) }
   }
+  const google = () => { location.href = `/api/auth/google?terug=${encodeURIComponent(location.pathname)}` }
+  const alleenGoogle = methoden?.google && !methoden.wachtwoord
   return (
     <div className="login-scherm">
       <div className="bol bol-a" style={{ opacity: .6 }} />
@@ -39,18 +66,44 @@ export function Login({ titel, onIn }: { titel: string; onIn: (ik: Ik) => void }
       <form className="card login" onSubmit={in_}>
         <Logo />
         <h1>{titel}</h1>
-        <p>{vergeten ? 'Vul je e-mailadres in. Je krijgt een link om een nieuw wachtwoord te kiezen.' : 'Log in met je persoonlijke account.'}</p>
-        {verstuurd ? <div className="melding-blok ok">Als dit adres bij ons bekend is, is er een e-mail met een link verstuurd.</div> : (
+        {stap ? (
           <>
-            <label className="veld"><span>E-mailadres</span><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required /></label>
-            {!vergeten && <label className="veld"><span>Wachtwoord</span><input type="password" value={ww} onChange={(e) => setWw(e.target.value)} autoComplete="current-password" required /></label>}
+            {stap.stap === 'koppelen' ? (
+              <>
+                <p>Stel eenmalig tweestapsverificatie in. Scan de code met een authenticator-app (bijvoorbeeld Google Authenticator of Microsoft Authenticator) en vul de zes cijfers in.</p>
+                {qr && <div className="totp-qr" dangerouslySetInnerHTML={{ __html: qr }} />}
+                <p className="tekst-klein">Lukt scannen niet? Voer deze sleutel in: <code className="totp-sleutel">{stap.geheim.replace(/(.{4})/g, '$1 ').trim()}</code></p>
+              </>
+            ) : <p>Vul de zes cijfers in uit je authenticator-app.</p>}
+            <label className="veld"><span>Code</span><input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]{6,7}" maxLength={7} value={code} onChange={(e) => setCode(e.target.value)} autoFocus required /></label>
             {fout && <div className="melding-blok fout">{fout}</div>}
-            <button className="btn btn-pink btn-block" type="submit">{vergeten ? 'Stuur link' : 'Inloggen'}</button>
+            <button className="btn btn-pink btn-block" type="submit" disabled={bezig}>Bevestigen</button>
+            <button type="button" className="link-terug" style={{ marginTop: 8 }} onClick={() => { setStap(null); setFout(null); setWw('') }}>Terug naar inloggen</button>
+          </>
+        ) : (
+          <>
+            <p>{vergeten ? 'Vul je e-mailadres in. Je krijgt een link om een nieuw wachtwoord te kiezen.' : 'Log in met je persoonlijke account.'}</p>
+            {methoden?.google && !vergeten && (
+              <>
+                <button type="button" className="btn btn-cyan btn-block" onClick={google}>Inloggen met Google{methoden.domein ? ` (${methoden.domein})` : ''}</button>
+                {!alleenGoogle && <div className="login-of"><span>of met e-mail en wachtwoord</span></div>}
+              </>
+            )}
+            {alleenGoogle ? (fout && <div className="melding-blok fout" style={{ marginTop: 14 }}>{fout}</div>) : verstuurd ? <div className="melding-blok ok">Als dit adres bij ons bekend is, is er een e-mail met een link verstuurd.</div> : (
+              <>
+                <label className="veld"><span>E-mailadres</span><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required /></label>
+                {!vergeten && <label className="veld"><span>Wachtwoord</span><input type="password" value={ww} onChange={(e) => setWw(e.target.value)} autoComplete="current-password" required /></label>}
+                {fout && <div className="melding-blok fout">{fout}</div>}
+                <button className={`btn ${methoden?.google ? 'btn-ghost' : 'btn-pink'} btn-block`} type="submit" disabled={bezig}>{vergeten ? 'Stuur link' : 'Inloggen'}</button>
+              </>
+            )}
+            {!alleenGoogle && (
+              <button type="button" className="link-terug" style={{ marginTop: 8 }} onClick={() => { setVergeten(!vergeten); setVerstuurd(false); setFout(null) }}>
+                {vergeten ? 'Terug naar inloggen' : 'Wachtwoord vergeten?'}
+              </button>
+            )}
           </>
         )}
-        <button type="button" className="link-terug" style={{ marginTop: 8 }} onClick={() => { setVergeten(!vergeten); setVerstuurd(false); setFout(null) }}>
-          {vergeten ? 'Terug naar inloggen' : 'Wachtwoord vergeten?'}
-        </button>
       </form>
     </div>
   )

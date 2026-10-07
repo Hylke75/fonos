@@ -38,6 +38,13 @@ const GROEPEN: { naam: string; velden: Veld[] }[] = [
     { k: 'melding_email_aan', label: 'E-mail bij elke nieuwe aanvraag', soort: 'bool', uitleg: 'Open punt O-9, standaard uit.' },
     { k: 'melding_email_adres', label: 'E-mailadres voor meldingen', soort: 'tekst' },
   ] },
+  { naam: 'Beveiliging (IT-beleid B&G)', velden: [
+    { k: 'tweestaps', label: 'Tweestapsverificatie (code uit een authenticator-app)', soort: 'keuze', opties: [['iedereen', 'Verplicht voor iedereen'], ['beheerders', 'Verplicht voor beheerders'], ['uit', 'Niet verplicht']], uitleg: 'IT-beleid 6.1: alleen een wachtwoord is niet afdoende. Inloggen via Google telt al als tweestaps.' },
+    { k: 'wachtwoord_inloggen', label: 'Inloggen met e-mail en wachtwoord toestaan', soort: 'bool', uitleg: 'Uit = alleen inloggen via Google (de IDP). Kan pas uit als inloggen via Google is ingesteld.' },
+    { k: 'beheer_meldingen_adres', label: 'Extra adressen voor storingsmeldingen', soort: 'tekst', uitleg: 'IT-beleid 6.2: naast alle beheerders, bijvoorbeeld de Topdesk-mailbox. Meerdere adressen met komma’s.' },
+    { k: 'aanmeldingen_bewaar_dagen', label: 'Log van aanmeldingen bewaren (dagen)', soort: 'getal', uitleg: '0 = niet automatisch verwijderen.' },
+    { k: 'account_herinnering_dagen', label: 'Herinnering vóór de einddatum van een account (dagen)', soort: 'getal', uitleg: 'IT-beleid 8.4: de gebruiker en de beheerders krijgen een e-mail; verlenging gaat via HR.' },
+  ] },
   { naam: 'Back-ups', velden: [
     { k: 'backup_tijd', label: 'Tijdstip nachtelijke back-up', soort: 'tijd' },
     { k: 'backup_bewaar_dagelijks', label: 'Aantal dagelijkse back-ups bewaren', soort: 'getal', uitleg: 'Open punt O-8: aan te passen aan het IT-beleid van B&G.' },

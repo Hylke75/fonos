@@ -9,7 +9,9 @@ import { versies } from './events.ts'
 import { COOKIE, gebruikerBijToken } from './auth.ts'
 import { tik, tikTerloops } from './planner.ts'
 import { openBlob } from './opslag.ts'
-import { run } from './db.ts'
+import { get, run } from './db.ts'
+import { meld } from './meldingen.ts'
+import BEVEILIGING from '../shared/beveiligingsheaders.json' with { type: 'json' }
 
 export const app = new Hono()
 
@@ -29,14 +31,36 @@ app.use('*', async (c, next) => {
   const dec = (v?: string) => { try { return v ? decodeURIComponent(v) : undefined } catch { return undefined } }
   kioskGezien(dec(c.req.header('x-fonos-tablet')), dec(c.req.header('x-fonos-pagina')))
   await next()
-  c.header('X-Content-Type-Options', 'nosniff')
-  c.header('Referrer-Policy', 'same-origin')
-  if (c.req.path.startsWith('/api/')) c.header('Cache-Control', 'no-store')
+  // Beveiligingsheaders (IT-beleid 5.6); op Vercel zet scripts/bouw-vercel.mjs dezelfde voor de statische bestanden.
+  // Lokaal (http) geen HSTS en geen upgrade-insecure-requests.
+  const https = new URL(c.req.url).protocol === 'https:' || c.req.header('x-forwarded-proto') === 'https'
+  for (const [k, v] of Object.entries(BEVEILIGING)) {
+    if (k === 'Strict-Transport-Security' && !https) continue
+    c.header(k, k === 'Content-Security-Policy' && !https ? v.replace(/;\s*upgrade-insecure-requests/, '') : v)
+  }
+  if (c.req.path.startsWith('/api/') && !c.res.headers.get('Cache-Control')) c.header('Cache-Control', 'no-store')
 })
 
 app.onError((e, c) => {
   console.error(e)
+  // IT-beleid 6.2: beheerders krijgen hooguit één melding per dag over serverfouten.
+  meld('serverfout', 'Fout in de Fonotheek-server', `${c.req.method} ${c.req.path}\n\n${e?.stack ?? e?.message ?? e}`).catch(() => {})
   return c.json({ fout: e.message || 'Er ging iets mis' }, 500)
+})
+
+/** Voor de monitoring van B&G (IT-beleid 6.2): 200 als alles goed is, 503 bij een probleem. Geen gevoelige gegevens. */
+app.get('/api/gezond', async (c) => {
+  const controles: Record<string, boolean> = {}
+  try { await get('SELECT 1'); controles.database = true } catch { controles.database = false }
+  if (controles.database) {
+    const cron = await get<{ datum: string }>("SELECT datum FROM planner WHERE taak = 'cron:laatst'").catch(() => null)
+    if (cron) {
+      controles.nachtelijke_taak = !!(await get("SELECT 1 FROM planner WHERE taak = 'cron:laatst' AND datum > nu('-26 hours')").catch(() => null))
+      controles.backup = !!(await get("SELECT 1 FROM backups WHERE status = 'gelukt' AND tijd > nu('-26 hours')").catch(() => null))
+    }
+  }
+  const ok = Object.values(controles).every(Boolean)
+  return c.json({ ok, controles, tijd: new Date().toISOString() }, ok ? 200 : 503)
 })
 
 app.route('/api/kiosk', kiosk)
