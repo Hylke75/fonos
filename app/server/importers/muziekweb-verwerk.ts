@@ -1,7 +1,7 @@
 // Muziekweb-import, deel 2: VERWERKEN (generiek, los van het dumpformaat).
 // Werkt de Muziekweb-waarden bij; raakt nooit Fonos-waarden aan (6.2, 10.7).
 import { all, get, insert, run, tx } from '../db.ts'
-import { afgeleid, bewaarWoorden, verwerkMuziekweb, ZOEK_SQL } from '../titels.ts'
+import { afgeleid, bewaarWoorden, getoond, verwerkMuziekweb, ZOEK_SQL } from '../titels.ts'
 import { log, type Wie } from '../log.ts'
 import type { MwRecord } from './muziekweb-lezers.ts'
 import type { TitelVelden } from '../../shared/velden.ts'
@@ -32,15 +32,31 @@ export async function verwerkRecords(records: MwRecord[], importId: number, rapp
         SELECT x.titelnummer, x.data, ? FROM jsonb_to_recordset(?::jsonb) AS x(titelnummer text, data text)
         ON CONFLICT (titelnummer) DO UPDATE SET data = excluded.data, import_id = excluded.import_id`,
         importId, JSON.stringify(batch.map((r) => ({ titelnummer: r.titelnummer, data: JSON.stringify({ soort: r.soort, tip: r.tip, velden: r.velden }) }))))
-      const bestaand = await all<any>('SELECT id, titelnummer, mw_data, soort, tip FROM titels WHERE titelnummer = ANY(?::text[])',
+      const bestaand = await all<any>('SELECT id, titelnummer, mw_data, fonos_data, soort, tip FROM titels WHERE titelnummer = ANY(?::text[])',
         `{${batch.map((r) => `"${r.titelnummer.replace(/"/g, '')}"`).join(',')}}`)
       const perNummer = new Map(bestaand.map((t) => [t.titelnummer, t]))
+      const bulk: any[] = []
+      const woorden = new Set<string>()
       for (const r of batch) {
         const t = perNummer.get(r.titelnummer)
         if (!t) continue
         if (t.mw_data === JSON.stringify(r.velden) && t.soort === r.soort && !!t.tip === r.tip) { rapport.ongewijzigd++; continue }
-        rapport.nieuwe_conflicten += await verwerkMuziekweb(t.id, r.velden, { soort: r.soort, tip: r.tip })
         rapport.bijgewerkt++
+        // Met Fonos-waarden per titel (conflicten); zonder Fonos-waarden in één UPDATE voor het hele blok.
+        if (t.fonos_data && t.fonos_data !== '{}') { rapport.nieuwe_conflicten += await verwerkMuziekweb(t.id, r.velden, { soort: r.soort, tip: r.tip }); continue }
+        const a = afgeleid(getoond({ mw_data: JSON.stringify(r.velden), fonos_data: '{}' }), {})
+        a.woorden.forEach((w) => woorden.add(w))
+        bulk.push({ id: t.id, mw: JSON.stringify(r.velden), soort: r.soort, tip: r.tip ? 1 : 0, ti: a.d_titel, ar: a.d_artiesten, ja: a.d_jaar, dr: a.d_drager, ge: a.d_genres,
+          ho: a.d_hoes, la: a.d_label, pe: a.d_personen, sl: a.d_sleutel, za: a.z.a, zb: a.z.b, zc: a.z.c, zd: a.z.d })
+      }
+      if (bulk.length) {
+        await run(`UPDATE titels t SET mw_data = x.mw, soort = x.soort, tip = x.tip, d_titel = x.ti, d_artiesten = x.ar, d_jaar = x.ja, d_drager = x.dr, d_genres = x.ge,
+            d_hoes = x.ho, d_label = x.la, d_personen = x.pe, d_sleutel = x.sl, heeft_fonos = 0,
+            zoek = setweight(to_tsvector('simple', x.za), 'A') || setweight(to_tsvector('simple', x.zb), 'B') || setweight(to_tsvector('simple', x.zc), 'C') || setweight(to_tsvector('simple', x.zd), 'D'),
+            gewijzigd = nu()
+          FROM jsonb_to_recordset(?::jsonb) AS x(id int, mw text, soort text, tip int, ti text, ar text, ja int, dr text, ge text, ho text, la text, pe text, sl text, za text, zb text, zc text, zd text)
+          WHERE t.id = x.id`, JSON.stringify(bulk))
+        await bewaarWoorden([...woorden])
       }
     })
     rapport.in_dump += batch.length
