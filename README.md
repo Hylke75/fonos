@@ -1,85 +1,45 @@
-# fonos – Muziekweb-database
+# fonos – Fonotheek-database
 
-Bouwt een SQLite-database (`muziekweb.db`) uit de volledige Linked Open Data van
-[Muziekweb](https://data.muziekweb.nl/MuziekwebOrganization/Muziekweb), de muziekbibliotheek van
-Nederland. Bron: de N-Triples-dump van data.muziekweb.nl (~38 miljoen triples), licentie
-**ODC-By** (naamsvermelding Muziekweb verplicht).
-
-## Gebruik
+`fonotheek.db.gz` is de database van de LP-gebruikscollectie (Klassiek en Populair), met de
+gegevens van [Muziekweb](https://www.muziekweb.nl). Uitpakken en openen:
 
 ```bash
-pip install -r requirements.txt
-python muziekweb_import.py all      # download (~420 MB) + laden + opbouwen, ca. 10 min, resultaat ~1,2 GB
-python muziekweb_import.py export-csv albums.csv
+gunzip -k fonotheek.db.gz
+sqlite3 fonotheek.db "SELECT * FROM album_overview WHERE code = 'AA00449'"
 ```
 
-Of in stappen: `download`, `load` (dump → staging-tabel `triples`), `build` (staging → tabellen,
-via `build.sql`). Met `--keep-triples` blijft de ruwe staging-tabel staan (ruim 3 GB extra).
+Bronnen, in volgorde van voorrang bij verschillen: de catalogusexport (Klassiek, 6-10-2026),
+de albumpagina's op muziekweb.nl (oktober 2026) en de Linked Open Data van Muziekweb
+(licentie ODC-By: vermeld Muziekweb als bron).
 
 ## Inhoud
 
 | tabel | inhoud |
 |---|---|
-| `albums` | titel, dragerbeschrijving ("1 compact disc"), aantal discs, releasedatum/-jaar, speelduur, EAN, hoes-URL, waardering, uitleen-/beschikbaarheidsvlaggen, type (pop/klassiek/verzamel/best-of/soundtrack), DVD-gegevens |
-| `performers` | naam, sorteernaam, beschrijving, begin-/eindjaar, persoon/groep/componist |
-| `album_performers` | koppeling album ↔ uitvoerende |
-| `genres` | hoofdgenres (HFD), stijlen (T) en categorieën (CAT), in nl/en/de/fr, met hiërarchie |
-| `album_genres` | koppeling album ↔ genre |
-| `labels` | platenlabels (volledige en korte naam) |
-| `album_releases` | bestel-info: label, labelnummer, EAN, leverancier |
-| `album_eans`, `album_media` | alle EAN's; dragers (CD, LP, Digital, …) en digitale formaten |
-| `external_links` | Spotify, Allmusic, Wikipedia, iTunes, … |
-| `same_as` | Discogs, MusicBrainz, Wikidata, AllMusic |
-| `relations` | verwante albums en uitvoerenden |
-| `performer_keywords`, `performer_aliases`, `media_types` | instrument/rol, aliassen, dragernamen |
+| `collectie_items` | exemplaren uit de gebruikscollectie: objectnummer, titelnummer (album), lijst |
+| `albums` | 53.077 albums: titel, drager, schijven, releasedatum/-jaar, speelduur, toelichting, opmerking, opname, waardering, type, hoezen |
+| `album_performers` | hoofdartiesten per album (volgorde zoals op muziekweb.nl) |
+| `album_credits` | artiesten zoals in de catalogusexport, met jaartallen en rollen (Klassiek) |
+| `performers`, `performer_aliases`, `performer_keywords` | uitvoerenden, aliassen, instrument/rol |
+| `labels`, `album_releases` | platenlabels en bestel-info (labelnummer, EAN, leverancier) |
+| `genres`, `album_genres`, `album_keywords` | genres/stijlen (nl/en/de/fr, hiërarchie) en trefwoorden |
+| `media_types`, `album_media` | dragers (LP, CD, …) en digitale formaten |
+| `tracks`, `track_performers` | tracks met speelduur en uitvoerenden per track (met rol) |
+| `works`, `work_composers`, `work_alt_titles` | liedjes/composities met componisten |
+| `articles`, `album_articles` | gerelateerde artikelen op muziekweb.nl |
+| `external_links`, `same_as`, `relations` | Spotify/Wikipedia/…, Discogs/MusicBrainz/Wikidata, verwante albums |
 
-De view `album_overview` geeft één platte rij per album:
+De view `album_overview` geeft één rij per album. Releasedata zijn alleen echte (deel)data
+(`1968`, `1972-06`, `2024-07-26`); waar Muziekweb "voor 1988" vermeldt is
+`released_before_1988 = 1`. De link naar muziekweb.nl is `https://www.muziekweb.nl/Link/<code>`.
 
-```sql
-SELECT code, title, performers, labels, main_genres, styles, release_year, duration
-  FROM album_overview WHERE performers LIKE '%Rhiannon Giddens%';
-```
+Niet op muziekweb.nl beschikbaar en dus niet in de database: de uitleenstatus, en tracklijsten
+voor albums waar Muziekweb die niet heeft ingevoerd (een groot deel van de oude LP's).
 
-Codes zijn de Muziekweb-codes: album `JE29798` staat op `https://www.muziekweb.nl/Link/JE29798`.
+## Hoe de database is gemaakt
 
-## Aanvulling van de website (muziekweb_scrape.py)
-
-Tracklijsten, toelichting, opmerkingen, opname-info, TIP-markering, gemiddelde waardering en
-gerelateerde artikelen staan niet in de open data. `muziekweb_scrape.py` haalt die van de
-albumpagina's op www.muziekweb.nl en schrijft ze in dezelfde database:
-
-```bash
-python muziekweb_scrape.py enqueue --newest     # alle albums (behalve e-albums), nieuwste eerst
-python muziekweb_scrape.py crawl                # hervat automatisch; Ctrl-C mag altijd
-python muziekweb_scrape.py status
-```
-
-Standaard 1 pagina tegelijk met 1 s pauze (~0,65 pagina/s): de hele catalogus duurt dan
-~13 dagen. `--workers 2` halveert dat; ga niet veel hoger, het is een publieke dienst.
-
-| tabel | inhoud |
-|---|---|
-| `album_pages` | toelichting (+ auteur), opmerking, opname, TIP, gemiddelde waardering, hoes voor/achter, gecomprimeerde HTML |
-| `tracks` | per track: positie, titel, speelduur, werk-code, Spotify-link |
-| `track_performers` | uitvoerenden per track, met rol (dirigent, piano, sopraan, …) |
-| `works`, `work_composers`, `work_alt_titles` | liedjes/composities met componisten en alternatieve titels |
-| `album_page_labels`, `album_page_genres`, `album_articles` | bestel-info, genres en artikelen zoals op de pagina |
-
-`reparse` verwerkt de opgeslagen HTML opnieuw zonder te downloaden.
-
-Niet opgehaald: de objectstatus (uitleenstatus). Die komt van `/Muziekweb/DUIT/`, dat in
-robots.txt voor crawlers is uitgesloten. E-albums (`JKE…`) geven HTTP 403 en worden overgeslagen.
-
-Ook in de bron ontbreekt bij 143 albums de titel; 16 daarvan zijn alleen verwijzingen zonder verdere gegevens.
-
-## Controle met een catalogusexport (collectie/catalogus_import.py)
-
-```bash
-python collectie/catalogus_import.py "Hylke export 06102026 v1.xml" --dry-run   # eerst tellen
-python collectie/catalogus_import.py "Hylke export 06102026 v1.xml"
-```
-
-Slaat de export op (`catalogus_albums`, `catalogus_bestelinfo`, `catalogus_tracks`), voegt
-`album_credits` (artiesten zoals in de catalogus) en `album_keywords` toe, en vult/corrigeert in
-`albums` titel, releasedatum, drager, aantal schijven en speelduur. Elke wijziging staat in
-`wijzigingen` (oud → nieuw). De view `album_overview_compleet` toont ook credits en trefwoorden.
+De scripts in deze repository bouwden een werkdatabase en daaruit deze database:
+`muziekweb_import.py` (open data), `muziekweb_scrape.py` (albumpagina's, met `prioritize` voor
+de collectielijsten), `collectie/opschonen.py` (beperken tot de lijsten),
+`collectie/catalogus_import.py` (controle met de catalogusexport) en `collectie/schoon.py`
+(samenvoegen tot dit schema zonder dubbele of lege velden).
