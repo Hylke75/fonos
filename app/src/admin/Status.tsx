@@ -42,9 +42,9 @@ export function Status() {
           </div>
           <div className="card paneel">
             <h2>Muziekweb-data</h2>
-            <p className="muted tekst-klein" style={{ marginTop: -6 }}>De LP-gegevens worden nog binnengehaald. Elke nieuwe build laadt de nieuwe exportdelen en koppelt de exemplaren die daardoor bekend worden.</p>
+            <p className="muted tekst-klein" style={{ marginTop: -6 }}>De gegevens komen uit fonotheek.db. Elke build met een nieuwe versie leest die in, voegt nieuwe exemplaren met een titelnummer toe en koppelt de exemplaren die daardoor bekend worden.</p>
             {regel('Records in de dump', d.muziekweb_records.toLocaleString('nl-NL'))}
-            {regel('Geladen exportdelen', `${d.exportdelen}${d.laatste_exportdeel ? ` (laatste: ${d.laatste_exportdeel})` : ''}`)}
+            {regel('fonotheek.db', d.fonotheek_versie ? `versie ${d.fonotheek_versie}, geladen op ${d.fonotheek_geladen}` : 'nog niet geladen')}
             {regel('Laatste import', s.laatste_import ? datumTijd(s.laatste_import) : '–')}
             {regel('Titels / zichtbaar in de kiosk', `${d.titels.toLocaleString('nl-NL')} / ${d.zichtbare_titels.toLocaleString('nl-NL')}`)}
             {regel('Exemplaren in de collectie', d.exemplaren.toLocaleString('nl-NL'))}

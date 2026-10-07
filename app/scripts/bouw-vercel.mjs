@@ -1,7 +1,7 @@
 // Bouwt de Vercel Build Output (v3): statische frontend + één Node-functie voor /api.
 // Zie https://vercel.com/docs/build-output-api/v3
 import { build } from 'esbuild'
-import { cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -28,6 +28,8 @@ await build({
 cpSync(join(app, 'server', 'schema.sql'), join(func, 'schema.sql'))
 mkdirSync(join(func, 'shared'), { recursive: true })
 cpSync(join(app, 'shared', 'genres-startvulling.json'), join(func, 'shared', 'genres-startvulling.json'))
+// fonotheek.db.gz voor "fonotheek.db inlezen" in het beheer (de build zelf leest hem uit de repo).
+if (existsSync(join(app, '..', 'fonotheek.db.gz'))) cpSync(join(app, '..', 'fonotheek.db.gz'), join(func, 'fonotheek.db.gz'))
 writeFileSync(join(func, 'package.json'), JSON.stringify({ type: 'module' }))
 writeFileSync(join(func, '.vc-config.json'), JSON.stringify({
   runtime: 'nodejs22.x', handler: 'index.mjs', launcherType: 'Nodejs', shouldAddHelpers: false,

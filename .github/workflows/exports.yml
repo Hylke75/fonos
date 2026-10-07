@@ -1,6 +1,6 @@
-# Nieuwe Muziekweb-exportdelen van de scraper-branch elk uur naar main halen, zodat de volgende build ze inleest.
-# Alleen als de nieuwe commits uitsluitend exports/ raken; anders stopt de taak met een melding (dan handmatig bekijken).
-name: Muziekweb-exports naar main
+# Elk uur de nieuwste fonotheek.db.gz van de scraper-branch naar main halen, zodat de volgende build hem inleest.
+# Alleen dat ene bestand; andere wijzigingen op de scraper-branch worden niet overgenomen.
+name: fonotheek.db naar main
 
 on:
   schedule:
@@ -14,22 +14,18 @@ env:
   BRON: claude/bold-cori-74kzz2
 
 jobs:
-  exports:
+  fonotheek:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
         with:
           ref: main
-          fetch-depth: 0
-      - name: Nieuwe exportdelen overnemen
+      - name: Nieuwe fonotheek.db.gz overnemen
         run: |
-          git fetch origin "$BRON"
-          if git merge-base --is-ancestor "origin/$BRON" HEAD; then echo "Niets nieuws."; exit 0; fi
-          ANDERS=$(git diff --name-only "HEAD...origin/$BRON" | grep -v '^exports/' || true)
-          if [ -n "$ANDERS" ]; then
-            echo "::error::De scraper-branch bevat ook andere wijzigingen dan exports/. Bekijk die handmatig:"; echo "$ANDERS"; exit 1
-          fi
+          git fetch --depth=1 origin "$BRON"
+          git checkout "origin/$BRON" -- fonotheek.db.gz
+          if git diff --cached --quiet -- fonotheek.db.gz; then echo "Niets nieuws."; exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git merge --no-edit -m "Nieuwe Muziekweb-exportdelen van $BRON overnemen" "origin/$BRON"
+          git commit -m "Nieuwe fonotheek.db.gz van $BRON overnemen ($(git rev-parse --short "origin/$BRON"))"
           git push origin HEAD:main

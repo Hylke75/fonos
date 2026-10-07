@@ -128,20 +128,20 @@ function MuziekwebImport() {
   const [rapport, setRapport] = useState<any>(null)
   const [m, setM] = useState<any>(null)
   // In stappen: elk deel is één verzoek (Vercel-functies hebben een maximale duur).
-  const voerUit = async (stap: (importId: number, delen: string[]) => Promise<void>) => {
+  const voerUit = async (stap: (importId: number, delen: string[], bron: string) => Promise<string | void>) => {
     setM(null); setRapport(null)
     try {
       setBezig('Import starten…')
-      const { import_id, delen } = await api('/beheer/import/muziekweb/start', { method: 'POST' })
-      await stap(import_id, delen)
+      const { import_id, delen, bron } = await api('/beheer/import/muziekweb/start', { method: 'POST' })
+      const gebruikt = (await stap(import_id, delen, bron)) ?? bron
       setBezig('Afronden: losse exemplaren koppelen…')
-      setRapport(await api('/beheer/import/muziekweb/afronden', { body: { import_id } }))
+      setRapport(await api('/beheer/import/muziekweb/afronden', { body: { import_id, bron: gebruikt } }))
     } catch (e) { setM({ soort: 'fout', tekst: `Import mislukt: ${(e as ApiFout).message}` }) } finally { setBezig(null) }
   }
-  const exportmap = () => voerUit(async (id, delen) => {
-    if (!delen.length) throw new ApiFout(0, 'Geen exportmap gevonden op de server')
+  const meegeleverd = () => voerUit(async (id, delen, bron) => {
+    if (!delen.length) throw new ApiFout(0, 'Geen fonotheek.db gevonden op de server')
     for (const [i, deel] of delen.entries()) {
-      setBezig(`Deel ${i + 1} van ${delen.length} (${deel})…`)
+      setBezig(bron === 'fonotheek' ? `Albums ${Number(deel.slice(10)) + 1} t/m ${Number(deel.slice(10)) + 2000} (stap ${i + 1} van ${delen.length})…` : `Deel ${i + 1} van ${delen.length} (${deel})…`)
       const r = await api('/beheer/import/muziekweb/deel', { body: { import_id: id, deel } })
       setRapport(r)
     }
@@ -151,14 +151,15 @@ function MuziekwebImport() {
     const adres = await uploadBestand(f, (pct) => setBezig(`Uploaden: ${pct}%`))
     setBezig('Verwerken…')
     await api('/beheer/import/muziekweb/bestand', { body: { import_id: id, adres, naam: f.name } })
+    return 'upload'
   })
   return (
     <>
       <div className="card paneel">
         <p style={{ marginTop: 0 }}>Een nieuwe Muziekweb-dump werkt de Muziekweb-waarden van alle titels bij. <b>Fonos-waarden worden nooit overschreven</b>; verandert Muziekweb een veld dat Fonos heeft aangepast, dan ontstaat een conflict.</p>
-        <p className="muted tekst-klein">"Exportmap inlezen" verwerkt de Muziekweb-exports die met de app zijn meegeleverd (map exports/, per deel). Een losse dump kan als .jsonl, .jsonl.gz of zip met één exportdeel. Het definitieve dumpformaat is nog open (O-2).</p>
+        <p className="muted tekst-klein">De app leest <b>fonotheek.db</b> (de database van de gebruikscollectie met de Muziekweb-gegevens) automatisch in bij elke nieuwe versie; nieuwe exemplaren met een titelnummer komen er dan ook bij. "fonotheek.db inlezen" doet dat nu opnieuw, in stappen. Een losse aanvulling kan als .jsonl, .jsonl.gz of zip met één exportdeel.</p>
         <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn btn-cyan" disabled={!!bezig} onClick={exportmap}>Exportmap inlezen</button>
+          <button className="btn btn-cyan" disabled={!!bezig} onClick={meegeleverd}>fonotheek.db inlezen</button>
           <BestandKiezer accept=".zip,.jsonl,.gz" onKies={upload} tekst="Dump uploaden" />
         </div>
       </div>
