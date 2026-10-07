@@ -1,12 +1,14 @@
-// Eerste vulling: Muziekweb-exports, gebruikscollectie (of demo-exemplaren) en de eerste beheerder.
+// Eerste vulling: fonotheek.db (of de oude Muziekweb-exports), gebruikscollectie (of demo-exemplaren) en de eerste beheerder.
 // Wordt gebruikt door de opdrachtregel (scripts/) en bij elke Vercel-build (scripts/vercel-vul.ts); idempotent.
-import { existsSync, readFileSync } from 'node:fs'
+import { createReadStream, existsSync, readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { gunzipSync } from 'node:zlib'
-import { basename, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { all, get, run, ROOT } from './db.ts'
-import { exportDelen, leesExportDeel } from './importers/muziekweb-lezers.ts'
+import { exportDelen, leesExportDeel, leesFonotheekDb, type CollectieItem, type MwRecord } from './importers/muziekweb-lezers.ts'
 import { koppelLosseExemplaren, leegRapport, rondImportAf, startImport, verwerkRecords } from './importers/muziekweb-verwerk.ts'
-import { analyseer, leesBestand, voerDoor } from './importers/collectie.ts'
+import { analyseer, leesBestand, voerDoor, type Regel } from './importers/collectie.ts'
 import { maakGebruiker, hashWachtwoord } from './auth.ts'
 import { SYSTEEM } from './log.ts'
 
@@ -27,6 +29,59 @@ export async function laadExports(map = process.env.FONOS_DUMP_DIR ?? join(ROOT,
     voortgang(`  ${d}: ${rapport.in_dump} records (${Math.round((Date.now() - t0) / 1000)} s)`)
   }
   return rondImportAf(importId, rapport, WIE, `exportmap (${te.length} delen)`, te.length === delen.length)
+}
+
+// In de repo naast app/; in de Vercel-functie naast index.mjs (scripts/bouw-vercel.mjs kopieert hem).
+export const FONOTHEEK_DB = [join(ROOT, '..', 'fonotheek.db.gz'), join(dirname(fileURLToPath(import.meta.url)), 'fonotheek.db.gz')].find(existsSync) ?? join(ROOT, '..', 'fonotheek.db.gz')
+
+async function sha1(pad: string) {
+  const h = createHash('sha1')
+  for await (const d of createReadStream(pad)) h.update(d)
+  return h.digest('hex')
+}
+
+/** Laadt fonotheek.db(.gz) van de scraper: alle albums als volledige Muziekweb-import, daarna de gebruikscollectie.
+ *  Alleen als het bestand veranderd is (planner-rij fonotheek:<sha1>). */
+export async function laadFonotheek(pad = process.env.FONOS_FONOTHEEK_DB ?? FONOTHEEK_DB, voortgang = console.log) {
+  if (!existsSync(pad)) return false
+  const hash = await sha1(pad)
+  if (await get('SELECT 1 FROM planner WHERE taak = ?', `fonotheek:${hash}`)) { voortgang(`fonotheek.db: versie ${hash.slice(0, 8)} al geladen`); return true }
+  const t0 = Date.now()
+  let collectie: CollectieItem[] = []
+  const importId = await startImport(WIE)
+  const rapport = leegRapport(importId)
+  let batch: MwRecord[] = []
+  for await (const r of leesFonotheekDb(pad, { opCollectie: (c) => { collectie = c } })) {
+    batch.push(r)
+    if (batch.length >= 2000) { await verwerkRecords(batch, importId, rapport); batch = []; voortgang(`  ${rapport.in_dump} albums`) }
+  }
+  if (batch.length) await verwerkRecords(batch, importId, rapport)
+  const r = await rondImportAf(importId, rapport, WIE, `fonotheek.db (${hash.slice(0, 8)})`, true)
+  voortgang(`fonotheek.db: ${r.in_dump} albums, ${r.bijgewerkt} bijgewerkt, ${r.ongewijzigd} ongewijzigd, ${r.nieuwe_conflicten} conflicten (${Math.round((Date.now() - t0) / 1000)} s)`)
+  await laadCollectieUitFonotheek(collectie, voortgang)
+  await run("INSERT INTO planner (taak, datum) VALUES (?, ?) ON CONFLICT (taak) DO UPDATE SET datum = excluded.datum", `fonotheek:${hash}`, new Date().toISOString().slice(0, 10))
+  return true
+}
+
+/** Gebruikscollectie uit fonotheek.db. Is er al een echte collectie, dan komen alleen nieuwe exemplaren mét titelnummer erbij;
+ *  wijzigingen en afvoeren van bestaande exemplaren lopen via de bulkimport in het beheer (10.6).
+ *  Regels zonder titelnummer worden niet ingelezen (zoals eerder de OUD-tabbladen). */
+export async function laadCollectieUitFonotheek(items: CollectieItem[], voortgang = console.log) {
+  if (!items.length) return
+  const echte = (await get<{ n: number }>("SELECT COUNT(*)::int AS n FROM exemplaren WHERE bron IS DISTINCT FROM 'demo'"))!.n
+  if (!echte) {
+    await run("DELETE FROM exemplaren WHERE bron = 'demo' AND id NOT IN (SELECT exemplaar_id FROM aanvraag_items)")
+    await run(`DELETE FROM titels t WHERE NOT EXISTS (SELECT 1 FROM exemplaren e WHERE e.titel_id = t.id) AND t.heeft_fonos = 0
+      AND NOT EXISTS (SELECT 1 FROM aanvraag_items i WHERE i.titel_id = t.id) AND NOT EXISTS (SELECT 1 FROM selectie_titels s WHERE s.titel_id = t.id)`)
+    await run('UPDATE titels SET uitgelicht = 0')
+  }
+  const bestaand = new Set((await all<{ o: string }>('SELECT objectnummer AS o FROM exemplaren')).map((r) => r.o))
+  const regels: Regel[] = items.filter((i) => i.titelnummer && !bestaand.has(i.objectnummer))
+    .map((i, n) => ({ objectnummer: i.objectnummer, titelnummer: i.titelnummer, vindcode: null, bron: `fonotheek.db: ${i.lijst}`, regel: n + 1 }))
+  if (!regels.length) { voortgang('Gebruikscollectie: geen nieuwe exemplaren'); return }
+  const a = await analyseer(regels, 'fonotheek.db')
+  const r = await voerDoor(a.token, ['nieuw', 'onbekend', 'dubbel'], WIE)
+  voortgang(`Gebruikscollectie: ${JSON.stringify(r.doorgevoerd)}, ${r.nieuwe_titels} nieuwe titels`)
 }
 
 /** Spotify-koppelingen uit spotify/koppelingen.jsonl.gz (gemaakt met scripts/spotify-export.ts).

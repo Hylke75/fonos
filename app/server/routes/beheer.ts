@@ -1,6 +1,6 @@
 // API voor de beheeromgeving (10, 12). Rollen: redacteur en beheerder.
 import { Hono, type Context } from 'hono'
-import { writeFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { join, extname, basename } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
@@ -14,7 +14,8 @@ import {
 } from '../titels.ts'
 import { album, wisConfigCache, wisHomeCache, selectieIds } from '../catalogus.ts'
 import { analyseer, leesBestand, samenvatting, voerDoor, type Categorie } from '../importers/collectie.ts'
-import { exportDelen, leesExportDeel, leesStandaard } from '../importers/muziekweb-lezers.ts'
+import { exportDelen, fonotheekAlbums, leesExportDeel, leesFonotheekCollectie, leesFonotheekDb, leesStandaard, type MwRecord } from '../importers/muziekweb-lezers.ts'
+import { FONOTHEEK_DB, laadCollectieUitFonotheek } from '../vulling.ts'
 import { laatsteImportId, leegRapport, rondImportAf, startImport, verwerkRecords } from '../importers/muziekweb-verwerk.ts'
 import { backupAdres, leesBackup, maakBackup, maakZip, vergelijk, zetTerug } from '../backup.ts'
 import { beschikbaarheidGewijzigd, catalogusVersieOmhoog } from '../events.ts'
@@ -341,14 +342,21 @@ beheer.post('/import/collectie/:token', async (c) => {
 beheer.get('/imports', async (c) => c.json((await all<any>('SELECT * FROM imports ORDER BY id DESC LIMIT 50')).map((i) => ({ ...i, rapport: json(i.rapport, {}) }))))
 
 // ------------------------------------------------------------------ Muziekweb-import (10.7), beheerder
-// Op Vercel in stappen: per deel van de meegeleverde exportmap één verzoek; de browser stuurt de stappen.
+// Op Vercel in stappen: per deel (2.000 albums uit fonotheek.db, of een deel van de oude exportmap) één verzoek;
+// de browser stuurt de stappen.
 
 const exportMap = () => process.env.FONOS_DUMP_DIR ?? join(ROOT, '..', 'exports')
+const fonotheekDb = () => process.env.FONOS_FONOTHEEK_DB ?? FONOTHEEK_DB
+const STAP = 2000
 
 beheer.post('/import/muziekweb/start', alleenBeheerder, async (c) => {
   const id = await startImport(wie(c))
   await run("INSERT INTO taken (id, soort, data) VALUES (?, 'mwimport', ?)", `mw-${id}`, JSON.stringify(leegRapport(id)))
-  return c.json({ import_id: id, delen: exportDelen(exportMap()) })
+  if (existsSync(fonotheekDb())) {
+    const n = await fonotheekAlbums(fonotheekDb())
+    return c.json({ import_id: id, bron: 'fonotheek', delen: Array.from({ length: Math.ceil(n / STAP) }, (_, i) => `fonotheek-${i * STAP}`) })
+  }
+  return c.json({ import_id: id, bron: 'exportmap', delen: exportDelen(exportMap()) })
 })
 
 async function mwRapport(id: number) {
@@ -360,10 +368,14 @@ const bewaarRapport = (id: number, r: any) => run('UPDATE taken SET data = ? WHE
 
 beheer.post('/import/muziekweb/deel', alleenBeheerder, async (c) => {
   const { import_id, deel } = await c.req.json<{ import_id: number; deel: string }>()
-  if (!/^part-\d+$/.test(deel ?? '')) return fout(c, 'Onbekend deel')
+  const vanaf = /^fonotheek-(\d+)$/.exec(deel ?? '')?.[1]
+  if (vanaf == null && !/^part-\d+$/.test(deel ?? '')) return fout(c, 'Onbekend deel')
   try {
     const rapport = await mwRapport(import_id)
-    await verwerkRecords(await leesExportDeel(join(exportMap(), deel)), import_id, rapport)
+    let records: MwRecord[] = []
+    if (vanaf != null) for await (const r of leesFonotheekDb(fonotheekDb(), { vanaf: Number(vanaf), aantal: STAP })) records.push(r)
+    else records = await leesExportDeel(join(exportMap(), deel))
+    await verwerkRecords(records, import_id, rapport)
     await bewaarRapport(import_id, rapport)
     return c.json(rapport)
   } catch (e: any) { return fout(c, e.message) }
@@ -398,9 +410,11 @@ beheer.post('/import/muziekweb/bestand', alleenBeheerder, async (c) => {
 })
 
 beheer.post('/import/muziekweb/afronden', alleenBeheerder, async (c) => {
-  const { import_id } = await c.req.json<{ import_id: number }>()
+  const { import_id, bron } = await c.req.json<{ import_id: number; bron?: string }>()
   try {
-    const rapport = await rondImportAf(import_id, await mwRapport(import_id), wie(c), 'Muziekweb-dump')
+    const rapport = await rondImportAf(import_id, await mwRapport(import_id), wie(c), bron === 'fonotheek' ? 'fonotheek.db' : 'Muziekweb-dump', bron !== 'upload')
+    // Nieuwe exemplaren (met titelnummer) uit fonotheek.db erbij, net als bij de build.
+    if (bron === 'fonotheek') await laadCollectieUitFonotheek(await leesFonotheekCollectie(fonotheekDb()), () => {})
     await run('DELETE FROM taken WHERE id = ?', `mw-${import_id}`)
     await catalogusGewijzigd()
     return c.json(rapport)
@@ -880,7 +894,7 @@ beheer.get('/status', alleenBeheerder, async (c) => {
   await get('SELECT 1')
   const db_ms = Date.now() - t0
   const n = async (sql: string) => Number((await get<any>(sql))?.n ?? 0)
-  const exportDelen = await all<any>("SELECT taak, datum FROM planner WHERE taak LIKE 'export:%' ORDER BY taak")
+  const fonotheek = await get<any>("SELECT taak, datum FROM planner WHERE taak LIKE 'fonotheek:%' ORDER BY datum DESC, taak LIMIT 1")
   return c.json({
     build: {
       commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? null,
@@ -892,8 +906,8 @@ beheer.get('/status', alleenBeheerder, async (c) => {
     database: { ok: true, ms: db_ms },
     data: {
       muziekweb_records: await n('SELECT COUNT(*)::int AS n FROM mw_dump'),
-      exportdelen: exportDelen.length,
-      laatste_exportdeel: exportDelen.at(-1)?.taak?.slice(7) ?? null,
+      fonotheek_versie: fonotheek ? fonotheek.taak.slice(10, 18) : null,
+      fonotheek_geladen: fonotheek?.datum ?? null,
       titels: await n('SELECT COUNT(*)::int AS n FROM titels'),
       zichtbare_titels: await n(`SELECT COUNT(*)::int AS n FROM titels t WHERE ${ZICHTBAAR_SQL}`),
       exemplaren: await n("SELECT COUNT(*)::int AS n FROM exemplaren WHERE status = 'in_collectie'"),

@@ -14,8 +14,10 @@ functioneel ontwerp v1.0 (6 oktober 2026) en de vormgeving uit de bijlage.
 - **Database:** Supabase-project `fonos` (Postgres), databaserol `fonos_app` via de pooler.
 - **Hosting:** Vercel-project `fonos`. `vercel.json` (repo-root) bouwt met `npm run vercel-build`:
   frontend (Vite), één API-functie in regio Dublin (Build Output API, `scripts/bouw-vercel.mjs`) en daarna
-  de vulling (`scripts/vercel-vul.ts`): schema, nieuwe Muziekweb-exportdelen, gebruikscollectie
-  (`collectie/gebruikscollectie.csv`) en de eerste beheerder. Alles idempotent; elke build laadt alleen wat nieuw is.
+  de vulling (`scripts/vercel-vul.ts`): schema, `fonotheek.db.gz` (alle albums met Muziekweb-gegevens en de
+  gebruikscollectie) en de eerste beheerder. Alles idempotent; de database wordt alleen ingelezen als het bestand veranderd is.
+  Bestaat er al een collectie, dan komen alleen nieuwe exemplaren mét titelnummer erbij; wijzigen en afvoeren gaat via de bulkimport.
+  Een GitHub Action (`.github/workflows/exports.yml`) haalt elk uur de nieuwste `fonotheek.db.gz` van de scraper-branch naar `main`.
 - **Bestanden:** geüploade hoezen en back-ups in Vercel Blob (`BLOB_READ_WRITE_TOKEN`), los van de database. De store is privé;
   bestanden gaan via `/api/bestand/…` (hoezen openbaar, back-ups alleen voor beheerders). `FONOS_BLOB_ACCESS=public` voor een openbare store.
 - **Planner:** Vercel Cron roept elke nacht `/api/cron` aan (back-up, sluitingstijd); daarnaast loopt de planner mee met verzoeken.
@@ -43,8 +45,7 @@ Vereist Node.js 22.13 of nieuwer. Zonder `DATABASE_URL` draait de app op PGlite 
 ```bash
 cd app
 npm install
-npm run import:muziekweb -- ../exports     # Muziekweb-gegevens inlezen (± 30 s)
-npm run import:collectie -- ../collectie/gebruikscollectie.csv   # eerste vulling exemplaren
+npm run import:muziekweb                     # ../fonotheek.db.gz inlezen: albums en gebruikscollectie (± 1 min)
 npm run gebruiker -- naam@beeldengeluid.nl "Voornaam Achternaam" <wachtwoord>
 npm run build && npm start                  # http://localhost:3000
 ```
