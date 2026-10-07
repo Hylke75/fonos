@@ -1,0 +1,29 @@
+# Controle van de Fonotheek-app bij elke push en pull request: typecontrole, tests en een build.
+name: Fonotheek-app
+
+on:
+  push:
+    paths: ['app/**', '.github/workflows/app.yml']
+  pull_request:
+    paths: ['app/**', '.github/workflows/app.yml']
+
+jobs:
+  controle:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - name: Typecontrole
+        run: npm run typecheck
+      - name: Tests (PGlite, geen echte database nodig)
+        run: npm test
+      - name: Build (frontend en Vercel-functie)
+        run: npx vite build && node scripts/bouw-vercel.mjs

@@ -1,0 +1,48 @@
+# Titels koppelen aan Spotify-albums. Elke 3 uur hooguit 50 minuten; hervatbaar, dus elke run gaat verder
+# waar de vorige stopte. Nieuwe titels (uit nieuwe Muziekweb-exportdelen) worden zo vanzelf meegenomen.
+# Nodig als repository secrets: DATABASE_URL, SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET.
+name: Spotify-koppelingen
+
+# Voorlopig uit: alleen handmatig te starten. Weer aanzetten: het schedule-blok terugzetten.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: spotify-koppelingen
+  cancel-in-progress: false
+
+jobs:
+  koppelen:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 58
+    defaults:
+      run:
+        working-directory: app
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
+      SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
+    steps:
+      - name: Secrets aanwezig?
+        id: check
+        working-directory: .
+        run: |
+          if [ -z "$DATABASE_URL" ] || [ -z "$SPOTIFY_CLIENT_ID" ] || [ -z "$SPOTIFY_CLIENT_SECRET" ]; then
+            echo "::warning::DATABASE_URL, SPOTIFY_CLIENT_ID of SPOTIFY_CLIENT_SECRET ontbreekt als secret; niets gedaan."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v5
+        if: steps.check.outputs.ok == 'true'
+      - uses: actions/setup-node@v5
+        if: steps.check.outputs.ok == 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+        if: steps.check.outputs.ok == 'true'
+      - name: Koppelen (hooguit 50 minuten)
+        if: steps.check.outputs.ok == 'true'
+        run: npx tsx scripts/spotify-koppel.ts --alles --max-minuten 50

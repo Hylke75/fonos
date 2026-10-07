@@ -1,5 +1,7 @@
 # fonos – Fonotheek-database
 
+> De Fonotheek-app zelf (kiosk, medewerkersscherm, beheer) staat in [`app/`](app/README.md). Elke build leest `fonotheek.db.gz` in.
+
 `fonotheek.db.gz` is de database van de LP-gebruikscollectie (Klassiek en Populair), met de
 gegevens van [Muziekweb](https://www.muziekweb.nl). Uitpakken en openen:
 

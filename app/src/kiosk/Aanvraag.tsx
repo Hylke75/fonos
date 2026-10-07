@@ -1,0 +1,135 @@
+// Aanvraaglijst en afronden (7.8, 7.9): titels, de gekozen platenspeler, nieuwsbrief (optioneel), aanvraag versturen.
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { AlertTriangle, ArrowRight, Trash2, X } from 'lucide-react'
+import { api, ApiFout } from '../api'
+import { Hoes } from '../components/Hoes'
+import { useKiosk } from './KioskApp'
+import { KioskKopTerug } from './Kop'
+import { EMAIL_RE, NieuwsbriefBlok, type NieuwsbriefKeuze } from './Nieuwsbrief'
+
+export function Aanvraag() {
+  const { mand, verwijder, leegMand, config, beschikbaar, speler: gekozen, spelerKwijt, bewaard, vergeet, voegToe } = useKiosk()
+  const speler = gekozen?.nummer ?? null
+  const [bezig, setBezig] = useState(false)
+  const [fout, setFout] = useState<string | null>(null)
+  const [vraagBezet, setVraagBezet] = useState(false)
+  const [nietBeschikbaar, setNietBeschikbaar] = useState<number[]>([])
+  const [nb, setNb] = useState<NieuwsbriefKeuze>({ aan: false, naam: '', email: '' })
+  const [nbFout, setNbFout] = useState<string | null>(null)
+  const nav = useNavigate()
+  const ongeldig = (id: number) => nietBeschikbaar.includes(id) || beschikbaar[id]?.beschikbaar === false
+  const kanVersturen = mand.length > 0 && speler != null && !mand.some((m) => ongeldig(m.titel_id)) && !bezig
+
+  const verstuur = async (bezetAfsluiten = false) => {
+    if (!speler) return
+    if (nb.aan && !EMAIL_RE.test(nb.email.trim())) { setNbFout('Dit lijkt geen geldig e-mailadres. Controleer het nog even.'); return }
+    setBezig(true)
+    setFout(null)
+    try {
+      const r = await api<{ bestelnummer: number; platenspeler: number }>('/kiosk/aanvraag', {
+        body: { platenspeler: speler, sessie: gekozen?.sessie, bezetAfsluiten, titels: mand.map((m) => ({ titel_id: m.titel_id, exemplaar_id: m.exemplaar_id ?? null })) },
+      })
+      // Nieuwsbrief los van de aanvraag doorsturen; een storing mag de aanvraag niet tegenhouden (11).
+      let aangemeld = false
+      if (nb.aan) aangemeld = await api('/kiosk/nieuwsbrief', { body: { email: nb.email.trim(), naam: nb.naam.trim() || undefined } }).then(() => true, () => false)
+      nav('/verstuurd', { state: { ...r, aangemeld }, replace: true })
+    } catch (e) {
+      const f = e as ApiFout
+      if (f.data?.code === 'speler_kwijt') spelerKwijt()
+      else if (f.data?.code === 'bezet') setVraagBezet(true)
+      else if (f.data?.code === 'niet_beschikbaar') { setNietBeschikbaar(f.data.titelIds ?? []); setFout('Een of meer titels zijn intussen in gebruik. Haal ze uit je aanvraag om verder te gaan.') }
+      else setFout(f.message)
+    } finally {
+      setBezig(false)
+    }
+  }
+
+  return (
+    <div className="kiosk-scherm">
+      <KioskKopTerug tekst="Verder zoeken" naar="/home" zoekIcoon={false} mand={false} />
+      <main className="kiosk-inhoud">
+        <div className="aanvraag-kop">
+          <div>
+            <h1>Jouw aanvraag</h1>
+            <p className="muted" style={{ margin: 0, fontSize: 17 }}>Controleer je platen en verstuur je aanvraag.</p>
+          </div>
+          {mand.length > 0 && <button className="btn btn-outline" onClick={leegMand}><Trash2 size={20} /> Leeg maken</button>}
+        </div>
+
+        <div className="aanvraag-grid">
+          <div className="aanvraag-links">
+          <div className="card aanvraag-lijst">
+            {mand.length === 0 && (
+              <div className="leeg" style={{ padding: 48 }}>
+                <h2>Je aanvraag is nog leeg</h2>
+                <p>Kies een of meer platen uit de collectie.</p>
+                <button className="btn btn-pink" onClick={() => nav('/home')}>Ga zoeken</button>
+              </div>
+            )}
+            {mand.map((m) => (
+              <div key={m.titel_id} className={`aanvraag-regel ${ongeldig(m.titel_id) ? 'ongeldig' : ''}`}>
+                <Hoes src={m.hoes} />
+                <div className="namen">
+                  <div>{m.artiesten || 'Diverse artiesten'}</div>
+                  <div>{m.titel}</div>
+                  {ongeldig(m.titel_id) && <div className="waarschuwing"><AlertTriangle size={14} /> Intussen in gebruik</div>}
+                </div>
+                <div className="info">
+                  <div>{[m.drager, m.jaar].filter(Boolean).join(' · ')}</div>
+                  {(m.vindcode ?? beschikbaar[m.titel_id]?.vindcode) && <div>{config.instellingen.vindcode_label}: {m.vindcode ?? beschikbaar[m.titel_id]?.vindcode}</div>}
+                </div>
+                <button className="x" onClick={() => { verwijder(m.titel_id); setNietBeschikbaar((n) => n.filter((x) => x !== m.titel_id)); setFout(null) }} aria-label={`Haal ${m.titel} uit je aanvraag`}><X size={26} /></button>
+              </div>
+            ))}
+          </div>
+            {bewaard.length > 0 && (
+              <div className="card aanvraag-lijst bewaard-lijst">
+                <h2>Bewaard voor later</h2>
+                {bewaard.map((b) => (
+                  <div key={b.titel_id} className="aanvraag-regel">
+                    <Hoes src={b.hoes} />
+                    <div className="namen"><div>{b.artiesten || 'Diverse artiesten'}</div><div>{b.titel}</div></div>
+                    <div className="info"><button className="btn btn-pink btn-s" disabled={mand.length >= config.instellingen.max_titels} onClick={() => voegToe(b)}>Toevoegen</button></div>
+                    <button className="x" onClick={() => vergeet(b.titel_id)} aria-label={`Haal ${b.titel} uit je bewaarde platen`}><X size={26} /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="card spelers-paneel">
+            <div className="mijn-speler">
+              <h2>Je platenspeler</h2>
+              <div className="nr">{speler}</div>
+              <p className="muted" style={{ margin: 0 }}>Een medewerker brengt je platen hierheen.</p>
+            </div>
+            {config.instellingen.nieuwsbrief && <NieuwsbriefBlok waarde={nb} wijzig={(w) => { setNb(w); setNbFout(null) }} fout={nbFout} />}
+            <button className="btn btn-pink btn-l btn-block" disabled={!kanVersturen || (nb.aan && !nb.email.trim())} onClick={() => verstuur(false)}>
+              {bezig ? 'Bezig met versturen…' : <>Aanvraag versturen <ArrowRight size={22} /></>}
+            </button>
+            {fout && (
+              <div className="melding" role="alert" style={{ color: '#ff8a98' }}>
+                {fout}
+                {!nietBeschikbaar.length && <div style={{ marginTop: 10 }}><button className="btn btn-ghost btn-s" onClick={() => verstuur(false)}>Opnieuw proberen</button></div>}
+              </div>
+            )}
+          </div>
+        </div>
+      </main>
+
+      {vraagBezet && (
+        <div className="modal-achter" role="alertdialog" aria-labelledby="bezet-kop">
+          <div className="card modal">
+            <h2 id="bezet-kop">Je hebt nog een aanvraag lopen</h2>
+            <p>Wil je die afsluiten en deze aanvraag versturen? Laat de platen van je vorige aanvraag bij de speler liggen; een medewerker haalt ze op.</p>
+            <div className="knoppen">
+              <button className="btn btn-pink btn-l" onClick={() => { setVraagBezet(false); verstuur(true) }}>Ja, versturen</button>
+              <button className="btn btn-ghost btn-l" onClick={() => setVraagBezet(false)}>Nee, nog niet</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

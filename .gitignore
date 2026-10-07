@@ -7,3 +7,10 @@ __pycache__/
 .pytest_cache/
 *.csv
 !collectie/*.csv
+.vercel/
+
+# Sleutels en lokale rapporten: nooit committen
+.env
+.env.*
+!.env.example
+spotify-rapport*.json

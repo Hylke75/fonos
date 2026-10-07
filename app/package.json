@@ -1,0 +1,54 @@
+{
+  "name": "fonotheek",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Fonotheek-app voor de luisterbar van Fonos (Beeld & Geluid)",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "tsx watch server/index.ts",
+    "dev:client": "vite",
+    "build": "vite build",
+    "start": "NODE_ENV=production tsx server/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "import:muziekweb": "tsx scripts/import-muziekweb.ts",
+    "import:collectie": "tsx scripts/import-collectie.ts",
+    "demo": "tsx scripts/demo.ts",
+    "gebruiker": "tsx scripts/gebruiker.ts",
+    "spotify:koppel": "tsx scripts/spotify-koppel.ts",
+    "spotify:export": "tsx scripts/spotify-export.ts",
+    "vercel-build": "vite build && node scripts/bouw-vercel.mjs && tsx scripts/vercel-vul.ts"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "dependencies": {
+    "@fontsource/inter": "^5.3.0",
+    "@fontsource/rubik": "^5.3.0",
+    "@hono/node-server": "^2.1.3",
+    "@vercel/blob": "^2.8.1",
+    "exceljs": "^4.4.0",
+    "hono": "^4.13.13",
+    "jszip": "^3.10.2",
+    "lucide-react": "^1.52.0",
+    "postgres": "^3.4.9",
+    "qrcode": "^1.5.4",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router-dom": "^7.18.4"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@types/node": "^26.6.4",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "concurrently": "^10.0.5",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.3"
+  }
+}
