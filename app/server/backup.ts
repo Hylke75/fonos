@@ -11,6 +11,7 @@ import { sluitAllesAf } from './aanvragen.ts'
 import { getoond } from './titels.ts'
 import { aanvragenGewijzigd, beschikbaarheidGewijzigd, catalogusVersieOmhoog } from './events.ts'
 import { stuurMail } from './mail.ts'
+import { meld } from './meldingen.ts'
 import { ruimUploadsOp, zetTerugOpAdres, bewaar, isEigenUpload, lees, lokaalPad, verwijder } from './opslag.ts'
 
 // Tabellen in de back-up. Niet: gebruikers en wachtwoorden, sessies, de Muziekweb-dump (opnieuw te importeren).
@@ -103,8 +104,7 @@ export async function maakBackup(soort: 'dagelijks' | 'handmatig' | 'voor_terugz
   } catch (e: any) {
     await run("INSERT INTO backups (soort, bestand, status, fout) VALUES (?, ?, 'mislukt', ?)", soort, naam, String(e?.message ?? e))
     await log(wie, 'back-up mislukt', { type: 'backup', nieuw: String(e?.message ?? e) })
-    const beheerders = (await all<any>("SELECT email FROM gebruikers WHERE actief = 1 AND rollen LIKE '%beheerder%'")).map((g) => g.email)
-    if (beheerders.length) await stuurMail(beheerders, 'Back-up Fonotheek mislukt', `De back-up (${soort}) van ${new Date().toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' })} is mislukt:\n\n${e?.message ?? e}`).catch(() => {})
+    await meld(`backup-mislukt:${soort}`, 'Back-up mislukt', `De back-up (${soort}) van ${new Date().toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' })} is mislukt:\n\n${e?.message ?? e}`)
     throw e
   }
 }

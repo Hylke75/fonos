@@ -187,12 +187,38 @@ CREATE TABLE IF NOT EXISTS gebruikers (
   aangemaakt text NOT NULL DEFAULT nu()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_gebruikers_email ON gebruikers (lower(email));
+-- IT-beleid 8.4: soort account en einddatum (vast = geen einddatum; tijdelijk en extern verlopen).
+ALTER TABLE gebruikers ADD COLUMN IF NOT EXISTS soort_account text NOT NULL DEFAULT 'vast';
+ALTER TABLE gebruikers ADD COLUMN IF NOT EXISTS geldig_tot text; -- JJJJ-MM-DD, laatste geldige dag
+-- IT-beleid 6.1: tweestapsverificatie met een authenticator-app (TOTP).
+ALTER TABLE gebruikers ADD COLUMN IF NOT EXISTS totp_geheim text;
+ALTER TABLE gebruikers ADD COLUMN IF NOT EXISTS totp_aan integer NOT NULL DEFAULT 0;
+ALTER TABLE gebruikers ADD COLUMN IF NOT EXISTS totp_laatste_stap bigint;
+ALTER TABLE gebruikers ADD COLUMN IF NOT EXISTS laatste_aanmelding text;
 
 CREATE TABLE IF NOT EXISTS sessies (
   token     text PRIMARY KEY,
   gebruiker_id integer NOT NULL REFERENCES gebruikers(id) ON DELETE CASCADE,
   verloopt  text NOT NULL
 );
+-- 0 = wachtwoord goed, wacht nog op de code van de tweede stap.
+ALTER TABLE sessies ADD COLUMN IF NOT EXISTS bevestigd integer NOT NULL DEFAULT 1;
+ALTER TABLE sessies ADD COLUMN IF NOT EXISTS pogingen integer NOT NULL DEFAULT 0;
+
+-- IT-beleid 6.3: alle geslaagde en mislukte aanmeldingen.
+CREATE TABLE IF NOT EXISTS aanmeldingen (
+  id        serial PRIMARY KEY,
+  tijd      text NOT NULL DEFAULT nu(),
+  email     text,
+  gebruiker_id integer,
+  gelukt    integer NOT NULL,
+  methode   text NOT NULL,  -- wachtwoord, tweede_stap, google, uitloggen
+  reden     text,           -- bij mislukken: onbekend, wachtwoord, inactief, verlopen, code, geblokkeerd, domein
+  ip        text,
+  apparaat  text
+);
+CREATE INDEX IF NOT EXISTS idx_aanmeldingen_tijd ON aanmeldingen(tijd);
+CREATE INDEX IF NOT EXISTS idx_aanmeldingen_email ON aanmeldingen(lower(email), tijd);
 
 CREATE TABLE IF NOT EXISTS wijzigingslog (
   id        serial PRIMARY KEY,
@@ -283,7 +309,7 @@ DECLARE t text;
 BEGIN
   FOREACH t IN ARRAY ARRAY['titels','zoekwoorden','mw_dump','exemplaren','import_issues','platenspelers','aanvragen',
     'aanvraag_items','genreknoppen','genre_koppelingen','selecties','selectie_titels','instellingen','gebruikers','sessies',
-    'wijzigingslog','imports','backups','versies','planner','nieuwsbrief_wachtrij','nieuwsbrief_aanmeldingen','kiosks','taken'] LOOP
+    'wijzigingslog','imports','backups','versies','planner','nieuwsbrief_wachtrij','nieuwsbrief_aanmeldingen','kiosks','taken','aanmeldingen'] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
   END LOOP;
 END $$;

@@ -25,6 +25,22 @@ functioneel ontwerp v1.0 (6 oktober 2026) en de vormgeving uit de bijlage.
 
 Omgevingsvariabelen in Vercel: `DATABASE_URL` (mag meerdere adressen bevatten, gescheiden door spaties),
 `FONOS_BEHEERDER_EMAIL`, `FONOS_START_WACHTWOORD`, `CRON_SECRET`, en `BLOB_READ_WRITE_TOKEN` (via de Blob-koppeling).
+Optioneel voor inloggen via Google Workspace: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` en `FONOS_GOOGLE_DOMEIN`
+(standaard `beeldengeluid.nl`); redirect-URI van de OAuth-client: `https://<domein>/api/auth/google/terug`.
+
+## IT-beleid B&G (operationeel IT-beleid v3.3)
+
+- **6.1 Toegang:** tweestapsverificatie met een authenticator-app (TOTP), standaard verplicht voor iedereen
+  (instelling *Beveiliging*). Inloggen via Google (de IDP) zodra de Google-variabelen gezet zijn; wachtwoord-inloggen kan
+  dan uit. Rem op het raden van wachtwoorden: 10 pogingen per kwartier per adres. Beheerders kunnen de koppeling resetten.
+- **6.2 Monitoring:** `GET /api/gezond` geeft 200 of 503 (database, nachtelijke taak, back-up van de laatste 26 uur) voor de
+  monitoring van B&G. Storingsmeldingen per e-mail aan de beheerders en de extra adressen uit de instellingen
+  (bv. de Topdesk-mailbox): mislukte back-up, geen recente back-up, serverfouten, veel mislukte inlogpogingen. Per soort hooguit één per dag.
+- **6.3 Logging:** alle geslaagde en mislukte aanmeldingen (tijd, methode, IP-adres, apparaat) onder *Gebruikers → Aanmeldingen*, met CSV-export.
+- **8.4 Accounts:** soort account (vast, tijdelijk, extern) met einddatum; extern uiterlijk 31 december. Na de einddatum kan het
+  account niet meer inloggen; herinnering vooraf aan de gebruiker en de beheerders.
+- **4.7 Updates:** Dependabot (`.github/dependabot.yml`) opent wekelijks pull requests voor verouderde pakketten.
+- **5.6 Beveiligingsheaders:** CSP, HSTS, X-Frame-Options en andere (`shared/beveiligingsheaders.json`), op de API en de statische bestanden.
 
 ## Werking aan de bar
 

@@ -155,6 +155,12 @@ export const STANDAARD_INSTELLINGEN = {
   nieuwsbrief_bewaar_dagen: 30, // aanmeldingen zoveel dagen na export automatisch verwijderen (0 = nooit)
   bumper_video_url: '', // rustscherm: de bumper (B&G-logo wordt Fonos-logo)
   geluid_aan: true,
+  // IT-beleid (operationeel IT-beleid B&G v3.3)
+  tweestaps: 'iedereen', // 6.1: 'iedereen', 'beheerders' of 'uit'; inloggen via Google telt al als tweestaps
+  wachtwoord_inloggen: true, // uit = alleen inloggen via Google (de IDP), als die is ingesteld
+  beheer_meldingen_adres: '', // 6.2: extra adressen voor storingsmeldingen (bv. Topdesk), naast de beheerders
+  aanmeldingen_bewaar_dagen: 365, // 6.3: log van aanmeldingen
+  account_herinnering_dagen: 14, // 8.4: zoveel dagen vóór de einddatum een herinnering (verlenging via HR)
 }
 export type Instellingen = typeof STANDAARD_INSTELLINGEN
 
