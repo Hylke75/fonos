@@ -17,7 +17,7 @@ jobs:
   fonotheek:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: main
       - name: Nieuwe fonotheek.db.gz overnemen
