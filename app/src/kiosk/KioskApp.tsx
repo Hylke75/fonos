@@ -14,12 +14,14 @@ import { Verstuurd } from './Verstuurd'
 import { Lezen } from './Lezen'
 import { SpelerKiezen, SpelerViaLink } from './SpelerKiezen'
 import { Laden } from '../components/Iconen'
+import { t, zetTaal, type Taal } from './taal'
+import { useVerbinding } from '../api'
 
 export type Item = { titel_id: number; exemplaar_id?: number | null; titel: string; artiesten: string; drager?: string | null; jaar?: number | null; hoes?: string | null; vindcode?: string | null }
 export type Knop = { id: number; naam: string; kleur: string; beeld: string | null; nederlands: boolean; subfilters: string[] }
 export type Config = {
   knoppen: Knop[]
-  instellingen: { max_titels: number; inactiviteit_sec: number; waarschuwing_sec: number; bevestiging_sec: number; speler_inactief_min: number; speler_reactie_min: number; fonos_paginas: { naam: string; url: string }[]; privacy_tekst: string; privacy_url: string; nl_weergave: string; bumper_video_url: string; nieuwsbrief: boolean; nieuwsbrief_bevestigingsmail: boolean; vindcode_label: string }
+  instellingen: { max_titels: number; inactiviteit_sec: number; waarschuwing_sec: number; bevestiging_sec: number; speler_inactief_min: number; speler_reactie_min: number; fonos_paginas: { naam: string; url: string }[]; privacy_tekst: string; privacy_tekst_en?: string; privacy_url: string; nl_weergave: string; bumper_video_url: string; nieuwsbrief: boolean; nieuwsbrief_bevestigingsmail: boolean; vindcode_label: string }
   platenspelers: { nummer: number; actief: boolean; bezet: boolean }[]
 }
 
@@ -38,9 +40,15 @@ type Ctx = {
   bewaard: Item[]
   bewaar: (i: Item) => void
   vergeet: (titelId: number) => void
-  kiesSpeler: (nummer: number) => Promise<void>
+  kiesSpeler: (nummer: number, wachtlijst?: string | null) => Promise<void>
+  wacht: string | null
+  zetWacht: (token: string | null) => void
   vraagVrijgeven: () => void
   spelerKwijt: () => void
+  taal: Taal
+  kiesTaal: (t: Taal) => void
+  groot: boolean
+  zetGroot: (g: boolean) => void
 }
 export type Speler = { nummer: number; sessie: string }
 export type MijnAanvraag = { id: number; bestelnummer: number; status: string; items: { id: number; titel_id: number; titel: string; artiesten: string | null; hoes: string | null; verwijderd: number; reden: string | null }[] }
@@ -63,6 +71,16 @@ export function KioskApp() {
   spelerRef.current = speler
   const laatsteHartslag = useRef(0)
   const [mijnAanvraag, setMijnAanvraag] = useState<MijnAanvraag | null>(null)
+  // Taal en grotere tekst gelden voor deze bezoeker; bij het wissen van de sessie weer standaard (verbetering 5 en 6).
+  const [taal, setTaal] = useState<Taal>(() => { let x: Taal = 'nl'; try { if (sessionStorage.getItem('fonos-taal') === 'en') x = 'en' } catch { /* niets */ } zetTaal(x); return x })
+  const [groot, setGroot] = useState(() => { try { return sessionStorage.getItem('fonos-groot') === '1' } catch { return false } })
+  // Plek op de wachtlijst (verbetering 8); zolang je wacht, wordt de sessie niet gewist.
+  const [wacht, zetWacht] = useState<string | null>(null)
+  const wachtRef = useRef(wacht)
+  wachtRef.current = wacht
+  const kiesTaal = useCallback((x: Taal) => { zetTaal(x); setTaal(x); try { sessionStorage.setItem('fonos-taal', x) } catch { /* niets */ } }, [])
+  useEffect(() => { try { groot ? sessionStorage.setItem('fonos-groot', '1') : sessionStorage.removeItem('fonos-groot') } catch { /* niets */ } }, [groot])
+  const verbinding = useVerbinding()
   const [bewaard, setBewaard] = useState<Item[]>([])
   const gemeld = useRef(new Set<number>())
   const nav = useNavigate()
@@ -104,7 +122,7 @@ export function KioskApp() {
     for (const i of a?.items ?? []) {
       if (!i.verwijderd || gemeld.current.has(i.id)) continue
       gemeld.current.add(i.id)
-      setMelding(`"${i.titel}" is helaas niet beschikbaar${i.reden ? ` (${i.reden})` : ''}. Kies gerust iets anders.`)
+      setMelding(t('"{titel}" is helaas niet beschikbaar{reden}. Kies gerust iets anders.', { titel: i.titel, reden: i.reden ? ` (${i.reden})` : '' }))
       setTimeout(() => setMelding(null), 8000)
     }
   }, [])
@@ -140,10 +158,14 @@ export function KioskApp() {
     setMijnAanvraag(null)
     setBewaard([])
     gemeld.current.clear()
+    kiesTaal('nl')
+    setGroot(false)
+    if (wachtRef.current) api(`/kiosk/wachtlijst/${wachtRef.current}`, { method: 'DELETE' }).catch(() => {})
+    zetWacht(null)
     try { sessionStorage.clear() } catch { /* niets */ }
     nav(naar, { replace: true })
     window.scrollTo(0, 0)
-  }, [nav])
+  }, [nav, kiesTaal])
 
   /** Platenspeler vrijgeven: open aanvraag afsluiten, sessie wissen, terug naar het rustscherm. */
   const geefVrij = useCallback(async (door: 'bezoeker' | 'inactiviteit' = 'bezoeker') => {
@@ -152,7 +174,7 @@ export function KioskApp() {
     wisSessie('/')
     laadConfig()
   }, [wisSessie, laadConfig])
-  kwijtRef.current = () => { wisSessie('/'); toast('Je platenspeler is vrijgegeven. Kies opnieuw een platenspeler om verder te gaan.') }
+  kwijtRef.current = () => { wisSessie('/'); toast(t('Je platenspeler is vrijgegeven. Kies opnieuw een platenspeler om verder te gaan.')) }
 
   // Inactiviteit. Met platenspeler: na N minuten "Ben je er nog?" (vasthouden of vrijgeven), zonder reactie
   // na M minuten automatisch vrijgeven. Zonder platenspeler: na korte tijd terug naar het rustscherm.
@@ -173,7 +195,7 @@ export function KioskApp() {
         const totaal = vraag + speler_reactie_min * 60
         if (stil >= totaal) geefVrij('inactiviteit')
         else if (stil >= vraag) setSpelerVraag(Math.ceil(totaal - stil))
-      } else {
+      } else if (!wachtRef.current) {
         if (stil >= inactiviteit_sec) wisSessie('/')
         else if (stil >= inactiviteit_sec - waarschuwing_sec) setNogDaar(Math.ceil(inactiviteit_sec - stil))
       }
@@ -187,11 +209,11 @@ export function KioskApp() {
   useEffect(() => { laatste.current = Date.now() }, [loc.pathname])
 
   const ctx = useMemo<Ctx | null>(() => config && {
-    config, mand, beschikbaar, versie, toast, wisSessie, speler, mijnAanvraag, bewaard,
-    bewaar: (i) => { setBewaard((b) => (b.some((x) => x.titel_id === i.titel_id) ? b : [...b, i])); toast(`${i.titel} bewaard voor later`) },
+    config, mand, beschikbaar, versie, toast, wisSessie, speler, mijnAanvraag, bewaard, taal, kiesTaal, groot, zetGroot: setGroot, wacht, zetWacht,
+    bewaar: (i) => { setBewaard((b) => (b.some((x) => x.titel_id === i.titel_id) ? b : [...b, i])); toast(t('{titel} bewaard voor later', { titel: i.titel })) },
     vergeet: (id) => setBewaard((b) => b.filter((x) => x.titel_id !== id)),
-    kiesSpeler: async (nummer) => {
-      const r = await api<{ platenspeler: number; sessie: string }>('/kiosk/speler', { body: { platenspeler: nummer } })
+    kiesSpeler: async (nummer, wachtlijst) => {
+      const r = await api<{ platenspeler: number; sessie: string }>('/kiosk/speler', { body: { platenspeler: nummer, wachtlijst: wachtlijst ?? undefined } })
       zetSpeler({ nummer: r.platenspeler ?? nummer, sessie: r.sessie })
       laatste.current = Date.now()
       laatsteHartslag.current = Date.now()
@@ -202,7 +224,7 @@ export function KioskApp() {
     voegToe: (i) => {
       if (mand.some((m) => m.titel_id === i.titel_id)) return true
       if (mand.length >= config.instellingen.max_titels) {
-        toast(`Je kunt maximaal ${config.instellingen.max_titels} titels tegelijk aanvragen.`)
+        toast(t('Je kunt maximaal {n} titels tegelijk aanvragen.', { n: config.instellingen.max_titels }))
         return false
       }
       setMand((m) => [...m, i])
@@ -211,13 +233,14 @@ export function KioskApp() {
     },
     verwijder: (id) => setMand((m) => m.filter((x) => x.titel_id !== id)),
     leegMand: () => setMand([]),
-  }, [config, mand, beschikbaar, versie, toast, wisSessie, speler, laadConfig, mijnAanvraag, bewaard])
+  }, [config, mand, beschikbaar, versie, toast, wisSessie, speler, laadConfig, mijnAanvraag, bewaard, taal, kiesTaal, groot, wacht])
 
-  if (!ctx) return <div className="kiosk"><Laden tekst={onbereikbaar ? 'De Fonotheek is even niet bereikbaar. We proberen het zo opnieuw…' : 'De Fonotheek wordt geladen…'} /></div>
+  if (!ctx) return <div className="kiosk"><Laden tekst={onbereikbaar ? t('De Fonotheek is even niet bereikbaar. We proberen het zo opnieuw…') : t('De Fonotheek wordt geladen…')} /></div>
 
   return (
     <KioskCtx.Provider value={ctx}>
-      <div className="kiosk">
+      <div className={`kiosk ${groot ? 'groot-tekst' : ''}`} key={taal}>
+        {!verbinding && <div className="verbinding-weg" role="status">{t('Even geen verbinding. We proberen het automatisch opnieuw.')}</div>}
         {/* Eerst een platenspeler kiezen; zonder speler zijn alleen het rustscherm en de keuze bereikbaar. */}
         {!speler ? (
           <Routes>
@@ -245,11 +268,11 @@ export function KioskApp() {
           <div className="modal-achter" role="alertdialog" aria-labelledby="nogdaar">
             <div className="card modal">
               <div className="aftellen" aria-live="polite">{nogDaar}</div>
-              <h2 id="nogdaar">Ben je er nog?</h2>
-              <p>Zonder aanraking wordt je sessie over {nogDaar} seconden gewist, ook je aanvraaglijst.</p>
+              <h2 id="nogdaar">{t('Ben je er nog?')}</h2>
+              <p>{t('Zonder aanraking wordt je sessie over {n} seconden gewist, ook je aanvraaglijst.', { n: nogDaar })}</p>
               <div className="knoppen">
-                <button className="btn btn-pink btn-l" onClick={() => { laatste.current = Date.now(); setNogDaar(null) }}>Ja, ik ben er nog</button>
-                <button className="btn btn-ghost btn-l" onClick={() => wisSessie('/')}>Stoppen</button>
+                <button className="btn btn-pink btn-l" onClick={() => { laatste.current = Date.now(); setNogDaar(null) }}>{t('Ja, ik ben er nog')}</button>
+                <button className="btn btn-ghost btn-l" onClick={() => wisSessie('/')}>{t('Stoppen')}</button>
               </div>
             </div>
           </div>
@@ -258,11 +281,11 @@ export function KioskApp() {
           <div className="modal-achter" role="alertdialog" aria-labelledby="spelervraag">
             <div className="card modal">
               <div className="aftellen" aria-live="polite">{Math.floor(spelerVraag / 60)}:{String(spelerVraag % 60).padStart(2, '0')}</div>
-              <h2 id="spelervraag">Ben je er nog?</h2>
-              <p>Je hebt de app een tijdje niet gebruikt. Wil je platenspeler {speler.nummer} vasthouden of vrijgeven? Zonder antwoord wordt de speler automatisch vrijgegeven.</p>
+              <h2 id="spelervraag">{t('Ben je er nog?')}</h2>
+              <p>{t('Je hebt de app een tijdje niet gebruikt. Wil je platenspeler {n} vasthouden of vrijgeven? Zonder antwoord wordt de speler automatisch vrijgegeven.', { n: speler.nummer })}</p>
               <div className="knoppen">
-                <button className="btn btn-pink btn-l" onClick={houdVast}>Platenspeler vasthouden</button>
-                <button className="btn btn-ghost btn-l" onClick={() => geefVrij('bezoeker')}>Platenspeler vrijgeven</button>
+                <button className="btn btn-pink btn-l" onClick={houdVast}>{t('Platenspeler vasthouden')}</button>
+                <button className="btn btn-ghost btn-l" onClick={() => geefVrij('bezoeker')}>{t('Platenspeler vrijgeven')}</button>
               </div>
             </div>
           </div>
@@ -270,11 +293,11 @@ export function KioskApp() {
         {vrijgevenVraag && speler && (
           <div className="modal-achter" role="alertdialog" aria-labelledby="vrijgeven">
             <div className="card modal">
-              <h2 id="vrijgeven">Platenspeler {speler.nummer} vrijgeven?</h2>
-              <p>Klaar met luisteren? Laat je platen bij de speler liggen; een medewerker haalt ze op. Je aanvraaglijst wordt gewist.</p>
+              <h2 id="vrijgeven">{t('Platenspeler {n} vrijgeven?', { n: speler.nummer })}</h2>
+              <p>{t('Klaar met luisteren? Laat je platen bij de speler liggen; een medewerker haalt ze op. Je aanvraaglijst wordt gewist.')}</p>
               <div className="knoppen">
-                <button className="btn btn-pink btn-l" onClick={() => geefVrij('bezoeker')}>Ja, vrijgeven</button>
-                <button className="btn btn-ghost btn-l" onClick={() => setVrijgevenVraag(false)}>Nee, ik luister nog</button>
+                <button className="btn btn-pink btn-l" onClick={() => geefVrij('bezoeker')}>{t('Ja, vrijgeven')}</button>
+                <button className="btn btn-ghost btn-l" onClick={() => setVrijgevenVraag(false)}>{t('Nee, ik luister nog')}</button>
               </div>
             </div>
           </div>

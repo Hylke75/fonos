@@ -1,5 +1,6 @@
 // Eigen iconen: lp, cd, platenspeler (laadindicator) en hoes-placeholder.
 import type { SVGProps } from 'react'
+import { t } from '../kiosk/taal'
 
 export function LpIcoon(p: SVGProps<SVGSVGElement>) {
   return (
@@ -28,7 +29,7 @@ export function DragerIcoon({ drager, ...p }: { drager?: string | null } & SVGPr
 /** Beschikbaarheid altijd met vorm én kleur: drager-icoon met vinkje (groen) of kruisje (rood), plus tekst. */
 export function Beschikbaarheid({ drager, beschikbaar, tekst = true }: { drager?: string | null; beschikbaar: boolean; tekst?: boolean }) {
   return (
-    <span className={`beschikbaar ${beschikbaar ? 'ja' : 'nee'}`} title={beschikbaar ? 'Beschikbaar' : 'In gebruik'}>
+    <span className={`beschikbaar ${beschikbaar ? 'ja' : 'nee'}`} title={beschikbaar ? t('Beschikbaar') : t('In gebruik')}>
       <span style={{ position: 'relative', display: 'inline-grid' }}>
         <DragerIcoon drager={drager} />
         <svg viewBox="0 0 12 12" style={{ position: 'absolute', right: -4, bottom: -3, width: 12, height: 12 }}>
@@ -38,7 +39,7 @@ export function Beschikbaarheid({ drager, beschikbaar, tekst = true }: { drager?
             : <path d="M3.6 3.6l4.8 4.8M8.4 3.6 3.6 8.4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />}
         </svg>
       </span>
-      {tekst && <span>{drager ?? ''} {beschikbaar ? 'beschikbaar' : 'in gebruik'}</span>}
+      {tekst && <span>{drager ?? ''} {beschikbaar ? t('beschikbaar') : t('in gebruik')}</span>}
     </span>
   )
 }
@@ -62,7 +63,8 @@ export function Platenspeler() {
   )
 }
 
-export function Laden({ tekst = 'Even geduld…' }: { tekst?: string }) {
+export function Laden({ tekst }: { tekst?: string }) {
+  tekst ??= t('Even geduld…')
   return <div className="laden" role="status"><Platenspeler /><span>{tekst}</span></div>
 }
 

@@ -6,6 +6,7 @@ import { Check } from 'lucide-react'
 import { Logo } from '../components/Logo'
 import { useKiosk } from './KioskApp'
 import { bestelnr } from '../api'
+import { t } from './taal'
 
 export function Verstuurd() {
   const st = useLocation().state as { bestelnummer: number; platenspeler: number; aangemeld?: boolean } | null
@@ -27,14 +28,14 @@ export function Verstuurd() {
       <div style={{ position: 'absolute', top: 40, left: 56, zIndex: 3 }}><Logo /></div>
       <div className="midden" role="status">
         <div className="vink"><Check size={56} color="#bdf2fb" strokeWidth={2.5} /></div>
-        <h1>Aanvraag verstuurd!</h1>
-        <div className="label">Bestelnummer</div>
+        <h1>{t('Aanvraag verstuurd!')}</h1>
+        <div className="label">{t('Bestelnummer')}</div>
         <div className="nummer-groot">{bestelnr(st.bestelnummer)}</div>
-        <p>Een FONOS-medewerker haalt de platen voor je op.<br />Deze worden gebracht naar platenspeler {st.platenspeler}.</p>
-        {st.aangemeld && <p className="tekst-klein" style={{ fontSize: 17, marginTop: -12 }}>{config.instellingen.nieuwsbrief_bevestigingsmail ? 'Je ontvangt een e-mail om je aanmelding voor de nieuwsbrief te bevestigen.' : 'Je bent aangemeld voor de nieuwsbrief van Fonos.'}</p>}
+        <p>{t('Een FONOS-medewerker haalt de platen voor je op.')}<br />{t('Deze worden gebracht naar platenspeler {n}.', { n: st.platenspeler })}</p>
+        {st.aangemeld && <p className="tekst-klein" style={{ fontSize: 17, marginTop: -12 }}>{config.instellingen.nieuwsbrief_bevestigingsmail ? t('Je ontvangt een e-mail om je aanmelding voor de nieuwsbrief te bevestigen.') : t('Je bent aangemeld voor de nieuwsbrief van Fonos.')}</p>}
         <div style={{ display: 'flex', gap: 16, justifyContent: 'center' }}>
-          <button className="btn btn-ghost btn-l" style={{ minWidth: 240, background: '#0d1529' }} onClick={() => { klaar.current = true; verder() }}>Verder zoeken</button>
-          <button className="btn btn-ghost btn-l" style={{ minWidth: 240, background: '#0d1529' }} onClick={() => { klaar.current = true; vraagVrijgeven() }}>Platenspeler vrijgeven</button>
+          <button className="btn btn-ghost btn-l" style={{ minWidth: 240, background: '#0d1529' }} onClick={() => { klaar.current = true; verder() }}>{t('Verder zoeken')}</button>
+          <button className="btn btn-ghost btn-l" style={{ minWidth: 240, background: '#0d1529' }} onClick={() => { klaar.current = true; vraagVrijgeven() }}>{t('Platenspeler vrijgeven')}</button>
         </div>
       </div>
     </div>

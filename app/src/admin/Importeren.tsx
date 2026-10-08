@@ -106,6 +106,7 @@ const UITLEG: Record<string, string> = {
 const NAMEN: Record<string, string> = {
   nieuw: 'Nieuwe exemplaren', gewijzigd: 'Gewijzigde koppeling', ontbrekend: 'Afgevoerd', onbekend: 'Onbekende titelnummers', dubbel: 'Dubbele objectnummers', zonder_titelnummer: 'Zonder titelnummer',
   in_dump: 'Records in de dump', bijgewerkt: 'Titels bijgewerkt', ongewijzigd: 'Ongewijzigd', nieuwe_titels: 'Nieuwe titels aangemaakt', nieuwe_conflicten: 'Nieuwe conflicten', niet_in_dump: 'Titels uit de collectie niet in de dump',
+  nieuwe_albums: 'Nieuwe albums in fonotheek.db', nieuwe_exemplaren: 'Nieuwe exemplaren uit fonotheek.db',
 }
 
 function RapportWeergave({ r }: { r: any }) {
@@ -119,6 +120,8 @@ function RapportWeergave({ r }: { r: any }) {
       <dl className="meer-info" style={{ marginTop: 0 }}>{rijen.map(([k, v]) => <Fragment key={k}><dt>{k}</dt><dd>{Number(v).toLocaleString('nl-NL')}</dd></Fragment>)}</dl>
       {r.overgeslagen_in_gebruik?.length > 0 && <p className="tekst-klein muted">Overgeslagen omdat ze in een open aanvraag zitten: {r.overgeslagen_in_gebruik.join(', ')}</p>}
       {r.niet_in_dump_voorbeelden?.length > 0 && <p className="tekst-klein muted">Bijvoorbeeld: {r.niet_in_dump_voorbeelden.slice(0, 20).join(', ')}</p>}
+      {r.nieuwe_albums_voorbeelden?.length > 0 && <p className="tekst-klein muted">Nieuwe albums, bijvoorbeeld: {r.nieuwe_albums_voorbeelden.slice(0, 20).join(' · ')}</p>}
+      {r.bijgewerkt_voorbeelden?.length > 0 && <p className="tekst-klein muted">Bijgewerkt, bijvoorbeeld: {r.bijgewerkt_voorbeelden.slice(0, 20).join(', ')}</p>}
     </>
   )
 }
@@ -192,6 +195,7 @@ function Datakwaliteit() {
           ))}
         </div>
       )}
+      {lijst && <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '12px 0' }}><a className="btn btn-ghost btn-s" href={`/api/beheer/datakwaliteit-csv/${lijst}`}>Hele lijst als CSV (werklijst)</a></div>}
       {lijst && !d && <Laden />}
       {d && (
         <div className="tabel-kaart" style={{ background: '#030f1b' }}>
@@ -204,6 +208,7 @@ function Datakwaliteit() {
                   {Object.entries(r).filter(([k]) => !k.endsWith('_id')).map(([k, v]) => <td key={k} className="tekst-klein">{Array.isArray(v) ? v.join(', ') : String(v ?? '')}</td>)}
                   <td onClick={(e) => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
                     {r.issue_id && <button className="btn btn-ghost btn-s" onClick={async () => { await api(`/beheer/issue/${r.issue_id}/afgehandeld`, { method: 'POST' }); laad(); api(`/beheer/datakwaliteit/${lijst}?pagina=${pagina}`).then(setD) }}>Afgehandeld</button>}
+                    {r.titelnummer && <a className="btn btn-ghost btn-s" style={{ marginRight: 6 }} href={`https://www.muziekweb.nl/Link/${encodeURIComponent(r.titelnummer)}`} target="_blank" rel="noreferrer">Muziekweb</a>}
                     {r.exemplaar_id && !r.titel_id && <ExemplaarKoppel id={r.exemplaar_id} klaar={() => { laad(); api(`/beheer/datakwaliteit/${lijst}?pagina=${pagina}`).then(setD) }} />}
                   </td>
                 </tr>

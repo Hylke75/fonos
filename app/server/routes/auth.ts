@@ -5,7 +5,7 @@ import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import { randomBytes } from 'node:crypto'
 import {
   COOKIE, bevestigSessie, controleerInlog, gebruikerBijToken, gebruikerUitRij, isVerlopen, logout, maakResetToken, maakSessie,
-  mislukteAanmeldingen, registreerAanmelding, resetWachtwoord, tweestapsNodig, voorlopigeSessie, zetSessieCookie,
+  mislukteAanmeldingen, registreerAanmelding, resetWachtwoord, tweestapsNodig, vergrendeldeSessie, voorlopigeSessie, zetSessieCookie, controleerWachtwoord,
 } from '../auth.ts'
 import { get, instellingen, run } from '../db.ts'
 import { stuurMail } from '../mail.ts'
@@ -141,7 +141,36 @@ auth.post('/logout', async (c) => {
 
 auth.get('/ik', async (c) => {
   const g = await gebruikerBijToken(getCookie(c, COOKIE))
-  return g ? c.json(g) : c.json({ fout: 'Niet ingelogd' }, 401)
+  const inst = await instellingen()
+  const inactief = { beheer_min: Number(inst.beheer_uitloggen_min) || 0, medewerker_min: Number(inst.medewerker_vergrendel_min) || 0 }
+  if (g) return c.json({ ...g, inactief })
+  const v = await vergrendeldeSessie(getCookie(c, COOKIE))
+  if (v) return c.json({ fout: 'Vergrendeld', vergrendeld: { naam: v.naam, email: v.email, met: v.totp_aan && v.totp_geheim ? 'code' : 'wachtwoord' } }, 401)
+  return c.json({ fout: 'Niet ingelogd' }, 401)
+})
+
+// Vergrendelen na inactiviteit (IT-beleid 8.5) en ontgrendelen met de code of het wachtwoord.
+auth.post('/vergrendel', async (c) => {
+  const token = getCookie(c, COOKIE)
+  if (token) await run('UPDATE sessies SET vergrendeld = 1 WHERE token = ? AND bevestigd = 1', token)
+  return c.json({ ok: true })
+})
+auth.post('/ontgrendel', async (c) => {
+  const { code, wachtwoord } = await c.req.json<{ code?: string; wachtwoord?: string }>()
+  const token = getCookie(c, COOKIE)
+  const g = await vergrendeldeSessie(token)
+  if (!g || !token) return c.json({ fout: 'Je sessie is verlopen. Log opnieuw in.' }, 401)
+  const h = herkomst(c)
+  if ((await mislukteAanmeldingen(g.email)) >= MAX_POGINGEN) return c.json({ fout: 'Te veel pogingen. Log over een kwartier opnieuw in.' }, 429)
+  let ok = false
+  if (g.totp_aan && g.totp_geheim) {
+    const stap = controleer(g.totp_geheim, code ?? '', Date.now(), g.totp_laatste_stap)
+    if (stap != null) { ok = true; await run('UPDATE gebruikers SET totp_laatste_stap = ? WHERE id = ?', stap, g.id) }
+  } else ok = controleerWachtwoord(wachtwoord ?? '', g.wachtwoord)
+  await registreerAanmelding({ email: g.email, gebruikerId: g.id, gelukt: ok, methode: 'ontgrendelen', reden: ok ? null : g.totp_aan ? 'code' : 'wachtwoord', ...h })
+  if (!ok) return c.json({ fout: g.totp_aan ? 'Deze code klopt niet.' : 'Dit wachtwoord klopt niet.' }, 400)
+  await run('UPDATE sessies SET vergrendeld = 0 WHERE token = ?', token)
+  return c.json(gebruikerUitRij(g))
 })
 
 auth.post('/reset-aanvraag', async (c) => {

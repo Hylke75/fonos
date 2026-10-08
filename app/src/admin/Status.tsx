@@ -48,6 +48,7 @@ export function Status() {
             {regel('Laatste import', s.laatste_import ? datumTijd(s.laatste_import) : '–')}
             {regel('Titels / zichtbaar in de kiosk', `${d.titels.toLocaleString('nl-NL')} / ${d.zichtbare_titels.toLocaleString('nl-NL')}`)}
             {regel('Exemplaren in de collectie', d.exemplaren.toLocaleString('nl-NL'))}
+            {regel('Hoezen die niet laden', (s.kapotte_hoezen ?? 0).toLocaleString('nl-NL'), (s.kapotte_hoezen ?? 0) > 0)}
             {regel('Wacht op Muziekweb-gegevens', `${d.wacht_op_muziekweb.toLocaleString('nl-NL')} exemplaren (${d.ontbrekende_titelnummers.toLocaleString('nl-NL')} titelnummers)`, d.wacht_op_muziekweb > 0)}
             <a className="btn btn-ghost btn-s" href="/api/beheer/ontbrekende-titelnummers.csv" download><Download size={14} /> Lijst ontbrekende titelnummers (CSV)</a>
           </div>
@@ -56,10 +57,14 @@ export function Status() {
             <p className="muted tekst-klein" style={{ marginTop: -6 }}>Geef een tablet een naam door de kiosk één keer te openen met <code>?tablet=Bar links</code> achter het adres.</p>
             {s.kiosks.length === 0 && <p className="muted">Nog geen tablets met een naam.</p>}
             {s.kiosks.map((k: any) => regel(k.naam, `${k.online ? 'online' : 'offline'} · ${datumTijd(k.laatst_gezien)}${k.pagina ? ` · ${k.pagina}` : ''}`, !k.online))}
+            <h3 style={{ margin: '18px 0 6px', fontSize: 16 }}>Fouten in de browser (24 uur)</h3>
+            {s.browserfouten?.length ? s.browserfouten.map((f: any) => regel(`${f.aantal}× ${f.tablets}`, `${f.bericht.slice(0, 90)} · ${datumTijd(f.laatst)}`, true)) : <p className="muted tekst-klein">Geen fouten gemeld.</p>}
           </div>
           <div className="card paneel">
             <h2>Platenspelers</h2>
             {regel('Open aanvragen', s.open_aanvragen)}
+            {regel('Op de wachtlijst', s.wachtlijst ?? 0)}
+            {regel('Apparaten met pushmeldingen', s.push_apparaten ?? 0)}
             {s.platenspelers.map((p: any) => regel(`Speler ${p.nummer}`, !p.actief ? 'inactief' : p.vastgehouden ? `in gebruik sinds ${datumTijd(p.bezet_sinds)}` : 'vrij'))}
             <button className="btn btn-ghost btn-s" onClick={maakQr}><Printer size={14} /> QR-codes afdrukken</button>
             <p className="muted tekst-klein">Plak de code bij de platenspeler. Bezoekers scannen hem met de tablet om die speler te kiezen.</p>

@@ -28,6 +28,21 @@ Omgevingsvariabelen in Vercel: `DATABASE_URL` (mag meerdere adressen bevatten, g
 Optioneel voor inloggen via Google Workspace: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` en `FONOS_GOOGLE_DOMEIN`
 (standaard `beeldengeluid.nl`); redirect-URI van de OAuth-client: `https://<domein>/api/auth/google/terug`.
 
+## Tweede reeks verbeteringen
+
+- **Kiosk:** albums zonder tracklist tonen hun gegevens meteen. Plaatsvervangers als "No Artist" worden niet getoond. Bij zoeken staat de reden ("Nummer: …").
+  Op de albumpagina staat "Meer van deze artiest" en "Ook luisteren". Er is een NL/EN-knop en een knop voor grotere tekst met meer contrast.
+  Bij verbindingsverlies verschijnt een balk en gaat de aanvraag later alsnog weg. Zijn alle spelers bezet, dan is er een wachtlijst
+  (`wachtlijst_reserveer_min`: zo lang blijft een vrijgekomen speler voor de eerste wachtende vastgehouden).
+- **Medewerker:** pushmeldingen op het eigen apparaat (Web Push, `public/sw.js`). De sleutels komen uit `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`,
+  of worden eenmalig gemaakt en bewaard in de tabel `geheimen`. De looplijst is af te drukken. Het scherm vergrendelt na inactiviteit (ontgrendelen met de code).
+- **Beheer:** *Statistieken* met CSV-export. Werklijsten bij Datakwaliteit als CSV, met links naar Muziekweb. Een nachtelijke controle van hoesadressen
+  (Muziekweb geeft voor een ontbrekende hoes een GIF-plaatje). Dubbele titels (populair) zijn in de kiosk optioneel als één album te tonen.
+  Bij elke nieuwe `fonotheek.db` komt er een verslag in Historie en per e-mail.
+- **Techniek:** browsertests met Playwright (`npm run test:e2e`, ook in de CI): de kioskstroom, Engels, inloggen met tweestaps,
+  het medewerkersscherm en WCAG 2.1 AA (axe). JavaScript-fouten uit de browser komen in de tabel `browserfouten` en op de statuspagina,
+  en bij herhaling ook als storingsmelding.
+
 ## IT-beleid B&G (operationeel IT-beleid v3.3)
 
 - **6.1 Toegang:** tweestapsverificatie met een authenticator-app (TOTP), standaard verplicht voor iedereen

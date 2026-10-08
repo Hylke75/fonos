@@ -5,6 +5,8 @@ import { all, instellingen, get, run } from './db.ts'
 import { sluitAf, sluitAllesAf, geefInactieveSpelersVrij } from './aanvragen.ts'
 import { aanvragenGewijzigd, beschikbaarheidGewijzigd } from './events.ts'
 import { maakBackup } from './backup.ts'
+import { verdeel } from './wachtlijst.ts'
+import { controleerHoezen } from './hoezen.ts'
 import { probeerWachtrij } from './nieuwsbrief.ts'
 import { log, SYSTEEM } from './log.ts'
 import { meld, ontvangers } from './meldingen.ts'
@@ -45,6 +47,8 @@ export async function tik(opts: { backup?: boolean; cron?: boolean } = {}) {
   if (oud.length) { await aanvragenGewijzigd(); await beschikbaarheidGewijzigd() }
   // Platenspelers die te lang niet gebruikt zijn automatisch vrijgeven.
   await geefInactieveSpelersVrij().catch((e) => console.error('[planner] vrijgeven mislukt', e))
+  // Wachtlijst: verlopen reserveringen opruimen en vrije spelers toewijzen.
+  await verdeel().catch((e) => console.error('[planner] wachtlijst mislukt', e))
   if (opts.backup && (opts.cron || tijd >= inst.backup_tijd)) {
     const al = await get(`SELECT 1 FROM backups WHERE soort = 'dagelijks' AND status = 'gelukt' AND left(tijd, 10) = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD')`)
     if (!al && (await claim('backup'))) {
@@ -52,6 +56,8 @@ export async function tik(opts: { backup?: boolean; cron?: boolean } = {}) {
       await maakBackup('dagelijks').catch(async (e) => { console.error('[planner] back-up mislukt', e); await run("DELETE FROM planner WHERE taak = 'backup'") })
     }
   }
+  // Hoezen controleren: alleen bij de nachtelijke cron (die mag tot 5 minuten duren).
+  if (opts.cron && (await claim('hoezen'))) await controleerHoezen().then((r) => console.log(`[planner] hoezen: ${r.gecontroleerd} gecontroleerd, ${r.kapot} kapot`)).catch((e) => console.error('[planner] hoezen mislukt', e))
   await probeerWachtrij().catch(() => {})
   // Nieuwsbriefaanmeldingen na de bewaartermijn verwijderen (alleen geëxporteerde).
   const bewaar = Number(inst.nieuwsbrief_bewaar_dagen)

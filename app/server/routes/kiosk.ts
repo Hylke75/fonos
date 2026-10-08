@@ -1,6 +1,9 @@
 // API voor de bezoekersapp. Geen login: alleen lezen van de catalogus en aanvragen aanmaken (13).
 import { Hono } from 'hono'
-import { album, artiest, beschikbaarheid, home, kioskConfig, verrasMe, zoekCatalogus } from '../catalogus.ts'
+import { album, artiest, beschikbaarheid, home, kioskConfig, ookLuisteren, verrasMe, zoekCatalogus } from '../catalogus.ts'
+import { meldAan as wachtAan, meldAf as wachtAf, wachtStatus } from '../wachtlijst.ts'
+import { stuurPush } from '../push.ts'
+const bestelnrTekst = (n: number) => `#${String(n).padStart(3, '0')}`
 import { suggesties } from '../zoeken.ts'
 import { AanvraagFout, aanvraagVanSessie, dienAanvraagIn, geefSpelerVrij, houdSpelerVast, kiesSpeler } from '../aanvragen.ts'
 import { BEZOEKER } from '../log.ts'
@@ -34,6 +37,8 @@ kiosk.get('/titel/:id', async (c) => {
   return a ? c.json(a) : c.json({ fout: 'Deze titel is niet (meer) beschikbaar.' }, 404)
 })
 
+kiosk.get('/titel/:id/ook', async (c) => c.json(await ookLuisteren(Number(c.req.param('id')))))
+
 kiosk.get('/artiest', async (c) => c.json(await artiest(c.req.query('naam') ?? '')))
 
 kiosk.get('/verras', async (c) => {
@@ -55,6 +60,8 @@ kiosk.post('/aanvraag', async (c) => {
       titels: (body.titels ?? []).map((t: any) => ({ titel_id: Number(t.titel_id), exemplaar_id: t.exemplaar_id ? Number(t.exemplaar_id) : null })),
       bezetAfsluiten: !!body.bezetAfsluiten,
     })
+    // Pushmelding naar de medewerkers (verbetering 9).
+    await stuurPush({ titel: `Nieuwe aanvraag ${bestelnrTekst(r.bestelnummer)}`, tekst: `Platenspeler ${r.platenspeler} · ${body.titels?.length ?? 0} ${body.titels?.length === 1 ? 'titel' : 'titels'}`, url: '/medewerker', tag: `aanvraag-${r.bestelnummer}` })
     return c.json({ bestelnummer: r.bestelnummer, platenspeler: r.platenspeler })
   } catch (e) {
     if (e instanceof AanvraagFout) return c.json({ fout: e.message, code: e.code, ...e.extra }, 409)
@@ -64,9 +71,9 @@ kiosk.post('/aanvraag', async (c) => {
 
 // Platenspeler kiezen (eerste stap), vasthouden tijdens gebruik en vrijgeven na gebruik.
 kiosk.post('/speler', async (c) => {
-  const { platenspeler } = await c.req.json<{ platenspeler: number }>()
+  const { platenspeler, wachtlijst } = await c.req.json<{ platenspeler: number; wachtlijst?: string }>()
   try {
-    return c.json({ platenspeler: Number(platenspeler), sessie: await kiesSpeler(Number(platenspeler), bezoeker(c)) })
+    return c.json({ platenspeler: Number(platenspeler), sessie: await kiesSpeler(Number(platenspeler), bezoeker(c), wachtlijst ? String(wachtlijst) : null) })
   } catch (e) {
     if (e instanceof AanvraagFout) return c.json({ fout: e.message, code: e.code }, 409)
     throw e
@@ -83,6 +90,14 @@ kiosk.post('/speler/vrijgeven', async (c) => {
   const { platenspeler, sessie, door } = await c.req.json<{ platenspeler: number; sessie: string; door?: string }>()
   return c.json({ ok: await geefSpelerVrij(Number(platenspeler), door === 'inactiviteit' ? 'inactiviteit' : 'bezoeker', bezoeker(c), String(sessie ?? '')) })
 })
+
+// Wachtlijst als alle platenspelers bezet zijn (verbetering 8).
+kiosk.post('/wachtlijst', async (c) => {
+  const tablet = (() => { try { return decodeURIComponent(c.req.header('x-fonos-tablet') ?? '') || null } catch { return null } })()
+  return c.json(await wachtAan(tablet))
+})
+kiosk.get('/wachtlijst/:token', async (c) => c.json(await wachtStatus(c.req.param('token'))))
+kiosk.delete('/wachtlijst/:token', async (c) => { await wachtAf(c.req.param('token')); return c.json({ ok: true }) })
 
 kiosk.post('/nieuwsbrief', async (c) => {
   const { email, naam } = await c.req.json<{ email: string; naam?: string }>()

@@ -5,14 +5,59 @@ import { api, ApiFout } from './api'
 import { Logo } from './components/Logo'
 import { Laden } from './components/Iconen'
 
-export type Ik = { id: number; email: string; naam: string; rollen: string[] }
+export type Ik = { id: number; email: string; naam: string; rollen: string[]; inactief?: { beheer_min: number; medewerker_min: number } }
+type Vergrendeld = { naam: string; email: string; met: 'code' | 'wachtwoord' }
 
 export function useIk() {
   const [ik, setIk] = useState<Ik | null | undefined>(undefined)
-  const laad = useCallback(() => api<Ik>('/auth/ik').then(setIk).catch(() => setIk(null)), [])
+  const [vergrendeld, setVergrendeld] = useState<Vergrendeld | null>(null)
+  const laad = useCallback(() => api<Ik>('/auth/ik').then((g) => { setIk(g); setVergrendeld(null) }).catch((e: ApiFout) => { setVergrendeld(e.data?.vergrendeld ?? null); setIk(null) }), [])
   useEffect(() => { laad() }, [laad])
-  const uit = async () => { await api('/auth/logout', { method: 'POST' }); setIk(null) }
-  return { ik, setIk, uit }
+  const uit = async () => { await api('/auth/logout', { method: 'POST' }); setIk(null); setVergrendeld(null) }
+  const vergrendel = async () => { await api('/auth/vergrendel', { method: 'POST' }).catch(() => {}); await laad() }
+  return { ik, setIk: (g: Ik | null) => { setIk(g); if (g) { setVergrendeld(null); laad() } }, uit, vergrendeld, vergrendel }
+}
+
+/** Na N minuten zonder aanraken of toetsen: cb (IT-beleid 8.5, clear screen). */
+function useInactief(minuten: number, cb: () => void) {
+  useEffect(() => {
+    if (!minuten) return
+    let laatst = Date.now()
+    const tik = () => { laatst = Date.now() }
+    const ev = ['pointerdown', 'keydown', 'wheel', 'touchstart']
+    ev.forEach((e) => window.addEventListener(e, tik, { passive: true, capture: true }))
+    const i = setInterval(() => { if (Date.now() - laatst > minuten * 60_000) { laatst = Date.now(); cb() } }, 15_000)
+    return () => { ev.forEach((e) => window.removeEventListener(e, tik, { capture: true } as any)); clearInterval(i) }
+  }, [minuten]) // eslint-disable-line react-hooks/exhaustive-deps
+}
+
+/** Vergrendeld scherm: opnieuw de code (of het wachtwoord) om verder te gaan. */
+function Ontgrendelen({ titel, v, onIn, uit }: { titel: string; v: Vergrendeld; onIn: (ik: Ik) => void; uit: () => void }) {
+  const [invoer, setInvoer] = useState('')
+  const [fout, setFout] = useState<string | null>(null)
+  const verder = async (e: React.FormEvent) => {
+    e.preventDefault(); setFout(null)
+    try { onIn(await api<Ik>('/auth/ontgrendel', { body: v.met === 'code' ? { code: invoer } : { wachtwoord: invoer } })) } catch (er) {
+      const f = er as ApiFout
+      if (f.status === 401) uit(); else setFout(f.message)
+      setInvoer('')
+    }
+  }
+  return (
+    <div className="login-scherm">
+      <form className="card login" onSubmit={verder}>
+        <Logo />
+        <h1>{titel} vergrendeld</h1>
+        <p>Het scherm is vergrendeld omdat het een tijd niet gebruikt is. {v.naam}, vul {v.met === 'code' ? 'de code uit je authenticator-app' : 'je wachtwoord'} in om verder te gaan.</p>
+        {v.met === 'code'
+          ? <label className="veld"><span>Code</span><input inputMode="numeric" autoComplete="one-time-code" maxLength={7} value={invoer} onChange={(e) => setInvoer(e.target.value)} autoFocus required /></label>
+          : <label className="veld"><span>Wachtwoord</span><input type="password" autoComplete="current-password" value={invoer} onChange={(e) => setInvoer(e.target.value)} autoFocus required /></label>}
+        {fout && <div className="melding-blok fout">{fout}</div>}
+        <button className="btn btn-pink btn-block" type="submit">Ontgrendelen</button>
+        <button type="button" className="link-terug" style={{ marginTop: 8 }} onClick={uit}>Iemand anders? Uitloggen</button>
+      </form>
+    </div>
+  )
 }
 
 export const initialen = (naam: string) => naam.split(/\s+/).filter(Boolean).map((w) => w[0]).filter((c) => c === c.toUpperCase()).slice(0, 2).join('') || naam.slice(0, 2).toUpperCase()
@@ -146,9 +191,13 @@ export function Wachtwoord() {
   )
 }
 
-export function Afgeschermd({ titel, rollen, children }: { titel: string; rollen: string[]; children: (ik: Ik, uit: () => void) => React.ReactNode }) {
-  const { ik, setIk, uit } = useIk()
+/** bijInactiviteit: 'uitloggen' (beheer) of 'vergrendelen' (medewerkersscherm aan de bar), IT-beleid 8.5. */
+export function Afgeschermd({ titel, rollen, bijInactiviteit = 'uitloggen', children }: { titel: string; rollen: string[]; bijInactiviteit?: 'uitloggen' | 'vergrendelen'; children: (ik: Ik, uit: () => void) => React.ReactNode }) {
+  const { ik, setIk, uit, vergrendeld, vergrendel } = useIk()
+  const minuten = !ik ? 0 : bijInactiviteit === 'vergrendelen' ? ik.inactief?.medewerker_min ?? 0 : ik.inactief?.beheer_min ?? 0
+  useInactief(minuten, () => (bijInactiviteit === 'vergrendelen' ? vergrendel() : uit()))
   if (ik === undefined) return <div className="login-scherm"><Laden /></div>
+  if (!ik && vergrendeld) return <Ontgrendelen titel={titel} v={vergrendeld} onIn={setIk} uit={uit} />
   if (!ik) return <Login titel={titel} onIn={setIk} />
   if (!heeftRol(ik, ...rollen)) return (
     <div className="login-scherm"><div className="card login"><Logo /><h1>Geen toegang</h1><p>Je account heeft niet de juiste rol voor dit scherm.</p><button className="btn btn-ghost" onClick={uit}>Uitloggen</button></div></div>

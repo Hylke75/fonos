@@ -53,6 +53,9 @@ CREATE INDEX IF NOT EXISTS idx_titels_zoek ON titels USING gin (zoek);
 CREATE INDEX IF NOT EXISTS idx_titels_genres ON titels USING gin ((d_genres::jsonb));
 CREATE INDEX IF NOT EXISTS idx_titels_personen ON titels USING gin ((d_personen::jsonb));
 CREATE INDEX IF NOT EXISTS idx_titels_sleutel ON titels(d_sleutel);
+-- Nachtelijke controle van hoesadressen (verbetering 14): 1 = laadt niet (de kiosk toont dan de vervangende afbeelding).
+ALTER TABLE titels ADD COLUMN IF NOT EXISTS hoes_kapot integer NOT NULL DEFAULT 0;
+ALTER TABLE titels ADD COLUMN IF NOT EXISTS hoes_gecontroleerd_op text;
 
 -- Woorden voor typfouttolerantie bij zoeken (7.4).
 CREATE TABLE IF NOT EXISTS zoekwoorden (woord text PRIMARY KEY);
@@ -204,6 +207,52 @@ CREATE TABLE IF NOT EXISTS sessies (
 -- 0 = wachtwoord goed, wacht nog op de code van de tweede stap.
 ALTER TABLE sessies ADD COLUMN IF NOT EXISTS bevestigd integer NOT NULL DEFAULT 1;
 ALTER TABLE sessies ADD COLUMN IF NOT EXISTS pogingen integer NOT NULL DEFAULT 0;
+-- 1 = vergrendeld na inactiviteit (IT-beleid 8.5, clear screen): eerst opnieuw de code of het wachtwoord.
+ALTER TABLE sessies ADD COLUMN IF NOT EXISTS vergrendeld integer NOT NULL DEFAULT 0;
+
+-- Wachtlijst als alle platenspelers bezet zijn: de eerstvolgende vrije speler wordt even voor de wachtende vastgehouden.
+CREATE TABLE IF NOT EXISTS wachtlijst (
+  id            serial PRIMARY KEY,
+  token         text NOT NULL UNIQUE,
+  tablet        text,
+  aangemeld     text NOT NULL DEFAULT nu(),
+  laatst_gezien text NOT NULL DEFAULT nu(),
+  status        text NOT NULL DEFAULT 'wacht', -- wacht, opgeroepen, geholpen, verlopen, afgemeld
+  speler        integer,
+  opgeroepen_tot text
+);
+CREATE INDEX IF NOT EXISTS idx_wachtlijst_status ON wachtlijst(status, id);
+ALTER TABLE platenspelers ADD COLUMN IF NOT EXISTS gereserveerd_voor text;
+ALTER TABLE platenspelers ADD COLUMN IF NOT EXISTS gereserveerd_tot text;
+
+-- Pushmeldingen op het apparaat van een medewerker (Web Push).
+CREATE TABLE IF NOT EXISTS push_abonnementen (
+  id           serial PRIMARY KEY,
+  gebruiker_id integer REFERENCES gebruikers(id) ON DELETE CASCADE,
+  endpoint     text NOT NULL UNIQUE,
+  sleutels     text NOT NULL,
+  apparaat     text,
+  aangemaakt   text NOT NULL DEFAULT nu(),
+  laatst_gebruikt text
+);
+-- Gegenereerde sleutels die niet in de back-up en niet in de instellingen horen (bv. de VAPID-sleutel voor Web Push).
+CREATE TABLE IF NOT EXISTS geheimen (
+  naam   text PRIMARY KEY,
+  waarde text NOT NULL
+);
+
+-- JavaScript-fouten uit de browser (verbetering 20), bv. van een kiosktablet.
+CREATE TABLE IF NOT EXISTS browserfouten (
+  id      serial PRIMARY KEY,
+  tijd    text NOT NULL DEFAULT nu(),
+  tablet  text,
+  pagina  text,
+  bericht text NOT NULL,
+  bron    text,
+  stack   text,
+  apparaat text
+);
+CREATE INDEX IF NOT EXISTS idx_browserfouten_tijd ON browserfouten(tijd);
 
 -- IT-beleid 6.3: alle geslaagde en mislukte aanmeldingen.
 CREATE TABLE IF NOT EXISTS aanmeldingen (
@@ -309,7 +358,7 @@ DECLARE t text;
 BEGIN
   FOREACH t IN ARRAY ARRAY['titels','zoekwoorden','mw_dump','exemplaren','import_issues','platenspelers','aanvragen',
     'aanvraag_items','genreknoppen','genre_koppelingen','selecties','selectie_titels','instellingen','gebruikers','sessies',
-    'wijzigingslog','imports','backups','versies','planner','nieuwsbrief_wachtrij','nieuwsbrief_aanmeldingen','kiosks','taken','aanmeldingen'] LOOP
+    'wijzigingslog','imports','backups','versies','planner','nieuwsbrief_wachtrij','nieuwsbrief_aanmeldingen','kiosks','taken','aanmeldingen','wachtlijst','push_abonnementen','geheimen','browserfouten'] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
   END LOOP;
 END $$;
