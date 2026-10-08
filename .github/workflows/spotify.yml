@@ -35,7 +35,7 @@ jobs:
           fi
       - uses: actions/checkout@v7
         if: steps.check.outputs.ok == 'true'
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v6
         if: steps.check.outputs.ok == 'true'
         with:
           node-version: 22
