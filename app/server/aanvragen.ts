@@ -6,6 +6,7 @@ import { BEZOEKER, log, SYSTEEM, type Wie } from './log.ts'
 import { OPEN_ITEMS_SQL, vindcoder } from './titels.ts'
 import { aanvragenGewijzigd, beschikbaarheidGewijzigd } from './events.ts'
 import { stuurMail } from './mail.ts'
+import { losReserveringIn, reserveringVoor, verdeel } from './wachtlijst.ts'
 
 export class AanvraagFout extends Error {
   code: string
@@ -29,23 +30,29 @@ export function openAanvraagVoorSpeler(nummer: number) {
 /** bezet = een bezoeker houdt de speler vast, of er loopt nog een aanvraag op. */
 export async function platenspelers() {
   return (await all<any>(`SELECT p.nummer, p.actief, p.sessie IS NOT NULL AS vast, p.bezet_sinds,
+      (p.gereserveerd_voor IS NOT NULL AND p.gereserveerd_tot > nu()) AS gereserveerd,
       (SELECT a.id FROM aanvragen a WHERE a.platenspeler = p.nummer AND a.status IN ${OPEN} LIMIT 1) AS open_aanvraag
     FROM platenspelers p ORDER BY p.nummer`)).map((p) => ({
-    nummer: p.nummer, actief: !!p.actief, bezet: !!p.vast || p.open_aanvraag != null, vastgehouden: !!p.vast, bezet_sinds: p.bezet_sinds ?? null,
+    nummer: p.nummer, actief: !!p.actief, bezet: !!p.vast || p.open_aanvraag != null || !!p.gereserveerd, vastgehouden: !!p.vast, bezet_sinds: p.bezet_sinds ?? null,
+    gereserveerd: !!p.gereserveerd,
   }))
 }
 
 // ------------------------------------------------------------------ platenspeler kiezen, vasthouden, vrijgeven
 
 /** Bezoeker kiest een platenspeler (eerste stap in de kiosk). Geeft een sessiecode terug. */
-export async function kiesSpeler(nummer: number, wie: Wie = BEZOEKER) {
+export async function kiesSpeler(nummer: number, wie: Wie = BEZOEKER, wachtToken?: string | null) {
   const r = await tx(async () => {
     await run('SELECT pg_advisory_xact_lock(4711)')
     const p = await get<any>('SELECT * FROM platenspelers WHERE nummer = ?', nummer)
     if (!p || !p.actief) throw new AanvraagFout('speler_inactief', 'Deze platenspeler is nu niet beschikbaar. Kies een andere.')
     if (p.sessie || (await openAanvraagVoorSpeler(nummer))) throw new AanvraagFout('bezet', 'Deze platenspeler is bezet. Kies een andere.')
+    // Gereserveerd voor iemand op de wachtlijst (verbetering 8): alleen die bezoeker mag hem nu kiezen.
+    const res = await reserveringVoor(nummer, wachtToken)
+    if (res === 'anders') throw new AanvraagFout('bezet', 'Deze platenspeler is gereserveerd voor iemand op de wachtlijst. Kies een andere.')
     const sessie = randomUUID()
     await run('UPDATE platenspelers SET sessie = ?, bezet_sinds = nu(), laatst_actief = nu() WHERE nummer = ?', sessie, nummer)
+    if (res === 'eigen' || wachtToken) await losReserveringIn(nummer, wachtToken)
     return sessie
   })
   await log(wie, 'platenspeler gekozen', { type: 'platenspeler', id: nummer, label: `Platenspeler ${nummer}` })
@@ -69,6 +76,7 @@ export async function geefSpelerVrij(nummer: number, door: 'bezoeker' | 'medewer
   const open = await all<{ id: number }>(`SELECT id FROM aanvragen WHERE platenspeler = ? AND status IN ${OPEN}`, nummer)
   for (const a of open) await sluitAf(a.id, door, wie)
   const r = await run('UPDATE platenspelers SET sessie = NULL, bezet_sinds = NULL, laatst_actief = NULL WHERE nummer = ? AND sessie IS NOT NULL', nummer)
+  if (r.changes || open.length) await verdeel().catch(() => {}) // eerstvolgende op de wachtlijst
   if (r.changes || open.length) {
     await log(wie, 'platenspeler vrijgegeven', { type: 'platenspeler', id: nummer, label: `Platenspeler ${nummer}`, nieuw: door })
     await aanvragenGewijzigd()

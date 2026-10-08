@@ -618,3 +618,89 @@ pre.rapport { background: #07111f; border: 1px solid var(--line); border-radius:
 .geldigheid { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .geldigheid select, .geldigheid input { padding: 6px 8px; font-size: 13px; }
 .label-fout { color: var(--amber); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+
+/* Zoekreden onder een albumkaart en "Ook luisteren" op de albumpagina */
+.album-kaart .reden { font-size: 13px; color: var(--cyan); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ook-luisteren { margin-top: 36px; }
+.ook-luisteren h2 { font-size: 20px; margin: 0 0 14px; }
+.ook-luisteren .rij { margin: 0; padding: 0 0 8px; }
+.ook-luisteren .rij .album-kaart { flex: 0 0 150px; width: 150px; }
+.geen-nummers { margin-top: 18px; }
+
+/* Taal NL/EN en grotere tekst (verbetering 5 en 6) */
+.badge-nl.taal-knop { display: inline-flex; align-items: center; width: auto; gap: 2px; padding: 0 6px; border-radius: 999px; cursor: pointer; color: inherit; font-family: inherit; }
+.taal-knop span { padding: 4px 8px; border-radius: 999px; opacity: .55; }
+.taal-knop span.aan { opacity: 1; background: rgba(255,255,255,.14); }
+.tekst-knop.aan { background: var(--cyan); color: #04122a; border-color: var(--cyan); }
+.kiosk.groot-tekst .kiosk-inhoud, .kiosk.groot-tekst .modal { zoom: 1.18; }
+.kiosk.groot-tekst { --muted: #e3e8f2; --dim: #c9d0de; }
+.kiosk.groot-tekst .muted, .kiosk.groot-tekst .dim { color: #e3e8f2 !important; }
+.kiosk.groot-tekst .card, .kiosk.groot-tekst .chip, .kiosk.groot-tekst .btn-ghost { border-color: rgba(255,255,255,.55) !important; }
+.kiosk.groot-tekst .album-kaart .a, .kiosk.groot-tekst .album-kaart .t { color: #fff; }
+:focus-visible { outline: 3px solid var(--cyan); outline-offset: 2px; }
+/* Verbinding kwijt (verbetering 7) */
+.verbinding-weg { position: fixed; top: 0; left: 0; right: 0; z-index: 90; background: #f5b83d; color: #1a1300; font-weight: 700; text-align: center; padding: 10px 16px; font-size: 18px; }
+/* Wachtlijst (verbetering 8) */
+.wachtlijst { margin-top: 18px; display: grid; gap: 12px; justify-items: start; }
+.wachtlijst h2 { margin: 0; font-size: 22px; }
+.wachtlijst p { margin: 0; }
+
+/* Looplijst afdrukken (verbetering 10) */
+.alleen-afdruk { display: none; }
+@media print {
+  @page { margin: 12mm; }
+  body { background: #fff !important; }
+  body * { visibility: hidden; }
+  .alleen-afdruk, .alleen-afdruk * { visibility: visible; }
+  .alleen-afdruk { display: block; position: absolute; left: 0; top: 0; width: 100%; color: #000; font: 11pt/1.35 system-ui, sans-serif; }
+  .alleen-afdruk h1 { font-size: 16pt; margin: 0 0 2mm; }
+  .alleen-afdruk p { margin: 0 0 4mm; color: #333; }
+  .alleen-afdruk table { width: 100%; border-collapse: collapse; }
+  .alleen-afdruk th, .alleen-afdruk td { border-bottom: 1px solid #999; padding: 2.5mm 2mm; text-align: left; vertical-align: top; }
+  .alleen-afdruk .vak { font-size: 15pt; width: 8mm; }
+  .alleen-afdruk tr { break-inside: avoid; }
+}
+.staf-header .btn-s { margin-right: 14px; }
+.push-aan { border-color: var(--green) !important; color: var(--green) !important; }
+
+/* Statistieken (verbetering 12): één reekskleur (cyaan) voor hoeveelheid, recessieve assen */
+.stat-filters { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; }
+.stat-filters .veld.inline { display: flex; align-items: center; gap: 8px; margin: 0; }
+.stat-filters .veld.inline span { margin: 0; }
+.stat-tegels { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin-bottom: 18px; }
+.stat-tegel { padding: 18px 20px; }
+.stat-tegel .w { font-size: 34px; font-weight: 800; letter-spacing: -.02em; }
+.stat-tegel .l { color: var(--muted); margin-top: 2px; }
+.stat-tegel .s { color: var(--dim); font-size: 13px; margin-top: 6px; }
+.stat-twee { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 18px; margin: 18px 0; }
+.stat-twee .paneel { margin: 0; }
+.balken { display: grid; gap: 6px; }
+.balk-rij { display: grid; grid-template-columns: minmax(110px, 38%) 1fr 48px; gap: 10px; align-items: center; font-size: 14px; }
+.balk-rij .naam { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.balk-rij .spoor { height: 12px; }
+.balk-rij .balk { display: block; height: 100%; background: var(--cyan); border-radius: 0 4px 4px 0; min-width: 2px; }
+.balk-rij .w { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.balk-rij:hover .balk { filter: brightness(1.15); }
+.per-dag { position: relative; margin-top: 12px; }
+.per-dag svg { width: 100%; height: auto; display: block; }
+.per-dag .raster-lijn { stroke: rgba(255,255,255,.08); stroke-width: 1; }
+.per-dag .as { fill: var(--dim); font-size: 11px; }
+.per-dag .kolom { fill: var(--cyan); }
+.per-dag .kolom.hover { filter: brightness(1.25); }
+.grafiek-tip { position: absolute; top: 0; transform: translateX(-50%); background: var(--bg-2, #0d1529); border: 1px solid var(--line-2, #2a3550); border-radius: 8px; padding: 6px 10px; font-size: 13px; pointer-events: none; white-space: nowrap; }
+.drukte { border-collapse: separate; border-spacing: 2px; font-size: 12px; width: 100%; }
+.drukte th { color: var(--dim); font-weight: 500; padding: 2px 4px; }
+.drukte td { text-align: center; height: 28px; border-radius: 4px; background: color-mix(in srgb, var(--cyan) calc(var(--s) * 100%), rgba(255,255,255,.04)); color: #04122a; font-weight: 700; font-variant-numeric: tabular-nums; }
+.stat-top { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 8px 22px; }
+.stat-top li { display: grid; grid-template-columns: 24px 44px 1fr auto; gap: 10px; align-items: center; font-size: 14px; }
+.stat-top .pos { color: var(--dim); text-align: right; }
+.stat-top .cover { width: 44px; height: 44px; }
+.stat-top .naam { overflow: hidden; min-width: 0; }
+.stat-top .naam b, .stat-top .naam .muted { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stat-top .naam br { display: none; }
+.stat-top .aantal { color: var(--cyan); font-weight: 700; }
+/* WCAG 2.1 AA (verbetering 6): witte tekst op het Fonos-roze haalt 3,5:1. Grote vette tekst (vanaf 18,66 px, 700) mag 3:1;
+   kleinere knoppen krijgen een iets donkerder roze (4,9:1). */
+.btn-pink { font-weight: 700; }
+.btn-pink:not(.btn-l):not(:disabled), .aanvraag-mini:not(.in):not(.bewaar):not(:disabled) { background: #d6008f; }
+.btn-pink:not(.btn-l):hover:not(:disabled) { background: #c20082; }

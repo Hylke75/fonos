@@ -27,3 +27,33 @@ jobs:
         run: npm test
       - name: Build (frontend en Vercel-functie)
         run: npx vite build && node scripts/bouw-vercel.mjs
+
+  # Browsertests (verbetering 19): kioskstroom, Engels, inloggen met tweestaps, medewerkersscherm en WCAG 2.1 AA (axe).
+  browser:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - name: Chromium voor Playwright
+        run: npx playwright install --with-deps chromium
+      - name: Browsertests
+        run: npm run test:e2e
+        env:
+          CI: '1'
+      - name: Rapport bij een fout
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-rapport
+          path: |
+            app/playwright-rapport
+            app/test-results
+          retention-days: 7

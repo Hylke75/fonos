@@ -1,5 +1,5 @@
 // Aanvraaglijst en afronden (7.8, 7.9): titels, de gekozen platenspeler, nieuwsbrief (optioneel), aanvraag versturen.
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, ArrowRight, Trash2, X } from 'lucide-react'
 import { api, ApiFout } from '../api'
@@ -7,6 +7,7 @@ import { Hoes } from '../components/Hoes'
 import { useKiosk } from './KioskApp'
 import { KioskKopTerug } from './Kop'
 import { EMAIL_RE, NieuwsbriefBlok, type NieuwsbriefKeuze } from './Nieuwsbrief'
+import { t } from './taal'
 
 export function Aanvraag() {
   const { mand, verwijder, leegMand, config, beschikbaar, speler: gekozen, spelerKwijt, bewaard, vergeet, voegToe } = useKiosk()
@@ -17,13 +18,15 @@ export function Aanvraag() {
   const [nietBeschikbaar, setNietBeschikbaar] = useState<number[]>([])
   const [nb, setNb] = useState<NieuwsbriefKeuze>({ aan: false, naam: '', email: '' })
   const [nbFout, setNbFout] = useState<string | null>(null)
+  // Verbinding kwijt tijdens het versturen (verbetering 7): de aanvraag blijft staan en gaat alsnog weg zodra het weer lukt.
+  const [wachtOpVerbinding, setWachtOpVerbinding] = useState<boolean | null>(null)
   const nav = useNavigate()
   const ongeldig = (id: number) => nietBeschikbaar.includes(id) || beschikbaar[id]?.beschikbaar === false
   const kanVersturen = mand.length > 0 && speler != null && !mand.some((m) => ongeldig(m.titel_id)) && !bezig
 
   const verstuur = async (bezetAfsluiten = false) => {
     if (!speler) return
-    if (nb.aan && !EMAIL_RE.test(nb.email.trim())) { setNbFout('Dit lijkt geen geldig e-mailadres. Controleer het nog even.'); return }
+    if (nb.aan && !EMAIL_RE.test(nb.email.trim())) { setNbFout(t('Dit lijkt geen geldig e-mailadres. Controleer het nog even.')); return }
     setBezig(true)
     setFout(null)
     try {
@@ -33,17 +36,32 @@ export function Aanvraag() {
       // Nieuwsbrief los van de aanvraag doorsturen; een storing mag de aanvraag niet tegenhouden (11).
       let aangemeld = false
       if (nb.aan) aangemeld = await api('/kiosk/nieuwsbrief', { body: { email: nb.email.trim(), naam: nb.naam.trim() || undefined } }).then(() => true, () => false)
+      setWachtOpVerbinding(null)
       nav('/verstuurd', { state: { ...r, aangemeld }, replace: true })
     } catch (e) {
       const f = e as ApiFout
-      if (f.data?.code === 'speler_kwijt') spelerKwijt()
+      if (f.status === 0) { setWachtOpVerbinding(bezetAfsluiten); setFout(t('Geen verbinding: we versturen je aanvraag zodra de verbinding terug is.')) }
+      else if (f.data?.code === 'speler_kwijt') spelerKwijt()
       else if (f.data?.code === 'bezet') setVraagBezet(true)
-      else if (f.data?.code === 'niet_beschikbaar') { setNietBeschikbaar(f.data.titelIds ?? []); setFout('Een of meer titels zijn intussen in gebruik. Haal ze uit je aanvraag om verder te gaan.') }
-      else setFout(f.message)
+      else if (f.data?.code === 'niet_beschikbaar') { setNietBeschikbaar(f.data.titelIds ?? []); setFout(t('Een of meer titels zijn intussen in gebruik. Haal ze uit je aanvraag om verder te gaan.')) }
+      else setFout(t(f.message))
     } finally {
       setBezig(false)
     }
   }
+
+  // Opnieuw proberen: bij 'online' en daarnaast elke 5 seconden.
+  const verstuurRef = useRef(verstuur)
+  verstuurRef.current = verstuur
+  useEffect(() => {
+    if (wachtOpVerbinding == null) return
+    const probeer = () => { if (!bezigRef.current) verstuurRef.current(wachtOpVerbinding) }
+    const i = setInterval(probeer, 5000)
+    window.addEventListener('online', probeer)
+    return () => { clearInterval(i); window.removeEventListener('online', probeer) }
+  }, [wachtOpVerbinding])
+  const bezigRef = useRef(bezig)
+  bezigRef.current = bezig
 
   return (
     <div className="kiosk-scherm">
@@ -51,10 +69,10 @@ export function Aanvraag() {
       <main className="kiosk-inhoud">
         <div className="aanvraag-kop">
           <div>
-            <h1>Jouw aanvraag</h1>
-            <p className="muted" style={{ margin: 0, fontSize: 17 }}>Controleer je platen en verstuur je aanvraag.</p>
+            <h1>{t('Jouw aanvraag')}</h1>
+            <p className="muted" style={{ margin: 0, fontSize: 17 }}>{t('Controleer je platen en verstuur je aanvraag.')}</p>
           </div>
-          {mand.length > 0 && <button className="btn btn-outline" onClick={leegMand}><Trash2 size={20} /> Leeg maken</button>}
+          {mand.length > 0 && <button className="btn btn-outline" onClick={leegMand}><Trash2 size={20} /> {t('Leeg maken')}</button>}
         </div>
 
         <div className="aanvraag-grid">
@@ -62,36 +80,36 @@ export function Aanvraag() {
           <div className="card aanvraag-lijst">
             {mand.length === 0 && (
               <div className="leeg" style={{ padding: 48 }}>
-                <h2>Je aanvraag is nog leeg</h2>
-                <p>Kies een of meer platen uit de collectie.</p>
-                <button className="btn btn-pink" onClick={() => nav('/home')}>Ga zoeken</button>
+                <h2>{t('Je aanvraag is nog leeg')}</h2>
+                <p>{t('Kies een of meer platen uit de collectie.')}</p>
+                <button className="btn btn-pink" onClick={() => nav('/home')}>{t('Ga zoeken')}</button>
               </div>
             )}
             {mand.map((m) => (
               <div key={m.titel_id} className={`aanvraag-regel ${ongeldig(m.titel_id) ? 'ongeldig' : ''}`}>
                 <Hoes src={m.hoes} />
                 <div className="namen">
-                  <div>{m.artiesten || 'Diverse artiesten'}</div>
+                  <div>{m.artiesten || t('Diverse artiesten')}</div>
                   <div>{m.titel}</div>
-                  {ongeldig(m.titel_id) && <div className="waarschuwing"><AlertTriangle size={14} /> Intussen in gebruik</div>}
+                  {ongeldig(m.titel_id) && <div className="waarschuwing"><AlertTriangle size={14} /> {t('Intussen in gebruik')}</div>}
                 </div>
                 <div className="info">
                   <div>{[m.drager, m.jaar].filter(Boolean).join(' · ')}</div>
-                  {(m.vindcode ?? beschikbaar[m.titel_id]?.vindcode) && <div>{config.instellingen.vindcode_label}: {m.vindcode ?? beschikbaar[m.titel_id]?.vindcode}</div>}
+                  {(m.vindcode ?? beschikbaar[m.titel_id]?.vindcode) && <div>{t(config.instellingen.vindcode_label)}: {m.vindcode ?? beschikbaar[m.titel_id]?.vindcode}</div>}
                 </div>
-                <button className="x" onClick={() => { verwijder(m.titel_id); setNietBeschikbaar((n) => n.filter((x) => x !== m.titel_id)); setFout(null) }} aria-label={`Haal ${m.titel} uit je aanvraag`}><X size={26} /></button>
+                <button className="x" onClick={() => { verwijder(m.titel_id); setNietBeschikbaar((n) => n.filter((x) => x !== m.titel_id)); setFout(null) }} aria-label={t('Haal {titel} uit je aanvraag', { titel: m.titel })}><X size={26} /></button>
               </div>
             ))}
           </div>
             {bewaard.length > 0 && (
               <div className="card aanvraag-lijst bewaard-lijst">
-                <h2>Bewaard voor later</h2>
+                <h2>{t('Bewaard voor later')}</h2>
                 {bewaard.map((b) => (
                   <div key={b.titel_id} className="aanvraag-regel">
                     <Hoes src={b.hoes} />
-                    <div className="namen"><div>{b.artiesten || 'Diverse artiesten'}</div><div>{b.titel}</div></div>
-                    <div className="info"><button className="btn btn-pink btn-s" disabled={mand.length >= config.instellingen.max_titels} onClick={() => voegToe(b)}>Toevoegen</button></div>
-                    <button className="x" onClick={() => vergeet(b.titel_id)} aria-label={`Haal ${b.titel} uit je bewaarde platen`}><X size={26} /></button>
+                    <div className="namen"><div>{b.artiesten || t('Diverse artiesten')}</div><div>{b.titel}</div></div>
+                    <div className="info"><button className="btn btn-pink btn-s" disabled={mand.length >= config.instellingen.max_titels} onClick={() => voegToe(b)}>{t('Toevoegen')}</button></div>
+                    <button className="x" onClick={() => vergeet(b.titel_id)} aria-label={t('Haal {titel} uit je bewaarde platen', { titel: b.titel })}><X size={26} /></button>
                   </div>
                 ))}
               </div>
@@ -100,18 +118,18 @@ export function Aanvraag() {
 
           <div className="card spelers-paneel">
             <div className="mijn-speler">
-              <h2>Je platenspeler</h2>
+              <h2>{t('Je platenspeler')}</h2>
               <div className="nr">{speler}</div>
-              <p className="muted" style={{ margin: 0 }}>Een medewerker brengt je platen hierheen.</p>
+              <p className="muted" style={{ margin: 0 }}>{t('Een medewerker brengt je platen hierheen.')}</p>
             </div>
             {config.instellingen.nieuwsbrief && <NieuwsbriefBlok waarde={nb} wijzig={(w) => { setNb(w); setNbFout(null) }} fout={nbFout} />}
             <button className="btn btn-pink btn-l btn-block" disabled={!kanVersturen || (nb.aan && !nb.email.trim())} onClick={() => verstuur(false)}>
-              {bezig ? 'Bezig met versturen…' : <>Aanvraag versturen <ArrowRight size={22} /></>}
+              {bezig || wachtOpVerbinding != null ? t('Bezig met versturen…') : <>{t('Aanvraag versturen')} <ArrowRight size={22} /></>}
             </button>
             {fout && (
               <div className="melding" role="alert" style={{ color: '#ff8a98' }}>
                 {fout}
-                {!nietBeschikbaar.length && <div style={{ marginTop: 10 }}><button className="btn btn-ghost btn-s" onClick={() => verstuur(false)}>Opnieuw proberen</button></div>}
+                {!nietBeschikbaar.length && wachtOpVerbinding == null && <div style={{ marginTop: 10 }}><button className="btn btn-ghost btn-s" onClick={() => verstuur(false)}>{t('Opnieuw proberen')}</button></div>}
               </div>
             )}
           </div>
@@ -121,11 +139,11 @@ export function Aanvraag() {
       {vraagBezet && (
         <div className="modal-achter" role="alertdialog" aria-labelledby="bezet-kop">
           <div className="card modal">
-            <h2 id="bezet-kop">Je hebt nog een aanvraag lopen</h2>
-            <p>Wil je die afsluiten en deze aanvraag versturen? Laat de platen van je vorige aanvraag bij de speler liggen; een medewerker haalt ze op.</p>
+            <h2 id="bezet-kop">{t('Je hebt nog een aanvraag lopen')}</h2>
+            <p>{t('Wil je die afsluiten en deze aanvraag versturen? Laat de platen van je vorige aanvraag bij de speler liggen; een medewerker haalt ze op.')}</p>
             <div className="knoppen">
-              <button className="btn btn-pink btn-l" onClick={() => { setVraagBezet(false); verstuur(true) }}>Ja, versturen</button>
-              <button className="btn btn-ghost btn-l" onClick={() => setVraagBezet(false)}>Nee, nog niet</button>
+              <button className="btn btn-pink btn-l" onClick={() => { setVraagBezet(false); verstuur(true) }}>{t('Ja, versturen')}</button>
+              <button className="btn btn-ghost btn-l" onClick={() => setVraagBezet(false)}>{t('Nee, nog niet')}</button>
             </div>
           </div>
         </div>

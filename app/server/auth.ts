@@ -72,8 +72,15 @@ export async function login(email: string, wachtwoord: string): Promise<{ token:
 export async function gebruikerBijToken(token?: string): Promise<Gebruiker | null> {
   if (!token) return null
   const g = await get<any>(`SELECT g.* FROM sessies s JOIN gebruikers g ON g.id = s.gebruiker_id
-    WHERE s.token = ? AND s.verloopt > nu() AND s.bevestigd = 1 AND ${GELDIG_SQL}`, token)
+    WHERE s.token = ? AND s.verloopt > nu() AND s.bevestigd = 1 AND s.vergrendeld = 0 AND ${GELDIG_SQL}`, token)
   return g ? alsGebruiker(g) : null
+}
+
+/** Vergrendelde sessie (na inactiviteit): de gebruiker en of ontgrendelen met een code moet. */
+export async function vergrendeldeSessie(token?: string): Promise<any | null> {
+  if (!token) return null
+  return get<any>(`SELECT g.* FROM sessies s JOIN gebruikers g ON g.id = s.gebruiker_id
+    WHERE s.token = ? AND s.verloopt > nu() AND s.bevestigd = 1 AND s.vergrendeld = 1 AND ${GELDIG_SQL}`, token)
 }
 
 /** Sessie die nog op de tweede stap wacht. */

@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
-import { Activity, Archive, Disc3, History, Import, LayoutGrid, LibraryBig, ListMusic, LogOut, Mail, Settings, Users, Headphones } from 'lucide-react'
+import { Activity, Archive, BarChart3, Disc3, History, Import, LayoutGrid, LibraryBig, ListMusic, LogOut, Mail, Settings, Users, Headphones } from 'lucide-react'
 import { Logo } from '../components/Logo'
 import { Afgeschermd, heeftRol, initialen, type Ik } from '../Login'
 import { Collectie } from './Collectie'
@@ -17,6 +17,7 @@ import { Gebruikers } from './Gebruikers'
 import { Instellingen } from './Instellingen'
 import { Backups } from './Backups'
 import { Wijzigingslog } from './Wijzigingslog'
+import { Statistieken } from './Statistieken'
 
 export function AdminApp() {
   return (
@@ -36,6 +37,7 @@ function Beheer({ ik, uit }: { ik: Ik; uit: () => void }) {
     { naar: 'importeren', label: 'Importeren', icoon: Import },
     ...(beheerder ? [{ naar: 'genreknoppen', label: 'Genreknoppen', icoon: LayoutGrid }] : []),
     { naar: 'selecties', label: 'Selecties', icoon: ListMusic },
+    { naar: 'statistieken', label: 'Statistieken', icoon: BarChart3 },
     ...(spotify ? [{ naar: 'spotify', label: 'Spotify-koppelingen', icoon: Disc3 }] : []),
     ...(beheerder ? [
       { naar: 'nieuwsbrief', label: 'Nieuwsbrief', icoon: Mail },
@@ -71,6 +73,7 @@ function Beheer({ ik, uit }: { ik: Ik; uit: () => void }) {
             <Route path="titel/:id" element={<TitelBewerken beheerder={beheerder} />} />
             <Route path="importeren" element={<Importeren beheerder={beheerder} />} />
             <Route path="selecties" element={<Selecties />} />
+            <Route path="statistieken" element={<Statistieken />} />
             <Route path="spotify" element={<Spotify />} />
             <Route path="wijzigingslog" element={<Wijzigingslog />} />
             {beheerder && <>

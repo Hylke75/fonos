@@ -1,7 +1,7 @@
 // Medewerkersscherm (9): aanvragen realtime, ophalen, uitgeven, vrijgeven, annuleren; platenspelers (in)actief.
 import { useCallback, useEffect, useState } from 'react'
 import { Route, Routes, useNavigate, useParams } from 'react-router-dom'
-import { AlertTriangle, ArrowLeft, Clock, LogOut, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Bell, BellOff, Clock, LogOut, Printer, X } from 'lucide-react'
 import { api, ApiFout, bestelnr, tijd } from '../api'
 import { useVersies } from '../versies'
 import { Logo } from '../components/Logo'
@@ -49,7 +49,7 @@ function useRealtime(opNieuw: (d: { nieuw?: number | null }) => void) {
 
 export function StaffApp() {
   return (
-    <Afgeschermd titel="Medewerkersscherm" rollen={['medewerker', 'beheerder']}>
+    <Afgeschermd titel="Medewerkersscherm" rollen={['medewerker', 'beheerder']} bijInactiviteit="vergrendelen">
       {(ik, uit) => (
         <div className="app-scherm">
           <StafKop ik={ik} uit={uit} />
@@ -65,11 +65,54 @@ export function StaffApp() {
   )
 }
 
+/** Pushmeldingen op dit apparaat aan- en uitzetten (verbetering 9). */
+const kanPush = () => typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
+const sleutelBytes = (b64: string) => { const s = atob(b64.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (b64.length % 4)) % 4)); return Uint8Array.from(s, (c) => c.charCodeAt(0)) }
+
+function PushKnop() {
+  const [aan, setAan] = useState<boolean | null>(null)
+  const [melding, setMelding] = useState<string | null>(null)
+  useEffect(() => {
+    if (!kanPush()) return
+    navigator.serviceWorker.register('/sw.js').then((r) => r.pushManager.getSubscription()).then((s) => setAan(!!s)).catch(() => setAan(false))
+  }, [])
+  if (!kanPush()) return null
+  const zet = async () => {
+    setMelding(null)
+    try {
+      const reg = await navigator.serviceWorker.register('/sw.js')
+      await navigator.serviceWorker.ready
+      const huidig = await reg.pushManager.getSubscription()
+      if (huidig) {
+        await api('/medewerker/push/uit', { body: { endpoint: huidig.endpoint } }).catch(() => {})
+        await huidig.unsubscribe()
+        setAan(false)
+        return
+      }
+      if ((await Notification.requestPermission()) !== 'granted') { setMelding('Meldingen zijn geblokkeerd in de browser. Sta ze toe in de instellingen van de browser.'); return }
+      const { publicKey } = await api<{ publicKey: string }>('/medewerker/push/sleutel')
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: sleutelBytes(publicKey) })
+      await api('/medewerker/push', { body: { abonnement: sub.toJSON() } })
+      setAan(true)
+      await api('/medewerker/push/test', { method: 'POST' }).catch(() => {})
+    } catch (e) { setMelding(`Meldingen aanzetten lukte niet: ${(e as Error).message}`) }
+  }
+  return (
+    <div style={{ position: 'relative' }}>
+      <button className={`btn btn-ghost btn-s ${aan ? 'push-aan' : ''}`} onClick={zet} aria-pressed={!!aan} title="Meldingen bij een nieuwe aanvraag, ook als het scherm vergrendeld is">
+        {aan ? <><Bell size={16} /> Meldingen aan</> : <><BellOff size={16} /> Meldingen op dit apparaat</>}
+      </button>
+      {melding && <div className="popmenu tekst-klein" style={{ top: 44, right: 0, width: 280, padding: 12 }} role="alert">{melding}</div>}
+    </div>
+  )
+}
+
 function StafKop({ ik, uit }: { ik: Ik; uit: () => void }) {
   const [menu, setMenu] = useState(false)
   return (
     <header className="staf-header">
       <Logo />
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginLeft: 'auto' }}><PushKnop /></div>
       <div style={{ position: 'relative' }}>
         <button className="gebruiker" onClick={() => setMenu(!menu)} aria-expanded={menu}>Medewerker <span className="avatar" title={ik.naam}>{initialen(ik.naam)}</span></button>
         {menu && <div className="popmenu" style={{ top: 52 }}><div className="dim tekst-klein" style={{ padding: '8px 12px' }}>{ik.naam}</div><button onClick={uit}><LogOut size={14} /> Uitloggen</button></div>}
@@ -196,6 +239,19 @@ function Looplijst({ versie }: { versie: number }) {
   if (!l) return <Laden />
   if (!l.length) return <p className="muted" style={{ padding: 32, textAlign: 'center' }}>Er staan geen platen klaar om op te halen.</p>
   return (
+    <>
+    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+      <button className="btn btn-ghost btn-s" onClick={() => window.print()}><Printer size={16} /> Looplijst afdrukken</button>
+    </div>
+    {/* Printversie (verbetering 10): alleen zichtbaar bij afdrukken, met vakjes om af te vinken. */}
+    <div className="alleen-afdruk">
+      <h1>Looplijst Fonotheek</h1>
+      <p>{new Date().toLocaleString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })} · {l.length} {l.length === 1 ? 'plaat' : 'platen'}</p>
+      <table>
+        <thead><tr><th>✓</th><th>Catalogusnr.</th><th>Artiest en titel</th><th>Drager</th><th>Speler</th><th>Aanvraag</th></tr></thead>
+        <tbody>{l.map((r) => <tr key={r.id}><td className="vak">☐</td><td><b>{r.vindcode ?? '–'}</b></td><td>{r.artiesten}{r.artiesten ? ' – ' : ''}{r.titel}</td><td>{r.drager}</td><td>{r.platenspeler}</td><td>{bestelnr(r.bestelnummer)}</td></tr>)}</tbody>
+      </table>
+    </div>
     <div className="tabel-kaart">
       <table className="tabel looplijst">
         <thead><tr><th style={{ width: 48 }} /><th>Catalogusnr.</th><th>Titel</th><th>Drager</th><th>Speler</th><th>Aanvraag</th></tr></thead>
@@ -214,6 +270,7 @@ function Looplijst({ versie }: { versie: number }) {
       </table>
       <p className="muted tekst-klein" style={{ padding: '8px 16px' }}>Vink af wat je gepakt hebt (alleen op dit scherm). Breng de platen daarna per speler en zet de aanvraag op "Uitgegeven".</p>
     </div>
+    </>
   )
 }
 

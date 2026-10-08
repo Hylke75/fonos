@@ -48,6 +48,27 @@ app.onError((e, c) => {
   return c.json({ fout: e.message || 'Er ging iets mis' }, 500)
 })
 
+/** Fouten uit de browser (verbetering 20). Geen login nodig (kiosk); begrensd en zonder persoonsgegevens. */
+let foutenDitUur = { uur: '', n: 0 }
+app.post('/api/fout', async (c) => {
+  const uur = new Date().toISOString().slice(0, 13)
+  if (foutenDitUur.uur !== uur) foutenDitUur = { uur, n: 0 }
+  if (++foutenDitUur.n > 200) return c.json({ ok: false }, 429)
+  const b = await c.req.json<{ bericht?: string; bron?: string; stack?: string; pagina?: string }>().catch(() => ({} as any))
+  const bericht = String(b.bericht ?? '').slice(0, 500)
+  if (!bericht) return c.json({ ok: false }, 400)
+  const dec = (v?: string) => { try { return v ? decodeURIComponent(v) : null } catch { return null } }
+  const tablet = dec(c.req.header('x-fonos-tablet'))?.slice(0, 60) ?? null
+  console.error(`[browser] ${tablet ?? 'onbekend apparaat'} ${b.pagina ?? ''}: ${bericht}`)
+  await run('INSERT INTO browserfouten (tablet, pagina, bericht, bron, stack, apparaat) VALUES (?, ?, ?, ?, ?, ?)',
+    tablet, String(b.pagina ?? '').slice(0, 200), bericht, String(b.bron ?? '').slice(0, 300), String(b.stack ?? '').slice(0, 3000), (c.req.header('user-agent') ?? '').slice(0, 200))
+  await run("DELETE FROM browserfouten WHERE tijd < nu('-30 days')")
+  // Komt dezelfde fout vaak voor (5× in een uur), dan een storingsmelding (hooguit één per dag per fout).
+  const n = (await get<{ n: number }>("SELECT COUNT(*)::int AS n FROM browserfouten WHERE bericht = ? AND tijd > nu('-1 hour')", bericht))!.n
+  if (n >= 5) await meld(`browserfout:${bericht.slice(0, 80)}`, 'Herhaalde fout in de browser', `Deze fout trad het afgelopen uur ${n} keer op${tablet ? ` (laatst op ${tablet})` : ''}:\n\n${bericht}\n${b.bron ?? ''}\n\n${String(b.stack ?? '').slice(0, 1500)}`)
+  return c.json({ ok: true })
+})
+
 /** Voor de monitoring van B&G (IT-beleid 6.2): 200 als alles goed is, 503 bij een probleem. Geen gevoelige gegevens. */
 app.get('/api/gezond', async (c) => {
   const controles: Record<string, boolean> = {}

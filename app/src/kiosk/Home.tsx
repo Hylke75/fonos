@@ -7,6 +7,7 @@ import { Laden } from '../components/Iconen'
 import { useKiosk } from './KioskApp'
 import { KioskKop } from './Kop'
 import { AlbumKaart, type Kaart } from './Kaarten'
+import { t } from './taal'
 
 export function GenreTegels({ actief }: { actief?: number }) {
   const { config } = useKiosk()
@@ -39,9 +40,9 @@ export function Home() {
       <main className="kiosk-inhoud">
         <GenreTegels />
         <div className="acties-rij">
-          <button className="btn btn-pink" onClick={verras}><Shuffle size={20} /> Verras me</button>
+          <button className="btn btn-pink" onClick={verras}><Shuffle size={20} /> {t('Verras me')}</button>
           {config.instellingen.fonos_paginas.length > 0 && (
-            <button className="btn btn-ghost" onClick={() => nav('/lezen')}><BookOpen size={20} /> Lezen tijdens het luisteren</button>
+            <button className="btn btn-ghost" onClick={() => nav('/lezen')}><BookOpen size={20} /> {t('Lezen tijdens het luisteren')}</button>
           )}
         </div>
         {!rijen && <Laden />}

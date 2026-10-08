@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto'
 import JSZip from 'jszip'
 import { vereist, wie, maakGebruiker, maakResetToken, isVerlopen } from '../auth.ts'
 import { all, get, run, insert, json, instellingen, zetInstelling, syncPlatenspelers, STANDAARD_INSTELLINGEN, tx, ROOT } from '../db.ts'
+import { periode, statistieken, statistiekenCsv } from '../statistieken.ts'
 import { log } from '../log.ts'
 import { TWEELAAGS, ROLLEN, REDENEN_AFVOER, type TitelVelden } from '../../shared/velden.ts'
 import {
@@ -422,6 +423,17 @@ beheer.post('/import/muziekweb/afronden', alleenBeheerder, async (c) => {
   } catch (e: any) { return fout(c, e.message) }
 })
 
+// ------------------------------------------------------------------ statistieken (verbetering 12)
+
+beheer.get('/statistieken', async (c) => {
+  const p = periode(c.req.query('van'), c.req.query('tot'))
+  return c.json(await statistieken(p.van, p.tot))
+})
+beheer.get('/statistieken.csv', async (c) => {
+  const p = periode(c.req.query('van'), c.req.query('tot'))
+  return new Response(await statistiekenCsv(p.van, p.tot), { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="fonotheek-aanvragen-${p.van}-${p.tot}.csv"` } })
+})
+
 // ------------------------------------------------------------------ datakwaliteit (10.7)
 
 const TOELICHTING = `COALESCE(NULLIF(t.fonos_data::jsonb->>'toelichting', ''), NULLIF(t.mw_data::jsonb->>'toelichting', ''))`
@@ -436,6 +448,11 @@ const DQ: Record<string, { naam: string; sql: (laatste: number) => string }> = {
       SELECT t.id, NULL, NULL, t.titelnummer FROM titels t LEFT JOIN mw_dump m ON m.titelnummer = t.titelnummer
         WHERE t.titelnummer IS NOT NULL AND (m.titelnummer IS NULL OR m.import_id < ${Math.trunc(laatste)})` },
   zonder_hoes: { naam: 'Titels zonder hoes', sql: () => `SELECT t.id AS titel_id, t.titelnummer, t.d_titel AS titel, t.d_artiesten AS artiesten FROM titels t WHERE t.d_hoes IS NULL` },
+  // Verbetering 14: de nachtelijke controle vond geen afbeelding op het hoesadres.
+  kapotte_hoezen: { naam: 'Hoezen die niet (meer) laden', sql: () => `SELECT t.id AS titel_id, t.titelnummer, t.d_titel AS titel, t.d_artiesten AS artiesten, t.hoes_gecontroleerd_op AS gecontroleerd FROM titels t WHERE t.hoes_kapot = 1 AND t.d_hoes IS NOT NULL` },
+  // Verbetering 15: zelfde titel en eerste artiest, ander titelnummer (persingen, heruitgaven, of dubbel ingevoerd).
+  dubbele_titels: { naam: 'Dubbele titels (zelfde titel en artiest, populair)', sql: () => `SELECT MIN(t.id) AS titel_id, MIN(t.d_titel) AS titel, MIN(t.d_artiesten) AS artiesten, COUNT(*)::int AS aantal, string_agg(t.titelnummer, ', ' ORDER BY t.titelnummer) AS titelnummers
+      FROM titels t WHERE t.zichtbaar = 1 AND t.soort = 'populair' AND t.d_sleutel IS NOT NULL AND t.d_sleutel NOT LIKE '|%' AND t.d_sleutel NOT LIKE '%|' GROUP BY t.d_sleutel HAVING COUNT(*) > 1 ORDER BY COUNT(*) DESC, MIN(t.d_titel)` },
   zonder_toelichting: { naam: 'Titels zonder toelichting', sql: () => `SELECT t.id AS titel_id, t.titelnummer, t.d_titel AS titel, t.d_artiesten AS artiesten FROM titels t WHERE ${TOELICHTING} IS NULL` },
   ongekoppelde_genres: { naam: 'Muziekweb-genres zonder genreknop', sql: () => `SELECT j.value AS genre, COUNT(*)::int AS aantal FROM titels t, jsonb_array_elements_text(t.d_genres::jsonb) j(value)
       WHERE j.value NOT IN (SELECT mw_genre FROM genre_koppelingen) GROUP BY j.value ORDER BY aantal DESC` },
@@ -452,6 +469,17 @@ async function dqTellingen() {
 beheer.get('/datakwaliteit', async (c) => {
   const t = await dqTellingen()
   return c.json(Object.entries(DQ).map(([sleutel, v]) => ({ sleutel, naam: v.naam, aantal: t[sleutel] })))
+})
+
+/** Hele lijst als CSV (werklijst, verbetering 13), met een link naar Muziekweb bij elk titelnummer. */
+beheer.get('/datakwaliteit-csv/:lijst', async (c) => {
+  const l = DQ[c.req.param('lijst')]
+  if (!l) return fout(c, 'Onbekende lijst', 404)
+  const rijen = await all<any>(`SELECT * FROM (${l.sql(await laatsteImportId())}) x LIMIT 100000`)
+  const koppen = rijen[0] ? Object.keys(rijen[0]).filter((k) => !k.endsWith('_id')) : []
+  const cel = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
+  const csv = ['\ufeff' + [...koppen, 'muziekweb'].join(';'), ...rijen.map((r) => [...koppen.map((k) => cel(r[k])), cel(r.titelnummer ? `https://www.muziekweb.nl/Link/${r.titelnummer}` : '')].join(';'))].join('\n')
+  return new Response(csv, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="fonotheek-${c.req.param('lijst')}.csv"` } })
 })
 
 beheer.get('/datakwaliteit/:lijst', async (c) => {
@@ -986,6 +1014,10 @@ beheer.get('/status', alleenBeheerder, async (c) => {
     laatste_import: (await get<any>("SELECT tijd FROM imports WHERE soort = 'muziekweb' AND (rapport::jsonb->>'afgerond' = 'true' OR rapport::jsonb->>'bron' IS NOT NULL) ORDER BY id DESC LIMIT 1"))?.tijd ?? null,
     laatste_backup: (await get<any>("SELECT tijd, soort FROM backups WHERE status = 'gelukt' ORDER BY id DESC LIMIT 1")) ?? null,
     laatste_backup_fout: (await get<any>("SELECT tijd, fout FROM backups WHERE status <> 'gelukt' ORDER BY id DESC LIMIT 1")) ?? null,
+    browserfouten: await all<any>("SELECT bericht, COUNT(*)::int AS aantal, MAX(tijd) AS laatst, string_agg(DISTINCT COALESCE(tablet, '?'), ', ') AS tablets FROM browserfouten WHERE tijd > nu('-1 day') GROUP BY bericht ORDER BY MAX(tijd) DESC LIMIT 10"),
+    wachtlijst: (await get<any>("SELECT COUNT(*)::int AS n FROM wachtlijst WHERE status IN ('wacht', 'opgeroepen')"))!.n,
+    kapotte_hoezen: (await get<any>('SELECT COUNT(*)::int AS n FROM titels WHERE hoes_kapot = 1'))!.n,
+    push_apparaten: (await get<any>('SELECT COUNT(*)::int AS n FROM push_abonnementen'))!.n,
     laatste_cron: (await get<any>("SELECT datum FROM planner WHERE taak = 'cron:laatst'"))?.datum ?? null,
     kiosks: await all("SELECT naam, laatst_gezien, pagina, laatst_gezien > nu('-2 minutes') AS online FROM kiosks ORDER BY naam"),
     platenspelers: await all('SELECT nummer, actief, sessie IS NOT NULL AS vastgehouden, bezet_sinds, laatst_actief FROM platenspelers ORDER BY nummer'),
