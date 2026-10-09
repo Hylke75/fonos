@@ -26,6 +26,7 @@ export function SpelerKiezen() {
   const kies = async (nummer: number) => {
     const p = spelers.find((x) => x.nummer === nummer)
     if (!p) { toast(t('Platenspeler {n} bestaat niet.', { n: nummer })); return }
+    if (bezig != null) return // tijdens het kiezen geen tweede keuze, maar de knoppen blijven er gewoon uitzien
     setBezig(nummer)
     try { await kiesSpeler(nummer) } catch (e) { toast(t((e as ApiFout).message)) } finally { setBezig(null) }
   }
@@ -46,7 +47,8 @@ export function SpelerKiezen() {
         <div className="card spelers-paneel">
           <div className="spelers groot" role="radiogroup" aria-label={t('Platenspeler')}>
             {spelers.map((p) => (
-              <button key={p.nummer} className={`speler ${p.bezet ? 'bezet' : ''} ${bezig === p.nummer ? 'gekozen' : ''}`} disabled={!p.actief || p.bezet || bezig != null}
+              <button key={p.nummer} className={`speler ${p.bezet ? 'bezet' : ''} ${bezig === p.nummer ? 'gekozen' : ''} ${bezig != null ? 'wacht' : ''}`} disabled={!p.actief || p.bezet}
+                aria-busy={bezig === p.nummer}
                 role="radio" aria-checked={bezig === p.nummer} aria-label={`${t('Platenspeler {n}', { n: p.nummer })}${!p.actief ? t(', niet beschikbaar') : p.bezet ? t(', bezet') : ''}`}
                 onClick={() => kies(p.nummer)}>
                 {p.nummer}
