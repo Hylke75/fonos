@@ -230,7 +230,8 @@ img { display: block; }
 .leeg h2 { color: var(--text); }
 
 /* albumpagina */
-.album-grid { display: grid; grid-template-columns: minmax(240px, 30%) 1fr minmax(280px, 30%); gap: 40px; align-items: start; }
+/* minmax(0, …): een brede rij hoezen (Ook luisteren) mag de kolom niet oprekken en het exemplarenpaneel van de pagina duwen. */
+.album-grid { display: grid; grid-template-columns: minmax(240px, 30%) minmax(0, 1fr) minmax(280px, 30%); gap: 40px; align-items: start; }
 .album-hoes { border: 1px solid #1d3a4a; border-radius: 6px; }
 .album-hoes .cover { width: 100%; border-radius: 4px; }
 .album-info .artiest { font-size: 20px; font-weight: 600; color: #dfe4ee; background: none; border: 0; padding: 0; text-align: left; min-height: 40px; }
@@ -298,7 +299,9 @@ img { display: block; }
 .speler.bezet { border: 2px dashed #6f7a93; }
 .speler .klein { position: absolute; bottom: 7px; left: 0; right: 0; font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
 .speler.gekozen .klein { color: #4a0838; }
-.speler:disabled { opacity: .3; cursor: not-allowed; text-decoration: line-through; }
+.speler:disabled { opacity: .3; cursor: not-allowed; }
+.speler:disabled:not(.bezet) { text-decoration: line-through; } /* doorgestreept = niet beschikbaar; bezet heeft de stippellijn */
+.speler.wacht { cursor: progress; }
 .nieuwsbrief-blok { border-top: 1px solid var(--line); margin: 4px 0 20px; padding-top: 18px; }
 .nieuwsbrief-blok .vinkje { display: flex; gap: 14px; align-items: center; font-size: 17px; cursor: pointer; min-height: 48px; }
 .nieuwsbrief-blok .vinkje input { width: 28px; height: 28px; accent-color: var(--pink); flex: none; }
@@ -529,7 +532,7 @@ table.tabel { width: 100%; border-collapse: collapse; }
 pre.rapport { background: #07111f; border: 1px solid var(--line); border-radius: 12px; padding: 16px; font-size: 13px; overflow: auto; max-height: 360px; white-space: pre-wrap; }
 
 @media (max-width: 1100px) {
-  .album-grid { grid-template-columns: 1fr 1fr; }
+  .album-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .album-grid .exemplaren-kolom { grid-column: 1 / -1; }
   .aanvraag-grid, .detail-grid, .twee-kol { grid-template-columns: 1fr; }
 }

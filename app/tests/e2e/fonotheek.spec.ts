@@ -43,6 +43,11 @@ test.describe.serial('Fonotheek', () => {
     await expect(page.getByText('Van deze plaat is geen lijst met nummers bekend.')).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Meer van deze artiest' })).toBeVisible()
     await toegankelijk(page, 'albumpagina')
+    // Een lange rij hoezen mag het exemplarenpaneel niet van de pagina duwen (de rij scrolt zelf).
+    await page.locator('.ook-luisteren .rij').first().evaluate((el) => { const d = document.createElement('div'); d.style.cssText = 'flex: 0 0 4000px; height: 10px'; el.appendChild(d) })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1280)
+    const paneel = await page.locator('.exemplaren-kolom').boundingBox()
+    expect(paneel!.x + paneel!.width).toBeLessThanOrEqual(1280)
     await page.getByRole('button', { name: 'Voeg toe aan aanvraag' }).click()
     await expect(page.locator('.mand-knop .teller')).toHaveText('1')
 
