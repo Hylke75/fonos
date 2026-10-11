@@ -99,8 +99,8 @@ function PushKnop() {
   }
   return (
     <div style={{ position: 'relative' }}>
-      <button className={`btn btn-ghost btn-s ${aan ? 'push-aan' : ''}`} onClick={zet} aria-pressed={!!aan} title="Meldingen bij een nieuwe aanvraag, ook als het scherm vergrendeld is">
-        {aan ? <><Bell size={16} /> Meldingen aan</> : <><BellOff size={16} /> Meldingen op dit apparaat</>}
+      <button className={`btn btn-ghost btn-s push-knop ${aan ? 'push-aan' : ''}`} onClick={zet} aria-pressed={!!aan} aria-label={aan ? 'Meldingen aan' : 'Meldingen op dit apparaat'} title="Meldingen bij een nieuwe aanvraag, ook als het scherm vergrendeld is">
+        {aan ? <><Bell size={16} /> <span className="lang">Meldingen aan</span></> : <><BellOff size={16} /> <span className="lang">Meldingen op dit apparaat</span></>}
       </button>
       {melding && <div className="popmenu tekst-klein" style={{ top: 44, right: 0, width: 280, padding: 12 }} role="alert">{melding}</div>}
     </div>
@@ -114,7 +114,7 @@ function StafKop({ ik, uit }: { ik: Ik; uit: () => void }) {
       <Logo />
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginLeft: 'auto' }}><PushKnop /></div>
       <div style={{ position: 'relative' }}>
-        <button className="gebruiker" onClick={() => setMenu(!menu)} aria-expanded={menu}>Medewerker <span className="avatar" title={ik.naam}>{initialen(ik.naam)}</span></button>
+        <button className="gebruiker" onClick={() => setMenu(!menu)} aria-expanded={menu}><span className="lang">Medewerker</span> <span className="avatar" title={ik.naam}>{initialen(ik.naam)}</span></button>
         {menu && <div className="popmenu" style={{ top: 52 }}><div className="dim tekst-klein" style={{ padding: '8px 12px' }}>{ik.naam}</div><button onClick={uit}><LogOut size={14} /> Uitloggen</button></div>}
       </div>
     </header>
