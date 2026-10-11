@@ -541,9 +541,16 @@ table.tabel { width: 100%; border-collapse: collapse; }
 .tekst-klein { font-size: 13px; }
 pre.rapport { background: #07111f; border: 1px solid var(--line); border-radius: 12px; padding: 16px; font-size: 13px; overflow: auto; max-height: 360px; white-space: pre-wrap; }
 
+/* Albumpagina: drie kolommen tot 1000 px (ook een iPad liggend). Smaller (iPad staand): links de hoes met daaronder
+   de exemplaren en "Voeg toe aan aanvraag", rechts de gegevens en nummers. */
+@media (max-width: 1000px) {
+  .album-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); grid-template-areas: "hoes info" "ex info"; grid-template-rows: auto 1fr; gap: 28px 32px; }
+  .album-grid > :first-child { grid-area: hoes; }
+  .album-grid > .album-info { grid-area: info; }
+  .album-grid > .exemplaren-kolom { grid-area: ex; }
+  .exemplaren-paneel { min-height: 0; }
+}
 @media (max-width: 1100px) {
-  .album-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .album-grid .exemplaren-kolom { grid-column: 1 / -1; }
   .aanvraag-grid, .detail-grid, .twee-kol { grid-template-columns: minmax(0, 1fr); }
   .drie-kol { grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)) !important; }
 }
@@ -809,7 +816,7 @@ pre.rapport { background: #07111f; border: 1px solid var(--line); border-radius:
   .lijst-regel .cover { width: 56px; }
   .lijst-regel > span.muted { display: none; }
   /* Albumpagina in één kolom: hoes, gegevens, exemplaren. */
-  .album-grid { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .album-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "hoes" "info" "ex"; grid-template-rows: auto; gap: 24px; }
   .album-grid > div:first-child { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; }
   .album-hoes { width: min(100%, 320px); }
   .album-info h1 { font-size: 28px; }
