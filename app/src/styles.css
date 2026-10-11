@@ -783,7 +783,9 @@ pre.rapport { background: #07111f; border: 1px solid var(--line); border-radius:
 }
 @media (max-width: 640px) {
   .kiosk-header { padding: 12px 16px; gap: 8px; flex-wrap: wrap; }
-  .kiosk-header .logo { height: 26px; }
+  /* Het logo krijgt de ruimte die naast de knoppen overblijft (hooguit 26 px hoog), zodat logo en knoppen op één regel passen. */
+  .kiosk-header .kop-logo { flex: 1 1 0; min-width: 0; display: flex; align-items: center; }
+  .kiosk-header .logo { height: auto; width: 100%; max-width: 113px; }
   .kiosk-header .rechts { gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
   .kiosk-header .icon-btn, .kiosk-header .badge-nl { width: 44px; height: 44px; }
   .kiosk-header .badge-nl.taal-knop { width: auto; padding: 0 4px; font-size: 13px; }
