@@ -94,10 +94,11 @@ export async function dagelijkseControles(inst: Record<string, any>) {
   if (cron && !recent) await meld('backup-oud', 'Geen recente back-up', 'Er is in de laatste 26 uur geen geslaagde back-up gemaakt. Kijk bij Beheer → Back-ups en Beheer → Status.')
 }
 
-/** Hooguit eens per minuut, niet-blokkerend, vanuit gewone verzoeken. */
-export function tikTerloops() {
+/** Hooguit eens per minuut vanuit gewone verzoeken. Het verzoek wacht erop: Vercel bevriest een functie zodra het
+ *  antwoord weg is, en een planner die dan nog midden in een transactie zit, houdt het platenspeler-slot vast. */
+export async function tikTerloops() {
   if (Date.now() - laatsteTik < 60_000) return
   laatsteTik = Date.now()
-  tik().catch((e) => console.error('[planner]', e))
+  await tik().catch((e) => console.error('[planner]', e))
 }
 
