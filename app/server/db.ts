@@ -32,7 +32,12 @@ async function maakPostgres(url: string): Promise<Verbinding> {
     onnotice: () => {},
   })
   const uit = (s: any): Uitvoerder => ({ query: async (q, p) => { const r = await s.unsafe(q, p as any[]); return { rows: r as Rij[], count: r.count ?? r.length } } })
-  return { ...uit(sql), exec: async (q) => { await sql.unsafe(q) }, transactie: (fn) => sql.begin((tx: any) => fn(uit(tx))) as any, sluit: () => sql.end() }
+  return { ...uit(sql), exec: async (q) => { await sql.unsafe(q) }, transactie: (fn) => sql.begin(async (tx: any) => {
+    // Vangnet: blijft een transactie hangen (bijvoorbeeld een bevroren serverless-functie), dan ruimt Postgres hem op
+    // en wacht niemand langer dan 15 seconden op het platenspeler-slot.
+    await tx.unsafe("SET LOCAL idle_in_transaction_session_timeout = '20s'; SET LOCAL lock_timeout = '15s'")
+    return fn(uit(tx))
+  }) as any, sluit: () => sql.end() }
 }
 
 /** DATABASE_URL mag meerdere adressen bevatten (gescheiden door spaties); het eerste bereikbare wint. */

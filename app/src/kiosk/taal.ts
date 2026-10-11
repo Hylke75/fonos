@@ -144,6 +144,7 @@ const EN: Record<string, string> = {
   'Vindcode': 'Location code',
   'Deze platenspeler is nu niet beschikbaar. Kies een andere.': 'This record player is not available right now. Choose another one.',
   'Deze platenspeler is bezet. Kies een andere.': 'This record player is taken. Choose another one.',
+  'Het lukt even niet. Probeer het zo nog eens.': 'That didn’t work just now. Please try again in a moment.',
   'Deze platenspeler is gereserveerd voor iemand op de wachtlijst. Kies een andere.': 'This record player is reserved for someone on the waiting list. Choose another one.',
   'Je aanvraag is leeg.': 'Your request is empty.',
   'Een titel staat dubbel in je aanvraag.': 'A title appears twice in your request.',

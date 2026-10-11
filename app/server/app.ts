@@ -27,7 +27,7 @@ function kioskGezien(naam: string | undefined, pagina: string | undefined) {
 }
 
 app.use('*', async (c, next) => {
-  tikTerloops()
+  await tikTerloops()
   const dec = (v?: string) => { try { return v ? decodeURIComponent(v) : undefined } catch { return undefined } }
   kioskGezien(dec(c.req.header('x-fonos-tablet')), dec(c.req.header('x-fonos-pagina')))
   await next()
@@ -41,10 +41,12 @@ app.use('*', async (c, next) => {
   if (c.req.path.startsWith('/api/') && !c.res.headers.get('Cache-Control')) c.header('Cache-Control', 'no-store')
 })
 
-app.onError((e, c) => {
+app.onError(async (e, c) => {
   console.error(e)
-  // IT-beleid 6.2: beheerders krijgen hooguit één melding per dag over serverfouten.
-  meld('serverfout', 'Fout in de Fonotheek-server', `${c.req.method} ${c.req.path}\n\n${e?.stack ?? e?.message ?? e}`).catch(() => {})
+  // IT-beleid 6.2: beheerders krijgen hooguit één melding per dag over serverfouten. Afwachten: op Vercel stopt de functie na het antwoord.
+  await meld('serverfout', 'Fout in de Fonotheek-server', `${c.req.method} ${c.req.path}\n\n${e?.stack ?? e?.message ?? e}`).catch(() => {})
+  // Wachten op het platenspeler-slot duurde te lang (lock_timeout): een begrijpelijke melding in plaats van de databasefout.
+  if ((e as any)?.code === '55P03') return c.json({ fout: 'Het lukt even niet. Probeer het zo nog eens.', code: 'druk' }, 503)
   return c.json({ fout: e.message || 'Er ging iets mis' }, 500)
 })
 
