@@ -45,6 +45,11 @@ for (const [toestel, { defaultBrowserType: _, ...instellingen }] of Object.entri
     await page.locator('.raster .album-kaart').first().click()
     await expect(page.getByRole('button', { name: 'Voeg toe aan aanvraag' })).toBeVisible()
     await pastInBeeld(page, 'albumpagina')
+    // Op de iPad staat "Voeg toe aan aanvraag" direct in beeld, zonder te scrollen.
+    if (toestel.startsWith('iPad')) {
+      const knop = (await page.getByRole('button', { name: 'Voeg toe aan aanvraag' }).boundingBox())!
+      expect(knop.y + knop.height, 'knop "Voeg toe aan aanvraag" in beeld').toBeLessThanOrEqual(page.viewportSize()!.height)
+    }
     await page.getByRole('button', { name: 'Voeg toe aan aanvraag' }).click()
     await page.getByRole('link', { name: /Jouw aanvraag/ }).click()
     await expect(page.getByRole('button', { name: /Aanvraag versturen/ })).toBeVisible()
