@@ -9,9 +9,9 @@ export function Lezen() {
   const paginas = config.instellingen.fonos_paginas
   const [i, setI] = useState(0)
   return (
-    <div className="kiosk-scherm" style={{ overflow: 'hidden' }}>
+    <div className="kiosk-scherm lezen">
       <KioskKopTerug tekst="Terug naar de collectie" naar="/home" zoekIcoon={false} />
-      <div className="tabs-lezen" style={{ position: 'absolute', top: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 21 }}>
+      <div className="tabs-lezen">
         {paginas.map((p, n) => <button key={p.url} className={`chip ${n === i ? 'aan' : ''}`} onClick={() => setI(n)}>{p.naam}</button>)}
       </div>
       {paginas[i] && <iframe className="lezen-frame" src={paginas[i].url} title={paginas[i].naam} sandbox="allow-same-origin allow-scripts allow-popups" />}

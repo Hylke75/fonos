@@ -1,8 +1,8 @@
 // Beheeromgeving (10): zijbalk, rollen en pagina's.
 import { useEffect, useState } from 'react'
 import { api } from '../api'
-import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
-import { Activity, Archive, BarChart3, Disc3, History, Import, LayoutGrid, LibraryBig, ListMusic, LogOut, Mail, Settings, Users, Headphones } from 'lucide-react'
+import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { Activity, Archive, BarChart3, Disc3, History, Import, LayoutGrid, LibraryBig, ListMusic, LogOut, Mail, Menu, Settings, Users, Headphones, X } from 'lucide-react'
 import { Logo } from '../components/Logo'
 import { Afgeschermd, heeftRol, initialen, type Ik } from '../Login'
 import { Collectie } from './Collectie'
@@ -30,6 +30,9 @@ export function AdminApp() {
 function Beheer({ ik, uit }: { ik: Ik; uit: () => void }) {
   const [menu, setMenu] = useState(false)
   const [spotify, setSpotify] = useState(false)
+  const [navOpen, setNavOpen] = useState(false) // telefoon: het zijmenu schuift in beeld
+  const pad = useLocation().pathname
+  useEffect(() => setNavOpen(false), [pad])
   useEffect(() => { api<{ spotify: boolean }>('/beheer/functies').then((f) => setSpotify(f.spotify)).catch(() => {}) }, [])
   const beheerder = heeftRol(ik, 'beheerder')
   const items = [
@@ -50,8 +53,9 @@ function Beheer({ ik, uit }: { ik: Ik; uit: () => void }) {
   ]
   return (
     <div className="beheer">
-      <aside className="zijbalk">
-        <Logo />
+      {navOpen && <div className="zijbalk-achter" onClick={() => setNavOpen(false)} />}
+      <aside className={`zijbalk ${navOpen ? 'open' : ''}`} id="beheer-menu">
+        <div className="zijbalk-kop"><Logo /><button className="icon-btn zijbalk-sluit" onClick={() => setNavOpen(false)} aria-label="Menu sluiten"><X size={22} /></button></div>
         <nav aria-label="Beheer">
           {items.map((i) => <NavLink key={i.naar} to={`/beheer/${i.naar}`}><i.icoon /> {i.label}</NavLink>)}
           {heeftRol(ik, 'medewerker') && <><div className="sep" /><NavLink to="/medewerker"><Headphones /> Medewerkersscherm</NavLink></>}
@@ -59,9 +63,11 @@ function Beheer({ ik, uit }: { ik: Ik; uit: () => void }) {
       </aside>
       <div className="beheer-main">
         <div className="beheer-top">
+          <button className="icon-btn menu-open" onClick={() => setNavOpen(true)} aria-expanded={navOpen} aria-controls="beheer-menu" aria-label="Menu"><Menu size={22} /></button>
+          <span className="beheer-top-logo"><Logo /></span>
           <div style={{ position: 'relative' }}>
             <button className="gebruiker" onClick={() => setMenu(!menu)} aria-expanded={menu}>
-              {beheerder ? 'Beheerder' : 'Redacteur'} <span className="avatar" title={ik.naam}>{initialen(ik.naam)}</span>
+              <span className="lang">{beheerder ? 'Beheerder' : 'Redacteur'}</span> <span className="avatar" title={ik.naam}>{initialen(ik.naam)}</span>
             </button>
             {menu && <div className="popmenu" style={{ top: 52 }}><div className="dim tekst-klein" style={{ padding: '8px 12px' }}>{ik.naam}<br />{ik.email}</div><button onClick={uit}><LogOut size={14} /> Uitloggen</button></div>}
           </div>

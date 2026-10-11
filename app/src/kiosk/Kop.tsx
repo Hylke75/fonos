@@ -51,7 +51,7 @@ export function AanvraagStatus() {
   return (
     <>
       <button className={`aanvraag-status st-${a.status}`} onClick={() => setOpen(!open)} aria-expanded={open} aria-label={t('Aanvraag {nr}: {status}', { nr: bestelnr(a.bestelnummer), status: statusTekst(a.status) })}>
-        <Clock size={18} /> {bestelnr(a.bestelnummer)} · {statusTekst(a.status)}
+        <Clock size={18} /> {bestelnr(a.bestelnummer)}<span className="lang"> · {statusTekst(a.status)}</span>
       </button>
       {open && (
         <div className="card status-paneel" role="dialog" aria-label={t('Je aanvraag')}>
@@ -76,7 +76,8 @@ export function SpelerKnop() {
   if (!speler) return null
   return (
     <button className="speler-knop" onClick={vraagVrijgeven} aria-label={t('Platenspeler {n} vrijgeven', { n: speler.nummer })}>
-      <Disc3 size={20} /> {t('Speler')} <b>{speler.nummer}</b> · {t('Vrijgeven')}
+      {/* Op een telefoon alleen het icoon en het nummer; de knop heeft een volledig aria-label. */}
+      <Disc3 size={20} /> <span className="lang">{t('Speler')} </span><b>{speler.nummer}</b><span className="lang"> · {t('Vrijgeven')}</span>
     </button>
   )
 }
@@ -140,8 +141,8 @@ export function Zoekbalk({ start = '', autoFocus = false }: { start?: string; au
 /** Kop met logo en zoekbalk (homepagina, resultaten). */
 export function KioskKop({ zoekStart }: { zoekStart?: string }) {
   return (
-    <header className="kiosk-header">
-      <Link to="/home" aria-label={t('Naar de homepagina')}><Logo /></Link>
+    <header className="kiosk-header met-zoekbalk">
+      <Link to="/home" className="kop-logo" aria-label={t('Naar de homepagina')}><Logo /></Link>
       <Zoekbalk start={zoekStart} />
       <div className="rechts" style={{ marginLeft: 0 }}>
         <AanvraagStatus />
@@ -159,9 +160,9 @@ export function KioskKopTerug({ tekst, naar, zoekIcoon = true, mand = true }: { 
   const nav = useNavigate()
   tekst = t(tekst ?? 'Terug naar resultaten')
   return (
-    <header className="kiosk-header">
-      <Link to="/home" aria-label={t('Naar de homepagina')}><Logo /></Link>
-      <button className="link-terug" onClick={() => (naar ? nav(naar) : window.history.length > 1 ? nav(-1) : nav('/home'))}><ArrowLeft size={20} /> {tekst}</button>
+    <header className="kiosk-header met-terug">
+      <Link to="/home" className="kop-logo" aria-label={t('Naar de homepagina')}><Logo /></Link>
+      <button className="link-terug" aria-label={tekst} onClick={() => (naar ? nav(naar) : window.history.length > 1 ? nav(-1) : nav('/home'))}><ArrowLeft size={20} /> <span className="lang">{tekst}</span></button>
       <div className="rechts">
         <AanvraagStatus />
         <SpelerKnop />
