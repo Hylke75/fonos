@@ -1,9 +1,10 @@
-// Browsertest: de kiosk en het inlogscherm op een telefoon en een iPad (staand en liggend).
+// Browsertest: de kiosk en het inlogscherm op twee telefoons en een iPad (staand en liggend).
 // Niets mag buiten beeld vallen: de pagina wordt niet breder dan het scherm en de knoppen in de kop staan in beeld.
 import { devices, expect, test, type Page } from '@playwright/test'
 
 const TOESTELLEN = {
   telefoon: devices['iPhone 13'],
+  'kleine telefoon': devices['iPhone 13 Mini'],
   'iPad staand': devices['iPad (gen 7)'],
   'iPad liggend': devices['iPad (gen 7) landscape'],
 }
@@ -34,6 +35,9 @@ for (const [toestel, { defaultBrowserType: _, ...instellingen }] of Object.entri
     await page.locator('.speler:not([disabled])').first().click()
     await expect(page.getByRole('button', { name: /Platenspeler \d+ vrijgeven/ })).toBeVisible()
     await pastInBeeld(page, 'homepagina')
+    // Logo en knoppen staan op één regel; de zoekbalk mag eronder.
+    const midden = async (sel: string) => { const b = (await page.locator(sel).first().boundingBox())!; return b.y + b.height / 2 }
+    expect(Math.abs((await midden('.kiosk-header .kop-logo')) - (await midden('.kiosk-header .rechts'))), 'logo en knoppen op één regel').toBeLessThan(12)
     await page.getByRole('searchbox').or(page.getByLabel('Zoeken').first()).fill('herman')
     await page.keyboard.press('Enter')
     await expect(page.getByText(/Resultaten voor/)).toBeVisible()
