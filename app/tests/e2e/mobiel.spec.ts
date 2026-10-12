@@ -45,6 +45,12 @@ for (const [toestel, { defaultBrowserType: _, ...instellingen }] of Object.entri
     await page.locator('.raster .album-kaart').first().click()
     await expect(page.getByRole('button', { name: 'Voeg toe aan aanvraag' })).toBeVisible()
     await pastInBeeld(page, 'albumpagina')
+    // Telefoon: de exemplaren met "Voeg toe aan aanvraag" staan direct onder de titel, vóór de rest van de pagina.
+    if (toestel.includes('telefoon')) {
+      const y = async (sel: string) => (await page.locator(sel).first().boundingBox())!.y
+      expect(await y('.exemplaren-kolom'), 'exemplaren onder de titel').toBeGreaterThan(await y('.album-info h1'))
+      expect(await y('.exemplaren-kolom'), 'exemplaren vóór "Meer van deze artiest"').toBeLessThan(await y('.ook-luisteren'))
+    }
     // Op de iPad staat "Voeg toe aan aanvraag" direct in beeld, zonder te scrollen.
     if (toestel.startsWith('iPad')) {
       const knop = (await page.getByRole('button', { name: 'Voeg toe aan aanvraag' }).boundingBox())!

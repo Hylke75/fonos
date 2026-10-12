@@ -816,7 +816,15 @@ pre.rapport { background: #07111f; border: 1px solid var(--line); border-radius:
   .lijst-regel .cover { width: 56px; }
   .lijst-regel > span.muted { display: none; }
   /* Albumpagina in één kolom: hoes, gegevens, exemplaren. */
-  .album-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "hoes" "info" "ex"; grid-template-rows: auto; gap: 24px; }
+  /* Telefoon: hoes, artiest, titel en labels, dan meteen de exemplaren met "Voeg toe aan aanvraag", daarna de rest.
+     De gegevens worden daarvoor losse rijen in het raster (display: contents); de volgorde komt uit order. */
+  .album-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: none; grid-template-rows: none; gap: 0; }
+  .album-grid > :first-child, .album-grid > .album-info, .album-grid > .exemplaren-kolom { grid-area: auto; }
+  .album-grid > :first-child { margin-bottom: 20px; }
+  .album-grid > .album-info { display: contents; }
+  .album-info > * { order: 2; }
+  .album-info > :nth-child(-n+3), .album-grid > .exemplaren-kolom { order: 1; }
+  .album-grid > .exemplaren-kolom { margin-bottom: 8px; }
   .album-grid > div:first-child { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; }
   .album-hoes { width: min(100%, 320px); }
   .album-info h1 { font-size: 28px; }
