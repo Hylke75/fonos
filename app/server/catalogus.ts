@@ -302,6 +302,33 @@ export async function verrasMe(knopId?: number): Promise<number | null> {
   return r?.id ?? null
 }
 
+/** Keuzehulp "Dokter Vinyl": een beschikbare plaat met hoes bij de antwoorden van de bezoeker.
+ *  voorkeur = genreknoppen van best tot minst passend (de kiosk rekent dat uit de antwoorden uit).
+ *  durf 0: de best passende stijl. durf 1: de op één na beste, en geen veelgevraagde platen.
+ *  durf 2: een stijl buiten de top drie (verrassend, maar nog steeds een echte stijl uit de collectie).
+ *  Lukt het niet in het gekozen decennium, dan zonder decennium; lukt het helemaal niet, dan "Verras me". */
+export async function keuzehulp(inv: { voorkeur: number[]; decennium?: number | null; durf: number; eerder?: number[] }) {
+  const ks = (await knoppen()).filter((k) => k.genres.length)
+  const opVolgorde = [...inv.voorkeur.map((id) => ks.find((k) => k.id === id)).filter((k): k is Knop => !!k), ...ks.filter((k) => !inv.voorkeur.includes(k.id))]
+  const durf = Math.max(0, Math.min(2, Math.floor(Number(inv.durf) || 0)))
+  const kandidaten = durf === 0 ? [opVolgorde[0]] : durf === 1 ? [opVolgorde[1] ?? opVolgorde[0]] : opVolgorde.slice(3).length ? opVolgorde.slice(3) : opVolgorde
+  const knop = kandidaten[Math.floor(Math.random() * kandidaten.length)] as Knop | undefined
+  const eerder = intArray(inv.eerder ?? [])
+  const populair = durf > 0 ? `AND t.id NOT IN (SELECT i.titel_id FROM aanvraag_items i GROUP BY i.titel_id ORDER BY count(*) DESC LIMIT 100)` : ''
+  const zoekEen = async (dec: number | null) => !knop ? undefined : get<Kaart>(`SELECT ${KAART} FROM titels t WHERE t.d_hoes IS NOT NULL AND COALESCE(t.hoes_kapot, 0) = 0 AND ${GENRES_IN} AND ${ZICHTBAAR_SQL} AND ${BESCHIKBAAR}
+      AND NOT (t.id = ANY(?::int[])) ${populair} ${dec ? 'AND t.d_jaar >= ? AND t.d_jaar < ?' : ''} ORDER BY random() LIMIT 1`, JSON.stringify(knop.genres), eerder, ...(dec ? [dec, dec + 10] : []))
+  const dec = inv.decennium ? Math.floor(Number(inv.decennium) / 10) * 10 : null
+  let titel = (dec ? await zoekEen(dec) : undefined) ?? await zoekEen(null)
+  const inDecennium = !!titel && !!dec && titel.jaar != null && titel.jaar >= dec && titel.jaar < dec + 10
+  const viaStijl = !!titel
+  if (!titel) { const id = await verrasMe(); titel = id ? await get<Kaart>(`SELECT ${KAART} FROM titels t WHERE t.id = ?`, id) : undefined }
+  // Laatste redmiddel: een beschikbare plaat zonder hoes (een collectie zonder hoezen, zoals in de tests).
+  if (!titel) titel = await get<Kaart>(`SELECT ${KAART} FROM titels t WHERE ${ZICHTBAAR_SQL} AND ${BESCHIKBAAR} AND NOT (t.id = ANY(?::int[])) ORDER BY random() LIMIT 1`, eerder)
+  if (!titel) return null
+  // Zonder passende stijl (geen genreknoppen gekoppeld) wordt het een willekeurige plaat: stijl = null.
+  return { titel: { ...titel, beschikbaar: !!titel.beschikbaar }, stijl: viaStijl && knop ? knop.naam : null, favoriet: opVolgorde[0]?.naam ?? null, inDecennium }
+}
+
 /** Per titel: beschikbaar, en de vindcode van het exemplaar dat bij aanvragen gereserveerd zou worden. */
 export async function beschikbaarheid(ids: number[]) {
   const vc = await vindcoder()

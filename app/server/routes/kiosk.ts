@@ -1,6 +1,6 @@
 // API voor de bezoekersapp. Geen login: alleen lezen van de catalogus en aanvragen aanmaken (13).
 import { Hono } from 'hono'
-import { album, artiest, beschikbaarheid, home, kioskConfig, ookLuisteren, verrasMe, zoekCatalogus } from '../catalogus.ts'
+import { album, artiest, beschikbaarheid, home, keuzehulp, kioskConfig, ookLuisteren, verrasMe, zoekCatalogus } from '../catalogus.ts'
 import { meldAan as wachtAan, meldAf as wachtAf, wachtStatus } from '../wachtlijst.ts'
 import { stuurPush } from '../push.ts'
 const bestelnrTekst = (n: number) => `#${String(n).padStart(3, '0')}`
@@ -44,6 +44,12 @@ kiosk.get('/artiest', async (c) => c.json(await artiest(c.req.query('naam') ?? '
 kiosk.get('/verras', async (c) => {
   const id = await verrasMe(num(c.req.query('knop')))
   return id ? c.json({ id }) : c.json({ fout: 'Geen titel gevonden' }, 404)
+})
+
+kiosk.post('/keuzehulp', async (c) => {
+  const b = await c.req.json<{ voorkeur?: number[]; decennium?: number | null; durf?: number; eerder?: number[] }>().catch(() => ({} as any))
+  const r = await keuzehulp({ voorkeur: (b.voorkeur ?? []).map(Number).filter(Number.isFinite).slice(0, 30), decennium: b.decennium ?? null, durf: Number(b.durf ?? 0), eerder: (b.eerder ?? []).map(Number).filter(Number.isFinite).slice(0, 50) })
+  return r ? c.json(r) : c.json({ fout: 'Geen plaat gevonden' }, 404)
 })
 
 kiosk.post('/beschikbaarheid', async (c) => {

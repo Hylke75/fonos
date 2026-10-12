@@ -761,6 +761,42 @@ pre.rapport { background: #07111f; border: 1px solid var(--line); border-radius:
 .btn-pink:not(.btn-l):not(:disabled), .aanvraag-mini:not(.in):not(.bewaar):not(:disabled) { background: #d6008f; }
 .btn-pink:not(.btn-l):hover:not(:disabled) { background: #c20082; }
 
+/* Keuzehulp "Dokter Vinyl": uitnodiging rechtsonder (blokkeert niets), vragen in een venster, recept op papier. */
+.keuzehulp-uitnodiging { position: fixed; right: 24px; bottom: 24px; z-index: 95; width: min(420px, calc(100vw - 32px)); padding: 20px 22px; display: grid; grid-template-columns: 48px 1fr; gap: 14px;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, .55); border-color: var(--pink); animation: kh-in .35s ease-out; }
+.keuzehulp-uitnodiging h2 { margin: 2px 0 6px; font-size: 20px; }
+.keuzehulp-uitnodiging p { margin: 0 0 14px; color: #d3d8e3; line-height: 1.45; }
+.keuzehulp-uitnodiging .knoppen { display: flex; gap: 10px; flex-wrap: wrap; }
+.keuzehulp-uitnodiging .sluit, .keuzehulp .sluit { position: absolute; top: 10px; right: 10px; width: 44px; height: 44px; border: 0; background: none; color: var(--muted); display: grid; place-items: center; border-radius: 50%; }
+.kh-icoon { width: 48px; height: 48px; border-radius: 50%; background: var(--pink); color: #fff; display: grid; place-items: center; }
+@keyframes kh-in { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.keuzehulp { position: relative; width: min(640px, 100%); text-align: left; max-height: calc(100vh - 48px); overflow-y: auto; }
+.keuzehulp h2 { font-size: 26px; margin: 10px 0 18px; }
+.kh-kop { display: flex; align-items: center; gap: 8px; color: var(--pink); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; font-size: 13px; }
+.kh-voortgang { display: flex; gap: 6px; margin-top: 14px; }
+.kh-voortgang span { width: 34px; height: 6px; border-radius: 3px; background: var(--surface-3); }
+.kh-voortgang span.af { background: var(--pink); }
+.kh-voortgang span.nu { background: #ff8fd8; }
+.kh-opties { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.kh-optie { min-height: 76px; padding: 14px 18px; border-radius: 16px; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--text); font-size: 17px; font-weight: 600; text-align: left; line-height: 1.3; }
+.kh-optie:hover, .kh-optie:focus-visible { border-color: var(--pink); background: var(--surface-3); }
+.kh-recept { background: #f7f1e3; color: #2a2418; border-radius: 12px; padding: 18px 20px; margin-top: 14px; font-family: 'Courier New', ui-monospace, monospace; transform: rotate(-.6deg); box-shadow: 0 10px 24px rgba(0, 0, 0, .35); }
+.kh-recept h2 { color: #2a2418; font-size: 22px; margin: 4px 0 10px; font-family: inherit; }
+.kh-recept p { color: #3a3224; font-size: 15.5px; line-height: 1.5; margin: 0 0 8px; text-align: left; }
+.kh-recept-kop { font-size: 28px; font-weight: 700; color: #b0186f; line-height: 1; }
+.kh-voorschrift { font-weight: 700; }
+.kh-bijsluiter { font-size: 13px !important; color: #6b604c !important; font-style: italic; margin-bottom: 0 !important; }
+.kh-pakket { display: flex; align-items: center; gap: 16px; width: 100%; margin-top: 18px; min-height: 88px; padding: 16px 20px; border: 0; border-radius: 14px; text-align: left; color: #fff8ec; font-size: 18px;
+  position: relative; overflow: hidden; padding-right: 64px; background: linear-gradient(135deg, #a8743f, #8a5a2b); }
+.kh-pakket::after { content: ''; position: absolute; top: 0; bottom: 0; right: 22px; width: 14px; background: rgba(255, 248, 236, .85); box-shadow: 0 0 0 1px rgba(0,0,0,.08); } /* lint, rechts van de tekst */
+.kh-pakket:hover { filter: brightness(1.08); }
+.kh-hint { font-size: 14px; opacity: .9; }
+.kh-plaat { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 18px; align-items: center; margin-top: 18px; animation: kh-in .4s ease-out; }
+.kh-plaat .cover { width: 140px; border-radius: 6px; box-shadow: 0 12px 28px rgba(0, 0, 0, .5); }
+.kh-artiest { color: var(--muted); font-size: 15px; }
+.kh-titel { font-size: 20px; font-weight: 700; margin: 2px 0 12px; }
+.kh-plaat .knoppen, .keuzehulp .knoppen { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-start; }
+
 /* ================================================================== TELEFOON EN TABLET
    Getest op een telefoon (390 px), een iPad staand (810 px) en liggend (1080 px). */
 @media (max-width: 1180px) {
@@ -880,4 +916,11 @@ pre.rapport { background: #07111f; border: 1px solid var(--line); border-radius:
   .toast { left: 16px; right: 16px; transform: none; border-radius: 16px; bottom: 16px; }
   .status-paneel { left: 16px; right: 16px; width: auto; top: 70px; }
   .tabs-lezen { padding: 0 16px 10px; }
+  .keuzehulp-uitnodiging { right: 16px; bottom: 16px; grid-template-columns: 1fr; }
+  .kh-icoon { display: none; }
+  .kh-opties { grid-template-columns: minmax(0, 1fr); }
+  .kh-optie { min-height: 60px; font-size: 16px; }
+  .keuzehulp h2 { font-size: 22px; }
+  .kh-plaat { grid-template-columns: 96px minmax(0, 1fr); }
+  .kh-plaat .cover { width: 96px; }
 }
