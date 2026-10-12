@@ -8,6 +8,7 @@ import { useKiosk } from './KioskApp'
 import { KioskKop } from './Kop'
 import { AlbumKaart, type Kaart } from './Kaarten'
 import { t } from './taal'
+import { KeuzehulpUitnodiging } from './Keuzehulp'
 
 export function GenreTegels({ actief }: { actief?: number }) {
   const { config } = useKiosk()
@@ -53,6 +54,7 @@ export function Home() {
           </section>
         ))}
       </main>
+      <KeuzehulpUitnodiging />
     </div>
   )
 }
