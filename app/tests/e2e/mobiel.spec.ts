@@ -50,6 +50,8 @@ for (const [toestel, { defaultBrowserType: _, ...instellingen }] of Object.entri
       const y = async (sel: string) => (await page.locator(sel).first().boundingBox())!.y
       expect(await y('.exemplaren-kolom'), 'exemplaren onder de titel').toBeGreaterThan(await y('.album-info h1'))
       expect(await y('.exemplaren-kolom'), 'exemplaren vóór "Meer van deze artiest"').toBeLessThan(await y('.ook-luisteren'))
+      const meer = (await page.getByRole('button', { name: /Meer informatie/ }).boundingBox())!
+      expect(meer.width, 'knop "Meer informatie" niet schermbreed').toBeLessThan(page.viewportSize()!.width / 2)
     }
     // Op de iPad staat "Voeg toe aan aanvraag" direct in beeld, zonder te scrollen.
     if (toestel.startsWith('iPad')) {
