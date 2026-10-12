@@ -825,6 +825,7 @@ pre.rapport { background: #07111f; border: 1px solid var(--line); border-radius:
   .album-info > * { order: 2; }
   .album-info > :nth-child(-n+3), .album-grid > .exemplaren-kolom { order: 1; }
   .album-grid > .exemplaren-kolom { margin-bottom: 8px; }
+  .album-info > button, .album-info > .ai-label { justify-self: start; } /* knoppen en labels houden hun eigen breedte */
   .album-grid > div:first-child { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; }
   .album-hoes { width: min(100%, 320px); }
   .album-info h1 { font-size: 28px; }
