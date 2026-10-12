@@ -133,7 +133,8 @@ export function KioskApp() {
     if (!s || (!nu && Date.now() - laatsteHartslag.current < 60_000)) return
     if (!alleenStatus) laatsteHartslag.current = Date.now()
     const r = await api<{ ok: boolean; aanvraag?: MijnAanvraag | null }>('/kiosk/speler/vasthouden', { body: { platenspeler: s.nummer, sessie: s.sessie, alleen_status: alleenStatus } }).catch(() => null)
-    if (r && !r.ok) kwijtRef.current()
+    // Alleen een duidelijk 'nee' van de server betekent dat de speler weg is; een afgebroken antwoord (herladen, netwerk) niet.
+    if (r?.ok === false) kwijtRef.current()
     else if (r) verwerkStatus(r.aanvraag)
   }, [verwerkStatus])
   const kwijtRef = useRef(() => {})
