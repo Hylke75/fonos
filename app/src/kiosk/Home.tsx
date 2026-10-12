@@ -1,14 +1,14 @@
 // Homepagina (7.3): zoekbalk, genreknoppen, rijen met hoezen, "Verras me" en "Lezen tijdens het luisteren".
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BookOpen, ChevronRight, Shuffle } from 'lucide-react'
+import { BookOpen, ChevronRight, Shuffle, Stethoscope } from 'lucide-react'
 import { api } from '../api'
 import { Laden } from '../components/Iconen'
 import { useKiosk } from './KioskApp'
 import { KioskKop } from './Kop'
 import { AlbumKaart, type Kaart } from './Kaarten'
 import { t } from './taal'
-import { KeuzehulpUitnodiging } from './Keuzehulp'
+import { Keuzehulp, KeuzehulpUitnodiging, keuzehulpGevraagd } from './Keuzehulp'
 
 export function GenreTegels({ actief }: { actief?: number }) {
   const { config } = useKiosk()
@@ -31,6 +31,7 @@ export function Home() {
   const { versie, config } = useKiosk()
   const [rijen, setRijen] = useState<{ id: number; naam: string; titels: Kaart[] }[] | null>(null)
   const nav = useNavigate()
+  const [hulp, setHulp] = useState(false)
   useEffect(() => { api('/kiosk/home').then((d) => setRijen(d.rijen)).catch(() => setRijen((r) => r ?? [])) }, [versie])
   const verras = async () => {
     try { const r = await api<{ id: number }>('/kiosk/verras'); nav(`/album/${r.id}`) } catch { /* niets gevonden */ }
@@ -42,6 +43,7 @@ export function Home() {
         <GenreTegels />
         <div className="acties-rij">
           <button className="btn btn-pink" onClick={verras}><Shuffle size={20} /> {t('Verras me')}</button>
+          <button className="btn btn-ghost" onClick={() => { keuzehulpGevraagd(); setHulp(true) }}><Stethoscope size={20} /> {t('Help me kiezen')}</button>
           {config.instellingen.fonos_paginas.length > 0 && (
             <button className="btn btn-ghost" onClick={() => nav('/lezen')}><BookOpen size={20} /> {t('Lezen tijdens het luisteren')}</button>
           )}
@@ -55,6 +57,7 @@ export function Home() {
         ))}
       </main>
       <KeuzehulpUitnodiging />
+      {hulp && <Keuzehulp onSluit={() => setHulp(false)} />}
     </div>
   )
 }

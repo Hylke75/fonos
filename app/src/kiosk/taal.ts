@@ -20,6 +20,8 @@ export const getal = (n: number) => n.toLocaleString(huidig === 'en' ? 'en-GB' :
 
 const EN: Record<string, string> = {
   // Keuzehulp Dokter Vinyl
+  "Help me kiezen": "Help me choose",
+  // Keuzehulp Dokter Vinyl
   "iets onverwachts": "something unexpected",
   "De dokter gooide zijn kaartenbak om en greep blind. Vertrouw hem maar.": "The doctor knocked over his card index and grabbed blindly. Just trust him.",
   // Keuzehulp Dokter Vinyl

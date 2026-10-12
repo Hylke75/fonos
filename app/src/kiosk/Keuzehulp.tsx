@@ -50,16 +50,20 @@ const BIJSLUITERS = [
 type Uitslag = { titel: Kaart; stijl: string | null; favoriet: string | null; inDecennium: boolean }
 
 const GEVRAAGD = 'fonos-keuzehulp'
+const alGevraagd = () => { try { return !!sessionStorage.getItem(GEVRAAGD) } catch { return false } }
+/** Na de uitnodiging of de knop "Help me kiezen": deze sessie geen uitnodiging (meer). */
+export const keuzehulpGevraagd = () => { try { sessionStorage.setItem(GEVRAAGD, '1') } catch { /* geen opslag */ } }
 
 /** Na 6 seconden op de homepagina één keer per sessie een uitnodiging; niet als de bezoeker al aan het zoeken is. */
 export function KeuzehulpUitnodiging() {
   const [zien, setZien] = useState(false)
   const [open, setOpen] = useState(false)
   useEffect(() => {
-    try { if (sessionStorage.getItem(GEVRAAGD)) return } catch { /* geen opslag: gewoon vragen */ }
+    if (alGevraagd()) return
     const tm = setTimeout(() => {
+      if (alGevraagd()) return // intussen zelf op "Help me kiezen" getikt
       if (document.activeElement instanceof HTMLInputElement) return // bezoeker typt al in de zoekbalk
-      try { sessionStorage.setItem(GEVRAAGD, '1') } catch { /* niets */ }
+      keuzehulpGevraagd()
       setZien(true)
     }, 6000)
     return () => clearTimeout(tm)
