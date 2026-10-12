@@ -82,6 +82,11 @@ test.describe.serial('Fonotheek', () => {
     await page.goto('/home')
     await page.waitForTimeout(7000)
     await expect(uitnodiging).toBeHidden()
+    // De vaste knop opent Dokter Vinyl altijd.
+    await page.getByRole('button', { name: 'Help me kiezen' }).click()
+    await expect(page.getByRole('heading', { name: 'Hoe voel je je vandaag?' })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('heading', { name: 'Hoe voel je je vandaag?' })).toBeHidden()
     await page.getByRole('button', { name: /Platenspeler \d+ vrijgeven/ }).click()
     await page.getByRole('button', { name: /vrijgeven/i }).last().click()
   })
