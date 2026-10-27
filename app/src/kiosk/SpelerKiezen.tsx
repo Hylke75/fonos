@@ -49,15 +49,16 @@ export function SpelerKiezen() {
             {spelers.map((p) => (
               <button key={p.nummer} className={`speler ${p.bezet ? 'bezet' : ''} ${bezig === p.nummer ? 'gekozen' : ''} ${bezig != null ? 'wacht' : ''}`} disabled={!p.actief || p.bezet}
                 aria-busy={bezig === p.nummer}
-                role="radio" aria-checked={bezig === p.nummer} aria-label={`${t('Platenspeler {n}', { n: p.nummer })}${!p.actief ? t(', niet beschikbaar') : p.bezet ? t(', bezet') : ''}`}
+                role="radio" aria-checked={bezig === p.nummer} aria-label={`${p.soort === 'cd' ? t('Cd-speler {n}', { n: p.nummer }) : t('Platenspeler {n}', { n: p.nummer })}${!p.actief ? t(', niet beschikbaar') : p.bezet ? t(', bezet') : ''}`}
                 onClick={() => kies(p.nummer)}>
                 {p.nummer}
-                {p.bezet && p.actief && <span className="klein">{t('bezet')}</span>}
+                {p.bezet && p.actief ? <span className="klein">{t('bezet')}</span> : p.soort === 'cd' ? <span className="klein">CD</span> : null}
               </button>
             ))}
           </div>
-          {spelers.some((p) => p.bezet || !p.actief) && (
+          {spelers.some((p) => p.bezet || !p.actief || p.soort === 'cd') && (
             <div className="legenda">
+              {spelers.some((p) => p.soort === 'cd') && <span>{t('CD = cd-speler, de rest zijn platenspelers')}</span>}
               {spelers.some((p) => p.bezet) && <span>{t('Stippellijn = bezet')}</span>}
               {spelers.some((p) => !p.actief) && <span>{t('Doorgestreept = niet beschikbaar')}</span>}
             </div>

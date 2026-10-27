@@ -19,7 +19,7 @@ type Res = {
 
 export function Zoeken() {
   const [p, setP] = useSearchParams()
-  const { config, versie } = useKiosk()
+  const { config, versie, spelerSoort } = useKiosk()
   const [res, setRes] = useState<Res | null>(null)
   const [titels, setTitels] = useState<Kaart[]>([])
   const [laden, setLaden] = useState(true)
@@ -99,6 +99,14 @@ export function Zoeken() {
             <button className={weergave === 'lijst' ? 'aan' : ''} onClick={() => zet('weergave', 'lijst')} aria-label={t('Lijst')} aria-pressed={weergave === 'lijst'}><List size={20} /></button>
           </div>
         </div>
+        {/* Zoeken op cd's aan een platenspeler (of andersom): meteen zeggen dat dat hier niet kan. */}
+        {((spelerSoort === 'lp' && p.get('drager') === 'CD') || (spelerSoort === 'cd' && p.get('drager') === 'LP')) && (
+          <div className="melding-blok speler-melding" role="status">
+            {spelerSoort === 'lp'
+              ? t('Je zit aan een platenspeler. Cd’s kun je daar niet afspelen. Wil je cd’s luisteren, geef je speler dan vrij en kies de cd-speler.')
+              : t('Je zit aan de cd-speler. Platen kun je daar niet afspelen. Wil je platen luisteren, geef je speler dan vrij en kies een platenspeler.')}
+          </div>
+        )}
 
         {laden && titels.length === 0 && <Laden />}
         {!laden && res && res.totaal === 0 && (

@@ -1,13 +1,13 @@
 // Albumpagina (7.6). Populair en klassiek; bij klassiek componisten en uitvoerenden waar de dump die levert.
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ChevronDown, ChevronUp, RotateCw, Sparkles, X } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, RotateCw, Sparkles, X } from 'lucide-react'
 import { api, ApiFout } from '../api'
 import { Hoes } from '../components/Hoes'
-import { Laden, SpeelIcoon } from '../components/Iconen'
+import { Laden } from '../components/Iconen'
 import { useKiosk } from './KioskApp'
 import { KioskKopTerug } from './Kop'
-import { AlbumKaart, type Kaart } from './Kaarten'
+import { AlbumKaart, pastOpSpeler, type Kaart } from './Kaarten'
 import { huidigeTaal, t } from './taal'
 
 type Ex = { exemplaar_id: number; titel_id: number; drager: string | null; jaar: number | null; vindcode: string | null; beschikbaar: boolean; deze_titel: boolean }
@@ -65,6 +65,7 @@ export function AlbumWeergave({ a, voorbeeld = false }: { a: AlbumData; voorbeel
   const klassiek = a.soort === 'klassiek'
   const personen = klassiek && v.componisten?.length ? v.componisten : v.artiesten ?? []
   const vol = kiosk && kiosk.mand.length >= kiosk.config.instellingen.max_titels && !inMand
+  const verkeerdeSpeler = !!kiosk && !!gekozen && !pastOpSpeler(gekozen.drager, kiosk.spelerSoort)
 
   const voegToe = () => {
     if (!kiosk || !gekozen) return
@@ -130,7 +131,6 @@ export function AlbumWeergave({ a, voorbeeld = false }: { a: AlbumData; voorbeel
             <h2>{t('Nummers')}</h2>
             {v.tracklist!.map((t, i) => (
               <div className="nummer" key={i}>
-                <span className="speel" aria-hidden="true"><SpeelIcoon /></span>
                 <span className="nr">{t.pos}</span>
                 <span>{t.titel}{klassiek && (t.componisten?.length || t.uitvoerenden?.length) ? <span className="sub">{[t.componisten?.join(', '), t.uitvoerenden?.slice(0, 3).join(', ')].filter(Boolean).join(' · ')}</span> : null}</span>
                 <span className="duur">{t.duur ?? ''}</span>
@@ -150,7 +150,7 @@ export function AlbumWeergave({ a, voorbeeld = false }: { a: AlbumData; voorbeel
           {a.exemplaren.map((e) => (
             <button key={e.exemplaar_id} className={`exemplaar ${keuze === e.exemplaar_id ? 'gekozen' : ''}`} disabled={!e.beschikbaar}
               onClick={() => setKeuze(e.exemplaar_id)} role="radio" aria-checked={keuze === e.exemplaar_id}>
-              <span className="radio">{keuze === e.exemplaar_id && <SpeelIcoon />}</span>
+              <span className="radio">{keuze === e.exemplaar_id && <Check size={20} strokeWidth={3} />}</span>
               <span>
                 <div className="wat">{e.drager ?? ''} {e.jaar ?? ''}{!e.deze_titel ? t(' (andere uitgave)') : ''}</div>
                 <div className="code">{t(ctx.config.instellingen.vindcode_label)}: {e.vindcode ?? '–'}</div>
@@ -164,7 +164,14 @@ export function AlbumWeergave({ a, voorbeeld = false }: { a: AlbumData; voorbeel
         </div>
         {!voorbeeld && (
           <div className="paneel-knop">
-            <button className="btn btn-pink btn-l btn-block" disabled={!gekozen || inMand || !!vol} onClick={voegToe}>
+            {verkeerdeSpeler && (
+              <div className="melding-blok speler-melding" role="status">
+                {kiosk!.spelerSoort === 'lp'
+                  ? t('Je zit aan platenspeler {n}. Deze cd kun je daar niet afspelen. Wil je cd’s luisteren, geef je speler dan vrij en kies de cd-speler.', { n: kiosk!.speler?.nummer ?? '' })
+                  : t('Je zit aan de cd-speler. Deze plaat kun je daar niet afspelen. Wil je platen luisteren, geef je speler dan vrij en kies een platenspeler.')}
+              </div>
+            )}
+            <button className="btn btn-pink btn-l btn-block" disabled={!gekozen || inMand || !!vol || verkeerdeSpeler} onClick={voegToe}>
               {inMand ? t('Staat in je aanvraag') : gekozen ? t('Voeg toe aan aanvraag') : t('Nu in gebruik')}
             </button>
             {vol && gekozen && (

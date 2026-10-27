@@ -27,14 +27,20 @@ export function openAanvraagVoorSpeler(nummer: number) {
   return get<any>(`SELECT * FROM aanvragen WHERE platenspeler = ? AND status IN ${OPEN} ORDER BY id DESC LIMIT 1`, nummer)
 }
 
+/** Cd-spelers volgens de instelling cd_spelers (nummers, gescheiden door komma's); de rest zijn platenspelers. */
+export const cdSpelers = (inst: Record<string, any>) => new Set(String(inst.cd_spelers ?? '').split(/[^0-9]+/).filter(Boolean).map(Number))
+/** Een cd past alleen op een cd-speler; al het vinyl (lp, maxi-single, overig) alleen op een platenspeler. */
+export const pastOpSpeler = (drager: string | null | undefined, soort: 'lp' | 'cd') => (drager === 'CD') === (soort === 'cd')
+
 /** bezet = een bezoeker houdt de speler vast, of er loopt nog een aanvraag op. */
 export async function platenspelers() {
+  const cd = cdSpelers(await instellingen())
   return (await all<any>(`SELECT p.nummer, p.actief, p.sessie IS NOT NULL AS vast, p.bezet_sinds,
       (p.gereserveerd_voor IS NOT NULL AND p.gereserveerd_tot > nu()) AS gereserveerd,
       (SELECT a.id FROM aanvragen a WHERE a.platenspeler = p.nummer AND a.status IN ${OPEN} LIMIT 1) AS open_aanvraag
     FROM platenspelers p ORDER BY p.nummer`)).map((p) => ({
     nummer: p.nummer, actief: !!p.actief, bezet: !!p.vast || p.open_aanvraag != null || !!p.gereserveerd, vastgehouden: !!p.vast, bezet_sinds: p.bezet_sinds ?? null,
-    gereserveerd: !!p.gereserveerd,
+    gereserveerd: !!p.gereserveerd, soort: cd.has(p.nummer) ? 'cd' as const : 'lp' as const,
   }))
 }
 
@@ -134,6 +140,11 @@ export async function dienAanvraagIn(inv: { platenspeler: number; sessie?: strin
     if (!inv.sessie || speler.sessie !== inv.sessie) throw new AanvraagFout('speler_kwijt', 'Je platenspeler is vrijgegeven. Kies opnieuw een platenspeler.')
     const open = await openAanvraagVoorSpeler(inv.platenspeler)
     if (open && !inv.bezetAfsluiten) throw new AanvraagFout('bezet', 'Je hebt nog een aanvraag lopen. Wil je die afsluiten? De platen daarvan gaan dan terug.')
+    // Een cd kun je niet op een platenspeler afspelen, en vinyl niet op een cd-speler.
+    const soort = cdSpelers(inst).has(inv.platenspeler) ? 'cd' : 'lp'
+    const dragers = await all<{ id: number; drager: string | null }>('SELECT id, d_drager AS drager FROM titels WHERE id = ANY(?::int[])', `{${titels.map((t) => Math.trunc(t.titel_id)).join(',')}}`)
+    const verkeerd = dragers.filter((d) => !pastOpSpeler(d.drager, soort)).map((d) => d.id)
+    if (verkeerd.length) throw new AanvraagFout('verkeerde_speler', soort === 'cd' ? 'Je zit aan een cd-speler. Platen kun je daar niet afspelen; haal ze uit je aanvraag of kies een platenspeler.' : 'Je zit aan een platenspeler. Cd\'s kun je daar niet afspelen; haal ze uit je aanvraag of kies de cd-speler.', { titelIds: verkeerd })
     const keuze: { titel_id: number; exemplaar_id: number }[] = []
     const niet: number[] = []
     for (const t of titels) {

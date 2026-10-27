@@ -126,7 +126,8 @@ export const json = <T = any>(s: string | null | undefined, fallback: T): T => {
 // ------------------------------------------------------------------ instellingen (10.10)
 
 export const STANDAARD_INSTELLINGEN = {
-  aantal_platenspelers: 8,
+  aantal_platenspelers: 5, // 4 platenspelers en 1 cd-speler op de luisterbar
+  cd_spelers: '5', // nummers van de cd-spelers, gescheiden door komma's; de rest zijn platenspelers
   max_titels: 3, // open punt O-5
   inactiviteit_sec: 90,
   speler_inactief_min: 20, // zonder aanraking: "Ben je er nog?" met vasthouden of vrijgeven
@@ -148,7 +149,7 @@ export const STANDAARD_INSTELLINGEN = {
   privacy_url: 'https://www.beeldengeluid.nl/privacy',
   nl_weergave: 'knop', // open punt O-7: 'knop' of 'schakelaar'
   vindcode_bron: 'titelnummer', // O-1: het Muziekweb-catalogusnummer (bv. JK278045) volstaat om de plaat in het archief te vinden
-  nieuwsbrief_koppeling: 'beheer', // O-4: 'beheer' (bewaren in de beheeromgeving), 'webhook' of 'geen'
+  nieuwsbrief_koppeling: 'geen', // O-4: 'beheer' (bewaren in de beheeromgeving), 'webhook' of 'geen'; vooralsnog geen Fonos-nieuwsbrief
   nieuwsbrief_url: '',
   nieuwsbrief_bron: 'Luisterbar',
   melding_email_aan: false, // open punt O-9
@@ -161,6 +162,11 @@ export const STANDAARD_INSTELLINGEN = {
   spotify_generieke_artiesten: ['Reggae', 'Geluidseffecten', 'Disco Samba', 'Diverse artiesten', 'Various Artists'], // nooit automatisch koppelen
   nieuwsbrief_bewaar_dagen: 30, // aanmeldingen zoveel dagen na export automatisch verwijderen (0 = nooit)
   bumper_video_url: '', // rustscherm: de bumper (B&G-logo wordt Fonos-logo)
+  // Redactioneel blok bovenaan de homepagina van de kiosk (concepttekst; aan te passen in Beheer → Instellingen).
+  redactie_titel: 'Welkom in de Fonotheek',
+  redactie_tekst: 'Hier vind je het unieke deel van de collectie van Beeld & Geluid dat je op aanvraag kunt beluisteren: tienduizenden lp’s, van Nederlandstalige parels tot klassieke opnames. Zoek een plaat, vraag hem aan en een medewerker brengt hem naar je speler.',
+  redactie_titel_en: 'Welcome to the Fonotheek',
+  redactie_tekst_en: 'This is the unique part of the Beeld & Geluid collection that you can listen to on request: tens of thousands of LPs, from Dutch gems to classical recordings. Find a record, request it and a staff member will bring it to your player.',
   geluid_aan: true,
   dubbelen_samenvoegen: false, // verbetering 15: dubbele titels (zelfde titel en artiest) in de zoekresultaten als één album tonen
   // IT-beleid (operationeel IT-beleid B&G v3.3)

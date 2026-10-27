@@ -47,6 +47,7 @@ test('tweelagenmodel: import overschrijft nooit een Fonos-waarde en meldt een co
 })
 
 test('aanvragen: eerst platenspeler kiezen, reserveren, in gebruik, maximum, vrijgeven', async () => {
+  await zetInstelling('cd_spelers', '')
   const a = await titelMetExemplaar('BB00001', 'Pastel Blues', 'Nina Simone')
   const b = await titelMetExemplaar('BB00002', 'Discovery', 'Daft Punk')
   // Zonder gekozen speler (of met een verkeerde sessie) kan er niets aangevraagd worden.
