@@ -62,31 +62,20 @@ test.describe.serial('Fonotheek', () => {
     expect(fouten).toEqual([])
   })
 
-  test('keuzehulp Dokter Vinyl: na 6 seconden een uitnodiging, vier vragen, een recept en een plaat', async ({ page }) => {
+  test('keuzehulp: knop "Help me kiezen", vier vragen en meteen een plaat; geen pop-up', async ({ page }) => {
     await page.goto('/?tablet=E2E-keuzehulp')
     await page.getByRole('button', { name: 'Begin met zoeken' }).click()
     await page.locator('.speler:not([disabled])').first().click()
-    const uitnodiging = page.getByRole('dialog', { name: 'Hulp nodig bij het kiezen?' })
-    await expect(uitnodiging).toBeHidden()
-    await expect(uitnodiging).toBeVisible({ timeout: 9000 })
-    await page.getByRole('button', { name: 'Ja, help me kiezen' }).click()
+    await page.waitForTimeout(7000)
+    await expect(page.getByRole('dialog')).toHaveCount(0) // geen uitnodiging meer na een paar seconden
+    await page.getByRole('button', { name: 'Help me kiezen' }).click()
     await toegankelijk(page, 'keuzehulp')
-    for (const keuze of ['Als een kat in de zon', 'Als een octopus op rolschaatsen', /Jaren 80/, /Pittig/]) await page.getByRole('button', { name: keuze }).click()
-    await expect(page.getByText(/Diagnose: Zondagmiddagsyndroom/)).toBeVisible()
-    await toegankelijk(page, 'recept')
-    await page.getByRole('button', { name: /Pak je plaat uit/ }).click()
+    for (const keuze of ['Als een kat in de zon', 'Als een octopus op rolschaatsen', 'Jaren 80', /Een beetje verrassend/]) await page.getByRole('button', { name: keuze }).click()
+    await expect(page.getByRole('heading', { name: 'Deze plaat past bij jou' })).toBeVisible()
+    await toegankelijk(page, 'keuzehulp-uitslag')
     await page.getByRole('button', { name: 'Bekijk deze plaat' }).click()
     await expect(page).toHaveURL(/\/album\/\d+/)
     await expect(page.getByRole('button', { name: 'Voeg toe aan aanvraag' })).toBeVisible()
-    // Eén keer per sessie: terug op de homepagina geen nieuwe uitnodiging.
-    await page.goto('/home')
-    await page.waitForTimeout(7000)
-    await expect(uitnodiging).toBeHidden()
-    // De vaste knop opent Dokter Vinyl altijd.
-    await page.getByRole('button', { name: 'Help me kiezen' }).click()
-    await expect(page.getByRole('heading', { name: 'Hoe voel je je vandaag?' })).toBeVisible()
-    await page.keyboard.press('Escape')
-    await expect(page.getByRole('heading', { name: 'Hoe voel je je vandaag?' })).toBeHidden()
     await page.getByRole('button', { name: /Platenspeler \d+ vrijgeven/ }).click()
     await page.getByRole('button', { name: /vrijgeven/i }).last().click()
   })

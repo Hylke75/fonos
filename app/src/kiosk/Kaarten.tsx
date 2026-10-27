@@ -31,8 +31,15 @@ export function AlbumKaart({ k, voet = false }: { k: Kaart; voet?: boolean }) {
   )
 }
 
+/** Een cd past alleen op een cd-speler; al het vinyl (lp, maxi-single, overig) alleen op een platenspeler. */
+export const pastOpSpeler = (drager: string | null | undefined, soort: 'lp' | 'cd' | null) => !soort || (drager === 'CD') === (soort === 'cd')
+
 export function AanvraagMini({ k }: { k: Kaart }) {
-  const { mand, voegToe, toast, config, bewaard, bewaar } = useKiosk()
+  const { mand, voegToe, toast, config, bewaard, bewaar, spelerSoort } = useKiosk()
+  if (!pastOpSpeler(k.drager, spelerSoort)) {
+    return <button className="aanvraag-mini" disabled title={spelerSoort === 'lp' ? t('Een cd kun je niet op een platenspeler afspelen.') : t('Een plaat kun je niet op een cd-speler afspelen.')}>
+      {spelerSoort === 'lp' ? t('Cd-speler nodig') : t('Platenspeler nodig')}</button>
+  }
   const in_ = mand.some((m) => m.titel_id === k.id)
   // Bij het maximum: bewaren voor later in plaats van aanvragen (7.8, verbetering 4).
   const vol = !in_ && mand.length >= config.instellingen.max_titels

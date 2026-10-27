@@ -21,8 +21,8 @@ export type Item = { titel_id: number; exemplaar_id?: number | null; titel: stri
 export type Knop = { id: number; naam: string; kleur: string; beeld: string | null; nederlands: boolean; subfilters: string[] }
 export type Config = {
   knoppen: Knop[]
-  instellingen: { max_titels: number; inactiviteit_sec: number; waarschuwing_sec: number; bevestiging_sec: number; speler_inactief_min: number; speler_reactie_min: number; fonos_paginas: { naam: string; url: string }[]; privacy_tekst: string; privacy_tekst_en?: string; privacy_url: string; nl_weergave: string; bumper_video_url: string; nieuwsbrief: boolean; nieuwsbrief_bevestigingsmail: boolean; vindcode_label: string }
-  platenspelers: { nummer: number; actief: boolean; bezet: boolean }[]
+  instellingen: { max_titels: number; inactiviteit_sec: number; waarschuwing_sec: number; bevestiging_sec: number; speler_inactief_min: number; speler_reactie_min: number; fonos_paginas: { naam: string; url: string }[]; privacy_tekst: string; privacy_tekst_en?: string; privacy_url: string; nl_weergave: string; bumper_video_url: string; redactie_titel?: string; redactie_tekst?: string; redactie_titel_en?: string; redactie_tekst_en?: string; nieuwsbrief: boolean; nieuwsbrief_bevestigingsmail: boolean; vindcode_label: string }
+  platenspelers: { nummer: number; actief: boolean; bezet: boolean; soort?: 'lp' | 'cd' }[]
 }
 
 type Ctx = {
@@ -36,6 +36,8 @@ type Ctx = {
   toast: (t: string) => void
   versie: number // telt op bij elke beschikbaarheidswijziging
   speler: Speler | null
+  /** Soort van de gekozen speler: platenspeler (lp) of cd-speler. */
+  spelerSoort: 'lp' | 'cd' | null
   mijnAanvraag: MijnAanvraag | null
   bewaard: Item[]
   bewaar: (i: Item) => void
@@ -210,7 +212,8 @@ export function KioskApp() {
   useEffect(() => { laatste.current = Date.now() }, [loc.pathname])
 
   const ctx = useMemo<Ctx | null>(() => config && {
-    config, mand, beschikbaar, versie, toast, wisSessie, speler, mijnAanvraag, bewaard, taal, kiesTaal, groot, zetGroot: setGroot, wacht, zetWacht,
+    config, mand, beschikbaar, versie, toast, wisSessie, speler, mijnAanvraag,
+    spelerSoort: speler ? config.platenspelers.find((p) => p.nummer === speler.nummer)?.soort ?? 'lp' : null, bewaard, taal, kiesTaal, groot, zetGroot: setGroot, wacht, zetWacht,
     bewaar: (i) => { setBewaard((b) => (b.some((x) => x.titel_id === i.titel_id) ? b : [...b, i])); toast(t('{titel} bewaard voor later', { titel: i.titel })) },
     vergeet: (id) => setBewaard((b) => b.filter((x) => x.titel_id !== id)),
     kiesSpeler: async (nummer, wachtlijst) => {
@@ -294,7 +297,7 @@ export function KioskApp() {
         {vrijgevenVraag && speler && (
           <div className="modal-achter" role="alertdialog" aria-labelledby="vrijgeven">
             <div className="card modal">
-              <h2 id="vrijgeven">{t('Platenspeler {n} vrijgeven?', { n: speler.nummer })}</h2>
+              <h2 id="vrijgeven">{ctx.spelerSoort === 'cd' ? t('Cd-speler {n} vrijgeven?', { n: speler.nummer }) : t('Platenspeler {n} vrijgeven?', { n: speler.nummer })}</h2>
               <p>{t('Klaar met luisteren? Laat je platen bij de speler liggen; een medewerker haalt ze op. Je aanvraaglijst wordt gewist.')}</p>
               <div className="knoppen">
                 <button className="btn btn-pink btn-l" onClick={() => geefVrij('bezoeker')}>{t('Ja, vrijgeven')}</button>

@@ -1,7 +1,7 @@
 // Planner: automatisch afsluiten bij sluitingstijd (8), nachtelijke back-up (12.3), nieuwsbrief-wachtrij (11).
 // Op Vercel draait er geen proces continu: de planner loopt mee met verzoeken (hooguit eens per minuut)
 // en daarnaast via de Vercel Cron-job (/api/cron).
-import { all, instellingen, get, run } from './db.ts'
+import { all, instellingen, get, run, syncPlatenspelers } from './db.ts'
 import { sluitAf, sluitAllesAf, geefInactieveSpelersVrij } from './aanvragen.ts'
 import { aanvragenGewijzigd, beschikbaarheidGewijzigd } from './events.ts'
 import { maakBackup } from './backup.ts'
@@ -59,6 +59,13 @@ export async function tik(opts: { backup?: boolean; cron?: boolean } = {}) {
   // Hoezen controleren: alleen bij de nachtelijke cron (die mag tot 5 minuten duren).
   if (opts.cron && (await claim('hoezen'))) await controleerHoezen().then((r) => console.log(`[planner] hoezen: ${r.gecontroleerd} gecontroleerd, ${r.kapot} kapot`)).catch((e) => console.error('[planner] hoezen mislukt', e))
   await probeerWachtrij().catch(() => {})
+  // Aantal platenspelers gelijk aan de instelling (ook als alleen de standaardwaarde veranderde), tenzij er op een
+  // speler boven dat aantal nog iemand zit of een aanvraag loopt.
+  const n = Number(inst.aantal_platenspelers)
+  const nu = await get<{ n: number; max: number }>('SELECT count(*)::int AS n, COALESCE(MAX(nummer), 0)::int AS max FROM platenspelers')
+  if (n >= 1 && nu && (nu.n !== n || nu.max !== n)
+    && !(await get(`SELECT 1 FROM platenspelers WHERE nummer > ? AND sessie IS NOT NULL`, n))
+    && !(await get(`SELECT 1 FROM aanvragen WHERE platenspeler > ? AND status IN ('ingediend', 'uitgegeven')`, n))) await syncPlatenspelers(n)
   // Nieuwsbriefaanmeldingen na de bewaartermijn verwijderen (alleen geëxporteerde).
   const bewaar = Number(inst.nieuwsbrief_bewaar_dagen)
   if (bewaar > 0) await run("DELETE FROM nieuwsbrief_aanmeldingen WHERE geexporteerd_op IS NOT NULL AND geexporteerd_op < nu(?::interval)", `-${bewaar} days`).catch(() => {})

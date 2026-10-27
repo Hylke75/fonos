@@ -47,8 +47,8 @@ kiosk.get('/verras', async (c) => {
 })
 
 kiosk.post('/keuzehulp', async (c) => {
-  const b = await c.req.json<{ voorkeur?: number[]; decennium?: number | null; durf?: number; eerder?: number[] }>().catch(() => ({} as any))
-  const r = await keuzehulp({ voorkeur: (b.voorkeur ?? []).map(Number).filter(Number.isFinite).slice(0, 30), decennium: b.decennium ?? null, durf: Number(b.durf ?? 0), eerder: (b.eerder ?? []).map(Number).filter(Number.isFinite).slice(0, 50) })
+  const b = await c.req.json<{ voorkeur?: number[]; decennium?: number | null; durf?: number; eerder?: number[]; speler?: string }>().catch(() => ({} as any))
+  const r = await keuzehulp({ voorkeur: (b.voorkeur ?? []).map(Number).filter(Number.isFinite).slice(0, 30), decennium: b.decennium ?? null, durf: Number(b.durf ?? 0), eerder: (b.eerder ?? []).map(Number).filter(Number.isFinite).slice(0, 50), speler: b.speler === 'cd' ? 'cd' : b.speler === 'lp' ? 'lp' : null })
   return r ? c.json(r) : c.json({ fout: 'Geen plaat gevonden' }, 404)
 })
 

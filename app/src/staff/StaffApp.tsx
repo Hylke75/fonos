@@ -181,7 +181,7 @@ function Lijst() {
               return (
                 <div key={p.nummer} className={`card speler-tegel ${a ? 'open' : ''} ${a?.lang_open ? 'lang-open' : ''} ${a && nieuw === a.bestelnummer ? 'nieuw-binnen' : ''} ${!p.actief ? 'inactief' : ''}`}>
                   <div className="tegel-kop">
-                    <span className="groot">{p.nummer}</span>
+                    <span className="groot">{p.nummer}{p.soort === 'cd' && <span className="tegel-soort">CD</span>}</span>
                     <span className={`tegel-status tegel-${status.toLowerCase()}`}>{status}</span>
                   </div>
                   {a ? (

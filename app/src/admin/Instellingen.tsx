@@ -8,7 +8,8 @@ import { Melding, Toggle } from './ui'
 type Veld = { k: string; label: string; soort: 'getal' | 'tekst' | 'tijd' | 'lang' | 'keuze' | 'bool'; opties?: [string, string][]; uitleg?: string }
 const GROEPEN: { naam: string; velden: Veld[] }[] = [
   { naam: 'Luisterbar', velden: [
-    { k: 'aantal_platenspelers', label: 'Aantal platenspelers', soort: 'getal' },
+    { k: 'aantal_platenspelers', label: 'Aantal spelers (platenspelers en cd-spelers samen)', soort: 'getal' },
+    { k: 'cd_spelers', label: 'Nummers van de cd-spelers', soort: 'tekst', uitleg: 'Gescheiden door komma’s, bijvoorbeeld 5. De andere nummers zijn platenspelers. Op een platenspeler kun je geen cd aanvragen en andersom.' },
     { k: 'max_titels', label: 'Maximum titels per aanvraag', soort: 'getal', uitleg: 'Open punt O-5: 3 of 5.' },
     { k: 'sluitingstijd', label: 'Sluitingstijd (open aanvragen automatisch afsluiten)', soort: 'tijd', uitleg: 'Vul de openingstijden van Fonos in.' },
     ...(['ma', 'di', 'wo', 'do', 'vr', 'za', 'zo'] as const).map((d) => ({ k: `sluitingstijd_${d}`, label: `Sluitingstijd ${{ ma: 'maandag', di: 'dinsdag', wo: 'woensdag', do: 'donderdag', vr: 'vrijdag', za: 'zaterdag', zo: 'zondag' }[d]}`, soort: 'tijd' as const, uitleg: 'Leeg = de algemene sluitingstijd.' })),
@@ -27,6 +28,10 @@ const GROEPEN: { naam: string; velden: Veld[] }[] = [
     { k: 'vaak_periode_dagen', label: 'Periode "Vaak aangevraagd" (dagen)', soort: 'getal' },
     { k: 'spotify_aan', label: 'Spotify-speler en QR-code op de albumpagina', soort: 'bool', uitleg: 'Ook het menu Spotify-koppelingen. Bestaande koppelingen blijven bewaard.' },
     { k: 'bumper_video_url', label: 'Bumper op het rustscherm (adres van de video)', soort: 'tekst', uitleg: 'Leeg = het welkomstscherm "De Fonotheek".' },
+    { k: 'redactie_titel', label: 'Homepagina: kop van het redactionele blok', soort: 'tekst', uitleg: 'Leeg (kop en tekst) = geen blok.' },
+    { k: 'redactie_tekst', label: 'Homepagina: tekst van het redactionele blok', soort: 'lang' },
+    { k: 'redactie_titel_en', label: 'Homepagina: kop in het Engels', soort: 'tekst' },
+    { k: 'redactie_tekst_en', label: 'Homepagina: tekst in het Engels', soort: 'lang' },
   ] },
   { naam: 'Nieuwsbrief en privacy', velden: [
     { k: 'privacy_tekst', label: 'Privacytekst', soort: 'lang' },

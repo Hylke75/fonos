@@ -76,6 +76,7 @@ export async function kioskConfig() {
       speler_inactief_min: Number(inst.speler_inactief_min), speler_reactie_min: Number(inst.speler_reactie_min),
       bevestiging_sec: inst.bevestiging_sec, fonos_paginas: inst.fonos_paginas, privacy_tekst: inst.privacy_tekst, privacy_tekst_en: inst.privacy_tekst_en,
       privacy_url: inst.privacy_url, nl_weergave: inst.nl_weergave, bumper_video_url: inst.bumper_video_url,
+      redactie_titel: inst.redactie_titel, redactie_tekst: inst.redactie_tekst, redactie_titel_en: inst.redactie_titel_en, redactie_tekst_en: inst.redactie_tekst_en,
       vindcode_label: VINDCODE_LABEL[inst.vindcode_bron] ?? 'Vindcode',
       nieuwsbrief: inst.nieuwsbrief_koppeling !== 'geen', // O-4: zonder koppeling geen aanmelding
       nieuwsbrief_bevestigingsmail: inst.nieuwsbrief_koppeling === 'webhook', // het externe systeem stuurt de bevestiging
@@ -307,23 +308,25 @@ export async function verrasMe(knopId?: number): Promise<number | null> {
  *  durf 0: de best passende stijl. durf 1: de op één na beste, en geen veelgevraagde platen.
  *  durf 2: een stijl buiten de top drie (verrassend, maar nog steeds een echte stijl uit de collectie).
  *  Lukt het niet in het gekozen decennium, dan zonder decennium; lukt het helemaal niet, dan "Verras me". */
-export async function keuzehulp(inv: { voorkeur: number[]; decennium?: number | null; durf: number; eerder?: number[] }) {
+export async function keuzehulp(inv: { voorkeur: number[]; decennium?: number | null; durf: number; eerder?: number[]; speler?: 'lp' | 'cd' | null }) {
   const ks = (await knoppen()).filter((k) => k.genres.length)
   const opVolgorde = [...inv.voorkeur.map((id) => ks.find((k) => k.id === id)).filter((k): k is Knop => !!k), ...ks.filter((k) => !inv.voorkeur.includes(k.id))]
   const durf = Math.max(0, Math.min(2, Math.floor(Number(inv.durf) || 0)))
   const kandidaten = durf === 0 ? [opVolgorde[0]] : durf === 1 ? [opVolgorde[1] ?? opVolgorde[0]] : opVolgorde.slice(3).length ? opVolgorde.slice(3) : opVolgorde
   const knop = kandidaten[Math.floor(Math.random() * kandidaten.length)] as Knop | undefined
   const eerder = intArray(inv.eerder ?? [])
+  // Alleen wat op de gekozen speler past: cd's op de cd-speler, vinyl op een platenspeler.
+  const drager = inv.speler === 'cd' ? `AND t.d_drager = 'CD'` : inv.speler === 'lp' ? `AND t.d_drager IS DISTINCT FROM 'CD'` : ''
   const populair = durf > 0 ? `AND t.id NOT IN (SELECT i.titel_id FROM aanvraag_items i GROUP BY i.titel_id ORDER BY count(*) DESC LIMIT 100)` : ''
   const zoekEen = async (dec: number | null) => !knop ? undefined : get<Kaart>(`SELECT ${KAART} FROM titels t WHERE t.d_hoes IS NOT NULL AND COALESCE(t.hoes_kapot, 0) = 0 AND ${GENRES_IN} AND ${ZICHTBAAR_SQL} AND ${BESCHIKBAAR}
-      AND NOT (t.id = ANY(?::int[])) ${populair} ${dec ? 'AND t.d_jaar >= ? AND t.d_jaar < ?' : ''} ORDER BY random() LIMIT 1`, JSON.stringify(knop.genres), eerder, ...(dec ? [dec, dec + 10] : []))
+      AND NOT (t.id = ANY(?::int[])) ${drager} ${populair} ${dec ? 'AND t.d_jaar >= ? AND t.d_jaar < ?' : ''} ORDER BY random() LIMIT 1`, JSON.stringify(knop.genres), eerder, ...(dec ? [dec, dec + 10] : []))
   const dec = inv.decennium ? Math.floor(Number(inv.decennium) / 10) * 10 : null
   let titel = (dec ? await zoekEen(dec) : undefined) ?? await zoekEen(null)
   const inDecennium = !!titel && !!dec && titel.jaar != null && titel.jaar >= dec && titel.jaar < dec + 10
   const viaStijl = !!titel
-  if (!titel) { const id = await verrasMe(); titel = id ? await get<Kaart>(`SELECT ${KAART} FROM titels t WHERE t.id = ?`, id) : undefined }
+  if (!titel && !drager) { const id = await verrasMe(); titel = id ? await get<Kaart>(`SELECT ${KAART} FROM titels t WHERE t.id = ?`, id) : undefined }
   // Laatste redmiddel: een beschikbare plaat zonder hoes (een collectie zonder hoezen, zoals in de tests).
-  if (!titel) titel = await get<Kaart>(`SELECT ${KAART} FROM titels t WHERE ${ZICHTBAAR_SQL} AND ${BESCHIKBAAR} AND NOT (t.id = ANY(?::int[])) ORDER BY random() LIMIT 1`, eerder)
+  if (!titel) titel = await get<Kaart>(`SELECT ${KAART} FROM titels t WHERE ${ZICHTBAAR_SQL} AND ${BESCHIKBAAR} AND NOT (t.id = ANY(?::int[])) ${drager} ORDER BY random() LIMIT 1`, eerder)
   if (!titel) return null
   // Zonder passende stijl (geen genreknoppen gekoppeld) wordt het een willekeurige plaat: stijl = null.
   return { titel: { ...titel, beschikbaar: !!titel.beschikbaar }, stijl: viaStijl && knop ? knop.naam : null, favoriet: opVolgorde[0]?.naam ?? null, inDecennium }
