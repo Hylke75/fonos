@@ -293,4 +293,9 @@ const EN: Record<string, string> = {
   'Tik bij een plaat op Aanvragen om hem hier te zetten.': 'Tap Request on a record to add it here.',
   '{n} bewaard voor later': '{n} saved for later',
   'Aanvraag afronden': 'Complete request',
+  // Verras me per genre, genre uitzetten
+  'Waarmee wil je verrast worden?': 'What would you like to be surprised with?',
+  'Uit alle genres': 'From all genres',
+  'In dit genre is nu niets beschikbaar. Kies een ander genre.': 'Nothing is available in this genre right now. Choose another genre.',
+  '{naam}: gekozen. Tik om dit genre uit te zetten': '{naam}: selected. Tap to turn this genre off',
 }

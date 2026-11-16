@@ -941,3 +941,14 @@ pre.rapport { background: #07111f; border: 1px solid var(--line); border-radius:
 .mand-knop .teller { animation: teller-tik .3s ease-out; }
 @keyframes teller-tik { 0% { transform: scale(1.6); } 100% { transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) { .mand-knop .teller { animation: none; } }
+
+/* Gekozen genre: zichtbaar uit te zetten */
+.tegel-uit { position: absolute; top: 8px; right: 8px; z-index: 2; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: rgba(4, 10, 30, .85); color: #fff; }
+
+/* Verras me: eerst een genre kiezen */
+.verras-keuze { position: relative; width: min(720px, 100%); text-align: left; }
+.verras-keuze h2 { display: flex; align-items: center; gap: 10px; }
+.verras-keuze .sluit { position: absolute; top: 16px; right: 16px; }
+.verras-genres { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin: 8px 0 16px; }
+.verras-genre { min-height: 64px; border-radius: 12px; border: 0; background: var(--k); color: #fff; font-weight: 700; font-size: 17px; padding: 0 14px; text-align: left; text-shadow: 0 1px 2px rgba(0, 0, 0, .35); }
+.verras-keuze .melding { margin-top: 12px; color: var(--red); }
