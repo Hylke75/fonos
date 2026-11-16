@@ -9,6 +9,7 @@ import { KioskKop } from './Kop'
 import { AlbumKaart, type Kaart } from './Kaarten'
 import { huidigeTaal, t } from './taal'
 import { Keuzehulp } from './Keuzehulp'
+import { viaApp } from '../components/hoesUrl'
 
 export function GenreTegels({ actief }: { actief?: number }) {
   const { config } = useKiosk()
@@ -25,7 +26,7 @@ export function GenreTegels({ actief }: { actief?: number }) {
         <button key={k.id} className={`genretegel ${actief === k.id ? 'actief' : ''}`}
           style={{ ['--k' as any]: k.kleur, borderColor: `color-mix(in srgb, ${k.kleur} 70%, #fff 30%)` }}
           aria-pressed={actief === k.id} onClick={() => (actief === k.id ? uit() : nav(`/zoeken?knop=${k.id}`))}>
-          {k.beeld && <img src={k.beeld} alt="" loading="lazy" onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />}
+          {k.beeld && <img src={viaApp(k.beeld)} alt="" loading="lazy" onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />}
           <span className="label">{k.naam}</span>
         </button>
       ))}
