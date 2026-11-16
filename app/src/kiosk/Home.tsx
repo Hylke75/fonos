@@ -42,7 +42,7 @@ function Redactie() {
   const tekst = (en && i.redactie_tekst_en) || i.redactie_tekst
   if (!titel && !tekst) return null
   return (
-    <section className="redactie" aria-label={titel || t('Over de Fonotheek')}>
+    <section className="redactie" aria-label={titel || t('Over de Luisterbar')}>
       {titel && <h1>{titel}</h1>}
       {tekst && <p>{tekst}</p>}
     </section>

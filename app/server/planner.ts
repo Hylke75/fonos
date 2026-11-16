@@ -85,8 +85,8 @@ export async function dagelijkseControles(inst: Record<string, any>) {
   for (const g of bijna) {
     const r = await run('INSERT INTO planner (taak, datum) VALUES (?, ?) ON CONFLICT (taak) DO NOTHING', `account-herinnering:${g.id}:${g.geldig_tot}`, dag)
     if (!r.changes) continue
-    const tekst = `Het Fonotheek-account van ${g.naam} (${g.email}, ${g.soort_account}) verloopt na ${g.geldig_tot}.\n\nVerlenging gaat via HR (IT-beleid 8.4); daarna past een beheerder de einddatum aan onder Beheer → Gebruikers.`
-    await stuurMail([...new Set([g.email, ...(await ontvangers())])], 'Fonotheek-account verloopt binnenkort', tekst).catch((e) => console.error('[planner] herinnering mislukt', e))
+    const tekst = `Het Luisterbar-account van ${g.naam} (${g.email}, ${g.soort_account}) verloopt na ${g.geldig_tot}.\n\nVerlenging gaat via HR (IT-beleid 8.4); daarna past een beheerder de einddatum aan onder Beheer → Gebruikers.`
+    await stuurMail([...new Set([g.email, ...(await ontvangers())])], 'Luisterbar-account verloopt binnenkort', tekst).catch((e) => console.error('[planner] herinnering mislukt', e))
   }
   const verlopen = await all<any>('SELECT id, naam, geldig_tot FROM gebruikers WHERE actief = 1 AND geldig_tot IS NOT NULL AND geldig_tot < ?', dag)
   for (const g of verlopen) {

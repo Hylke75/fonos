@@ -691,8 +691,8 @@ async function stuurReset(c: Context, gebruikerId: number, email: string, welkom
   const token = await maakResetToken(gebruikerId)
   const basis = process.env.FONOS_BASIS_URL ?? new URL(c.req.url).origin
   const link = `${basis}/wachtwoord?token=${token}`
-  await stuurMail(email, welkom ? 'Je account voor de Fonotheek' : 'Nieuw wachtwoord voor de Fonotheek',
-    `${welkom ? 'Er is een account voor je aangemaakt in de Fonotheek-app.' : 'Er is een nieuw wachtwoord voor je aangevraagd.'}\n\nKies je wachtwoord via deze link (2 uur geldig):\n${link}`)
+  await stuurMail(email, welkom ? 'Je account voor de Luisterbar' : 'Nieuw wachtwoord voor de Luisterbar',
+    `${welkom ? 'Er is een account voor je aangemaakt in de Luisterbar-app.' : 'Er is een nieuw wachtwoord voor je aangevraagd.'}\n\nKies je wachtwoord via deze link (2 uur geldig):\n${link}`)
 }
 
 beheer.post('/gebruikers', alleenBeheerder, async (c) => {

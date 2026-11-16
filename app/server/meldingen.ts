@@ -21,7 +21,7 @@ export async function meld(soort: string, onderwerp: string, tekst: string): Pro
     if (!r.changes) return false
     await log(SYSTEEM, 'storingsmelding', { type: 'melding', id: soort, label: onderwerp, nieuw: tekst.slice(0, 2000) })
     const aan = await ontvangers()
-    if (aan.length) await stuurMail(aan, `[Fonotheek] ${onderwerp}`, `${tekst}\n\n— Automatische melding van de Fonotheek (${process.env.FONOS_BASIS_URL ?? 'fonos-five.vercel.app'}). Status: /beheer/status`)
+    if (aan.length) await stuurMail(aan, `[Luisterbar] ${onderwerp}`, `${tekst}\n\n— Automatische melding van de Luisterbar (${process.env.FONOS_BASIS_URL ?? 'fonos-five.vercel.app'}). Status: /beheer/status`)
     return true
   } catch (e) {
     console.error('[melding] versturen mislukt', e)

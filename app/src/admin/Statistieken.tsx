@@ -1,4 +1,4 @@
-// Statistieken (verbetering 12): gebruik van de Fonotheek over een periode, met export.
+// Statistieken (verbetering 12): gebruik van de Luisterbar over een periode, met export.
 // Eén reeks per grafiek (geen legenda nodig), één kleur voor hoeveelheid; waarden staan erbij of in de tooltip.
 import { useEffect, useState } from 'react'
 import { Download } from 'lucide-react'

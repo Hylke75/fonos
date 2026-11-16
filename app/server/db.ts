@@ -163,9 +163,9 @@ export const STANDAARD_INSTELLINGEN = {
   nieuwsbrief_bewaar_dagen: 30, // aanmeldingen zoveel dagen na export automatisch verwijderen (0 = nooit)
   bumper_video_url: '', // rustscherm: de bumper (B&G-logo wordt Fonos-logo)
   // Redactioneel blok bovenaan de homepagina van de kiosk (concepttekst; aan te passen in Beheer → Instellingen).
-  redactie_titel: 'Welkom in de Fonotheek',
+  redactie_titel: 'Welkom in de Luisterbar',
   redactie_tekst: 'Hier vind je het unieke deel van de collectie van Beeld & Geluid dat je op aanvraag kunt beluisteren: tienduizenden lp’s, van Nederlandstalige parels tot klassieke opnames. Zoek een plaat, vraag hem aan en een medewerker brengt hem naar je speler.',
-  redactie_titel_en: 'Welcome to the Fonotheek',
+  redactie_titel_en: 'Welcome to the Luisterbar',
   redactie_tekst_en: 'This is the unique part of the Beeld & Geluid collection that you can listen to on request: tens of thousands of LPs, from Dutch gems to classical recordings. Find a record, request it and a staff member will bring it to your player.',
   geluid_aan: true,
   dubbelen_samenvoegen: false, // verbetering 15: dubbele titels (zelfde titel en artiest) in de zoekresultaten als één album tonen

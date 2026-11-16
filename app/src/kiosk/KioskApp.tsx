@@ -239,7 +239,7 @@ export function KioskApp() {
     leegMand: () => setMand([]),
   }, [config, mand, beschikbaar, versie, toast, wisSessie, speler, laadConfig, mijnAanvraag, bewaard, taal, kiesTaal, groot, wacht])
 
-  if (!ctx) return <div className="kiosk"><Laden tekst={onbereikbaar ? t('De Fonotheek is even niet bereikbaar. We proberen het zo opnieuw…') : t('De Fonotheek wordt geladen…')} /></div>
+  if (!ctx) return <div className="kiosk"><Laden tekst={onbereikbaar ? t('De Luisterbar is even niet bereikbaar. We proberen het zo opnieuw…') : t('De Luisterbar wordt geladen…')} /></div>
 
   return (
     <KioskCtx.Provider value={ctx}>

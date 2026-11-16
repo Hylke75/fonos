@@ -122,7 +122,7 @@ auth.get('/google/terug', async (c) => {
     const reden = !g ? 'onbekend' : !g.actief ? 'inactief' : 'verlopen'
     await registreerAanmelding({ email: r.email, gebruikerId: g?.id, gelukt: false, methode: 'google', reden, ...h })
     return fout(reden === 'verlopen' ? 'Je account is verlopen. Vraag verlenging aan via HR.'
-      : `Er is geen actief Fonotheek-account voor ${r.email}. Vraag een beheerder om je toe te voegen.`)
+      : `Er is geen actief Luisterbar-account voor ${r.email}. Vraag een beheerder om je toe te voegen.`)
   }
   // Google Workspace van B&G dwingt zelf tweestapsverificatie af: geen tweede code nodig.
   zetSessieCookie(c, await maakSessie(g.id))
@@ -179,7 +179,7 @@ auth.post('/reset-aanvraag', async (c) => {
   if (g && !isVerlopen(g)) {
     const token = await maakResetToken(g.id)
     const basis = process.env.FONOS_BASIS_URL ?? new URL(c.req.url).origin
-    await stuurMail(g.email, 'Nieuw wachtwoord voor de Fonotheek', `Kies een nieuw wachtwoord via deze link (2 uur geldig):\n${basis}/wachtwoord?token=${token}`).catch((e) => console.error(e))
+    await stuurMail(g.email, 'Nieuw wachtwoord voor de Luisterbar', `Kies een nieuw wachtwoord via deze link (2 uur geldig):\n${basis}/wachtwoord?token=${token}`).catch((e) => console.error(e))
   }
   // Altijd hetzelfde antwoord: verraad niet welke adressen bestaan.
   return c.json({ ok: true })

@@ -27,7 +27,7 @@ const GROEPEN: { naam: string; velden: Veld[] }[] = [
     { k: 'dubbelen_samenvoegen', label: 'Dubbele titels als één album tonen', soort: 'bool', uitleg: 'Populaire titels met dezelfde titel en artiest maar een ander titelnummer (persingen, heruitgaven); klassieke opnames blijven apart. De albumpagina toont dan de exemplaren van alle uitgaven. Zie Datakwaliteit → Dubbele titels.' },
     { k: 'vaak_periode_dagen', label: 'Periode "Vaak aangevraagd" (dagen)', soort: 'getal' },
     { k: 'spotify_aan', label: 'Spotify-speler en QR-code op de albumpagina', soort: 'bool', uitleg: 'Ook het menu Spotify-koppelingen. Bestaande koppelingen blijven bewaard.' },
-    { k: 'bumper_video_url', label: 'Bumper op het rustscherm (adres van de video)', soort: 'tekst', uitleg: 'Leeg = het welkomstscherm "De Fonotheek".' },
+    { k: 'bumper_video_url', label: 'Bumper op het rustscherm (adres van de video)', soort: 'tekst', uitleg: 'Leeg = het welkomstscherm "De Luisterbar".' },
     { k: 'redactie_titel', label: 'Homepagina: kop van het redactionele blok', soort: 'tekst', uitleg: 'Leeg (kop en tekst) = geen blok.' },
     { k: 'redactie_tekst', label: 'Homepagina: tekst van het redactionele blok', soort: 'lang' },
     { k: 'redactie_titel_en', label: 'Homepagina: kop in het Engels', soort: 'tekst' },

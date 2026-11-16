@@ -1,5 +1,5 @@
 // E-mail via Resend (14). Zonder RESEND_API_KEY wordt de mail alleen in het serverlog gezet.
-const AFZENDER = process.env.FONOS_MAIL_AFZENDER ?? 'Fonotheek <fonotheek@fonos.nl>'
+const AFZENDER = process.env.FONOS_MAIL_AFZENDER ?? 'Luisterbar <fonotheek@fonos.nl>'
 
 export async function stuurMail(aan: string | string[], onderwerp: string, tekst: string): Promise<void> {
   const key = process.env.RESEND_API_KEY

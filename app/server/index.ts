@@ -21,6 +21,6 @@ if (existsSync(dist)) {
 }
 
 const port = Number(process.env.PORT ?? 3000)
-serve({ fetch: app.fetch, port }, () => console.log(`Fonotheek draait op http://localhost:${port}`))
+serve({ fetch: app.fetch, port }, () => console.log(`Luisterbar draait op http://localhost:${port}`))
 // Lokaal draait de planner elke minuut (op Vercel via Cron en via verzoeken).
 setInterval(() => { tik({ backup: true }).catch((e) => console.error('[planner]', e)) }, 60_000)
