@@ -963,3 +963,11 @@ pre.rapport { background: #07111f; border: 1px solid var(--line); border-radius:
 @media (max-width: 900px) {
   .sorteer-groep { padding-left: 0; border-left: 0; padding-top: 12px; border-top: 1px solid var(--line); width: 100%; }
 }
+
+/* Volg Fonos op Instagram (homepagina kiosk) */
+.instagram-blok { display: flex; align-items: center; gap: 24px; margin: 48px 0 16px; padding: 24px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.instagram-blok .qr { width: 132px; flex: none; border-radius: 8px; overflow: hidden; background: #fff; }
+.instagram-blok .qr svg { display: block; width: 100%; height: auto; }
+.instagram-blok h2 { margin: 0 0 6px; font-size: 22px; }
+.instagram-blok p { margin: 0; }
+.instagram-blok .account { margin-top: 10px; font-weight: 700; color: var(--cyan); font-size: 18px; }

@@ -304,4 +304,7 @@ const EN: Record<string, string> = {
   // Filteren en sorteren
   'Filteren': 'Filter',
   'Wis filters': 'Clear filters',
+  // Instagram
+  'Volg Fonos op Instagram': 'Follow Fonos on Instagram',
+  'Scan de code met je telefoon.': 'Scan the code with your phone.',
 }

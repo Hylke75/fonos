@@ -22,7 +22,7 @@ export type Item = { titel_id: number; exemplaar_id?: number | null; titel: stri
 export type Knop = { id: number; naam: string; kleur: string; beeld: string | null; nederlands: boolean; subfilters: string[] }
 export type Config = {
   knoppen: Knop[]
-  instellingen: { max_titels: number; inactiviteit_sec: number; waarschuwing_sec: number; bevestiging_sec: number; speler_inactief_min: number; speler_reactie_min: number; fonos_paginas: { naam: string; url: string }[]; privacy_tekst: string; privacy_tekst_en?: string; privacy_url: string; nl_weergave: string; bumper_video_url: string; redactie_titel?: string; redactie_tekst?: string; redactie_titel_en?: string; redactie_tekst_en?: string; nieuwsbrief: boolean; nieuwsbrief_bevestigingsmail: boolean; vindcode_label: string }
+  instellingen: { max_titels: number; inactiviteit_sec: number; waarschuwing_sec: number; bevestiging_sec: number; speler_inactief_min: number; speler_reactie_min: number; fonos_paginas: { naam: string; url: string }[]; privacy_tekst: string; privacy_tekst_en?: string; privacy_url: string; nl_weergave: string; bumper_video_url: string; instagram_url?: string; redactie_titel?: string; redactie_tekst?: string; redactie_titel_en?: string; redactie_tekst_en?: string; nieuwsbrief: boolean; nieuwsbrief_bevestigingsmail: boolean; vindcode_label: string }
   platenspelers: { nummer: number; actief: boolean; bezet: boolean; soort?: 'lp' | 'cd' }[]
 }
 

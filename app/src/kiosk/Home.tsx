@@ -79,6 +79,7 @@ export function Home() {
             <div className="rij">{r.titels.map((k) => <AlbumKaart key={k.id} k={k} />)}</div>
           </section>
         ))}
+        <InstagramBlok />
       </main>
       {hulp && <Keuzehulp onSluit={() => setHulp(false)} />}
       {verrasOpen && <VerrasKeuze onSluit={() => setVerrasOpen(false)} />}
@@ -114,5 +115,30 @@ function VerrasKeuze({ onSluit }: { onSluit: () => void }) {
         {niets && <p className="melding" role="status">{t('In dit genre is nu niets beschikbaar. Kies een ander genre.')}</p>}
       </div>
     </div>
+  )
+}
+
+/** Volg Fonos op Instagram: een QR-code, want op de kiosktablet zelf wil je de app niet verlaten (adres in Beheer → Instellingen). */
+function InstagramBlok() {
+  const url = useKiosk().config.instellingen.instagram_url?.trim()
+  const [qr, setQr] = useState<string | null>(null)
+  useEffect(() => {
+    if (!url) return
+    let weg = false
+    import('qrcode').then((Q) => Q.toString(url, { type: 'svg', margin: 1, width: 132, color: { dark: '#040a1e', light: '#ffffff' } }))
+      .then((svg) => { if (!weg) setQr(svg) }).catch(() => {})
+    return () => { weg = true }
+  }, [url])
+  if (!url) return null
+  const account = url.replace(/^https:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '')
+  return (
+    <section className="instagram-blok" aria-label={t('Volg Fonos op Instagram')}>
+      {qr && <div className="qr" dangerouslySetInnerHTML={{ __html: qr }} aria-hidden="true" />}
+      <div>
+        <h2>{t('Volg Fonos op Instagram')}</h2>
+        <p className="muted">{t('Scan de code met je telefoon.')}</p>
+        <p className="account">@{account}</p>
+      </div>
+    </section>
   )
 }

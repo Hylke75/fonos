@@ -162,6 +162,7 @@ export const STANDAARD_INSTELLINGEN = {
   spotify_generieke_artiesten: ['Reggae', 'Geluidseffecten', 'Disco Samba', 'Diverse artiesten', 'Various Artists'], // nooit automatisch koppelen
   nieuwsbrief_bewaar_dagen: 30, // aanmeldingen zoveel dagen na export automatisch verwijderen (0 = nooit)
   bumper_video_url: '', // rustscherm: de bumper (B&G-logo wordt Fonos-logo)
+  instagram_url: '', // homepagina van de kiosk: QR-code naar het Instagram-account van Fonos (leeg = niet tonen)
   // Redactioneel blok bovenaan de homepagina van de kiosk (concepttekst; aan te passen in Beheer → Instellingen).
   redactie_titel: 'Welkom in de Luisterbar',
   redactie_tekst: 'Hier vind je het unieke deel van de collectie van Beeld & Geluid dat je op aanvraag kunt beluisteren: tienduizenden lp’s, van Nederlandstalige parels tot klassieke opnames. Zoek een plaat, vraag hem aan en een medewerker brengt hem naar je speler.',
