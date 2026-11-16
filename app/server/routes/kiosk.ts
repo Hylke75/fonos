@@ -67,7 +67,7 @@ kiosk.post('/aanvraag', async (c) => {
       bezetAfsluiten: !!body.bezetAfsluiten,
     })
     // Pushmelding naar de medewerkers (verbetering 9).
-    await stuurPush({ titel: `Nieuwe aanvraag ${bestelnrTekst(r.bestelnummer)}`, tekst: `Platenspeler ${r.platenspeler} · ${body.titels?.length ?? 0} ${body.titels?.length === 1 ? 'titel' : 'titels'}`, url: '/medewerker', tag: `aanvraag-${r.bestelnummer}` })
+    await stuurPush({ titel: `Nieuwe aanvraag ${bestelnrTekst(r.bestelnummer)}`, tekst: `Draaitafel ${r.platenspeler} · ${body.titels?.length ?? 0} ${body.titels?.length === 1 ? 'titel' : 'titels'}`, url: '/medewerker', tag: `aanvraag-${r.bestelnummer}` })
     return c.json({ bestelnummer: r.bestelnummer, platenspeler: r.platenspeler })
   } catch (e) {
     if (e instanceof AanvraagFout) return c.json({ fout: e.message, code: e.code, ...e.extra }, 409)

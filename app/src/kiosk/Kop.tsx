@@ -78,9 +78,9 @@ export function SpelerKnop() {
   if (!speler) return null
   const cd = spelerSoort === 'cd'
   return (
-    <button className="speler-knop" onClick={vraagVrijgeven} aria-label={cd ? t('Cd-speler {n} vrijgeven', { n: speler.nummer }) : t('Platenspeler {n} vrijgeven', { n: speler.nummer })}>
+    <button className="speler-knop" onClick={vraagVrijgeven} aria-label={cd ? t('Cd-speler {n} vrijgeven', { n: speler.nummer }) : t('Draaitafel {n} vrijgeven', { n: speler.nummer })}>
       {/* Op een telefoon alleen het icoon en het nummer; de knop heeft een volledig aria-label. */}
-      <Disc3 size={20} /> <span className="lang">{cd ? t('Cd-speler') : t('Speler')} </span><b>{speler.nummer}</b><span className="lang"> · {t('Vrijgeven')}</span>
+      <Disc3 size={20} /> <span className="lang">{cd ? t('Cd-speler') : t('Draaitafel')} </span><b>{speler.nummer}</b><span className="lang"> · {t('Vrijgeven')}</span>
     </button>
   )
 }

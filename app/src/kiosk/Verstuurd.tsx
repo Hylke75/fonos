@@ -31,11 +31,11 @@ export function Verstuurd() {
         <h1>{t('Aanvraag verstuurd!')}</h1>
         <div className="label">{t('Bestelnummer')}</div>
         <div className="nummer-groot">{bestelnr(st.bestelnummer)}</div>
-        <p>{t('Een FONOS-medewerker haalt de platen voor je op.')}<br />{t('Deze worden gebracht naar platenspeler {n}.', { n: st.platenspeler })}</p>
+        <p>{t('Een FONOS-medewerker haalt de platen voor je op.')}<br />{t('Deze worden gebracht naar draaitafel {n}.', { n: st.platenspeler })}</p>
         {st.aangemeld && <p className="tekst-klein" style={{ fontSize: 17, marginTop: -12 }}>{config.instellingen.nieuwsbrief_bevestigingsmail ? t('Je ontvangt een e-mail om je aanmelding voor de nieuwsbrief te bevestigen.') : t('Je bent aangemeld voor de nieuwsbrief van Fonos.')}</p>}
         <div className="verstuurd-knoppen">
           <button className="btn btn-ghost btn-l" onClick={() => { klaar.current = true; verder() }}>{t('Verder zoeken')}</button>
-          <button className="btn btn-ghost btn-l" onClick={() => { klaar.current = true; vraagVrijgeven() }}>{t('Platenspeler vrijgeven')}</button>
+          <button className="btn btn-ghost btn-l" onClick={() => { klaar.current = true; vraagVrijgeven() }}>{t('Draaitafel vrijgeven')}</button>
         </div>
       </div>
     </div>

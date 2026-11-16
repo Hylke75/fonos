@@ -118,7 +118,7 @@ export function Aanvraag() {
 
           <div className="card spelers-paneel">
             <div className="mijn-speler">
-              <h2>{t('Je platenspeler')}</h2>
+              <h2>{t('Je draaitafel')}</h2>
               <div className="nr">{speler}</div>
               <p className="muted" style={{ margin: 0 }}>{t('Een medewerker brengt je platen hierheen.')}</p>
             </div>

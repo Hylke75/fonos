@@ -183,7 +183,7 @@ export function KioskApp() {
     wisSessie('/')
     laadConfig()
   }, [wisSessie, laadConfig])
-  kwijtRef.current = () => { wisSessie('/'); toast(t('Je platenspeler is vrijgegeven. Kies opnieuw een platenspeler om verder te gaan.')) }
+  kwijtRef.current = () => { wisSessie('/'); toast(t('Je draaitafel is vrijgegeven. Kies opnieuw een draaitafel om verder te gaan.')) }
 
   // Inactiviteit. Met platenspeler: na N minuten "Ben je er nog?" (vasthouden of vrijgeven), zonder reactie
   // na M minuten automatisch vrijgeven. Zonder platenspeler: na korte tijd terug naar het rustscherm.
@@ -292,10 +292,10 @@ export function KioskApp() {
             <div className="card modal">
               <div className="aftellen" aria-live="polite">{Math.floor(spelerVraag / 60)}:{String(spelerVraag % 60).padStart(2, '0')}</div>
               <h2 id="spelervraag">{t('Ben je er nog?')}</h2>
-              <p>{t('Je hebt de app een tijdje niet gebruikt. Wil je platenspeler {n} vasthouden of vrijgeven? Zonder antwoord wordt de speler automatisch vrijgegeven.', { n: speler.nummer })}</p>
+              <p>{t('Je hebt de app een tijdje niet gebruikt. Wil je draaitafel {n} vasthouden of vrijgeven? Zonder antwoord wordt de speler automatisch vrijgegeven.', { n: speler.nummer })}</p>
               <div className="knoppen">
-                <button className="btn btn-pink btn-l" onClick={houdVast}>{t('Platenspeler vasthouden')}</button>
-                <button className="btn btn-ghost btn-l" onClick={() => geefVrij('bezoeker')}>{t('Platenspeler vrijgeven')}</button>
+                <button className="btn btn-pink btn-l" onClick={houdVast}>{t('Draaitafel vasthouden')}</button>
+                <button className="btn btn-ghost btn-l" onClick={() => geefVrij('bezoeker')}>{t('Draaitafel vrijgeven')}</button>
               </div>
             </div>
           </div>
@@ -303,7 +303,7 @@ export function KioskApp() {
         {vrijgevenVraag && speler && (
           <div className="modal-achter" role="alertdialog" aria-labelledby="vrijgeven">
             <div className="card modal">
-              <h2 id="vrijgeven">{ctx.spelerSoort === 'cd' ? t('Cd-speler {n} vrijgeven?', { n: speler.nummer }) : t('Platenspeler {n} vrijgeven?', { n: speler.nummer })}</h2>
+              <h2 id="vrijgeven">{ctx.spelerSoort === 'cd' ? t('Cd-speler {n} vrijgeven?', { n: speler.nummer }) : t('Draaitafel {n} vrijgeven?', { n: speler.nummer })}</h2>
               <p>{t('Klaar met luisteren? Laat je platen bij de speler liggen; een medewerker haalt ze op. Je aanvraaglijst wordt gewist.')}</p>
               <div className="knoppen">
                 <button className="btn btn-pink btn-l" onClick={() => geefVrij('bezoeker')}>{t('Ja, vrijgeven')}</button>

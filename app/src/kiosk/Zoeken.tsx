@@ -141,8 +141,8 @@ export function Zoeken() {
         {((spelerSoort === 'lp' && p.get('drager') === 'CD') || (spelerSoort === 'cd' && p.get('drager') === 'LP')) && (
           <div className="melding-blok speler-melding" role="status">
             {spelerSoort === 'lp'
-              ? t('Je zit aan een platenspeler. Cd’s kun je daar niet afspelen. Wil je cd’s luisteren, geef je speler dan vrij en kies de cd-speler.')
-              : t('Je zit aan de cd-speler. Platen kun je daar niet afspelen. Wil je platen luisteren, geef je speler dan vrij en kies een platenspeler.')}
+              ? t('Je zit aan een draaitafel. Cd’s kun je daar niet afspelen. Wil je cd’s luisteren, geef je speler dan vrij en kies de cd-speler.')
+              : t('Je zit aan de cd-speler. Platen kun je daar niet afspelen. Wil je platen luisteren, geef je speler dan vrij en kies een draaitafel.')}
           </div>
         )}
 

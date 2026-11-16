@@ -43,7 +43,7 @@ export function Wachtlijst() {
 
   if (!wacht) return (
     <div className="wachtlijst">
-      <p className="melding">{t('Alle platenspelers zijn nu bezet.')}</p>
+      <p className="melding">{t('Alle draaitafels zijn nu bezet.')}</p>
       <button className="btn btn-pink btn-l" disabled={bezig} onClick={aanmelden}><Clock size={22} /> {t('Zet me op de wachtlijst')}</button>
     </div>
   )
@@ -51,17 +51,17 @@ export function Wachtlijst() {
     <>
       <div className="wachtlijst" role="status" aria-live="polite">
         <h2>{t('Je staat op de wachtlijst')}</h2>
-        {s?.status === 'wacht' && <p>{t('Nummer {n} op de wachtlijst. Laat deze tablet open; je krijgt hier een seintje zodra er een platenspeler vrij is.', { n: s.positie })}</p>}
+        {s?.status === 'wacht' && <p>{t('Nummer {n} op de wachtlijst. Laat deze tablet open; je krijgt hier een seintje zodra er een draaitafel vrij is.', { n: s.positie })}</p>}
         <button className="btn btn-ghost" onClick={afmelden}>{t('Van de wachtlijst af')}</button>
       </div>
       {s?.status === 'opgeroepen' && (
         <div className="modal-achter" role="alertdialog" aria-labelledby="wacht-kop">
           <div className="card modal">
             <div className="aftellen" aria-live="polite">{Math.floor(s.seconden / 60)}:{String(s.seconden % 60).padStart(2, '0')}</div>
-            <h2 id="wacht-kop">{t('Platenspeler {n} is vrij voor jou!', { n: s.speler })}</h2>
+            <h2 id="wacht-kop">{t('Draaitafel {n} is vrij voor jou!', { n: s.speler })}</h2>
             <p>{t('We houden hem nog {tijd} voor je vast.', { tijd: `${Math.floor(s.seconden / 60)}:${String(s.seconden % 60).padStart(2, '0')}` })}</p>
             <div className="knoppen">
-              <button className="btn btn-pink btn-l" disabled={bezig} onClick={() => kies(s.speler)}>{t('Kies platenspeler {n}', { n: s.speler })}</button>
+              <button className="btn btn-pink btn-l" disabled={bezig} onClick={() => kies(s.speler)}>{t('Kies draaitafel {n}', { n: s.speler })}</button>
               <button className="btn btn-ghost btn-l" onClick={afmelden}>{t('Nee, dank je')}</button>
             </div>
           </div>

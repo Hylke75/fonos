@@ -51,17 +51,17 @@ export async function kiesSpeler(nummer: number, wie: Wie = BEZOEKER, wachtToken
   const r = await tx(async () => {
     await run('SELECT pg_advisory_xact_lock(4711)')
     const p = await get<any>('SELECT * FROM platenspelers WHERE nummer = ?', nummer)
-    if (!p || !p.actief) throw new AanvraagFout('speler_inactief', 'Deze platenspeler is nu niet beschikbaar. Kies een andere.')
-    if (p.sessie || (await openAanvraagVoorSpeler(nummer))) throw new AanvraagFout('bezet', 'Deze platenspeler is bezet. Kies een andere.')
+    if (!p || !p.actief) throw new AanvraagFout('speler_inactief', 'Deze draaitafel is nu niet beschikbaar. Kies een andere.')
+    if (p.sessie || (await openAanvraagVoorSpeler(nummer))) throw new AanvraagFout('bezet', 'Deze draaitafel is bezet. Kies een andere.')
     // Gereserveerd voor iemand op de wachtlijst (verbetering 8): alleen die bezoeker mag hem nu kiezen.
     const res = await reserveringVoor(nummer, wachtToken)
-    if (res === 'anders') throw new AanvraagFout('bezet', 'Deze platenspeler is gereserveerd voor iemand op de wachtlijst. Kies een andere.')
+    if (res === 'anders') throw new AanvraagFout('bezet', 'Deze draaitafel is gereserveerd voor iemand op de wachtlijst. Kies een andere.')
     const sessie = randomUUID()
     await run('UPDATE platenspelers SET sessie = ?, bezet_sinds = nu(), laatst_actief = nu() WHERE nummer = ?', sessie, nummer)
     if (res === 'eigen' || wachtToken) await losReserveringIn(nummer, wachtToken)
     return sessie
   })
-  await log(wie, 'platenspeler gekozen', { type: 'platenspeler', id: nummer, label: `Platenspeler ${nummer}` })
+  await log(wie, 'platenspeler gekozen', { type: 'platenspeler', id: nummer, label: `Draaitafel ${nummer}` })
   await aanvragenGewijzigd()
   return r
 }
@@ -84,7 +84,7 @@ export async function geefSpelerVrij(nummer: number, door: 'bezoeker' | 'medewer
   const r = await run('UPDATE platenspelers SET sessie = NULL, bezet_sinds = NULL, laatst_actief = NULL WHERE nummer = ? AND sessie IS NOT NULL', nummer)
   if (r.changes || open.length) await verdeel().catch(() => {}) // eerstvolgende op de wachtlijst
   if (r.changes || open.length) {
-    await log(wie, 'platenspeler vrijgegeven', { type: 'platenspeler', id: nummer, label: `Platenspeler ${nummer}`, nieuw: door })
+    await log(wie, 'platenspeler vrijgegeven', { type: 'platenspeler', id: nummer, label: `Draaitafel ${nummer}`, nieuw: door })
     await aanvragenGewijzigd()
     if (open.length) await beschikbaarheidGewijzigd()
   }
@@ -135,16 +135,16 @@ export async function dienAanvraagIn(inv: { platenspeler: number; sessie?: strin
     // Eén aanvraag tegelijk reserveren: zo kunnen twee tablets niet hetzelfde exemplaar krijgen.
     await run('SELECT pg_advisory_xact_lock(4711)')
     const speler = await get<any>('SELECT * FROM platenspelers WHERE nummer = ?', inv.platenspeler)
-    if (!speler || !speler.actief) throw new AanvraagFout('speler_inactief', 'Deze platenspeler is nu niet beschikbaar.')
+    if (!speler || !speler.actief) throw new AanvraagFout('speler_inactief', 'Deze draaitafel is nu niet beschikbaar.')
     // Alleen wie de speler vasthoudt, kan erop aanvragen.
-    if (!inv.sessie || speler.sessie !== inv.sessie) throw new AanvraagFout('speler_kwijt', 'Je platenspeler is vrijgegeven. Kies opnieuw een platenspeler.')
+    if (!inv.sessie || speler.sessie !== inv.sessie) throw new AanvraagFout('speler_kwijt', 'Je draaitafel is vrijgegeven. Kies opnieuw een draaitafel.')
     const open = await openAanvraagVoorSpeler(inv.platenspeler)
     if (open && !inv.bezetAfsluiten) throw new AanvraagFout('bezet', 'Je hebt nog een aanvraag lopen. Wil je die afsluiten? De platen daarvan gaan dan terug.')
     // Een cd kun je niet op een platenspeler afspelen, en vinyl niet op een cd-speler.
     const soort = cdSpelers(inst).has(inv.platenspeler) ? 'cd' : 'lp'
     const dragers = await all<{ id: number; drager: string | null }>('SELECT id, d_drager AS drager FROM titels WHERE id = ANY(?::int[])', `{${titels.map((t) => Math.trunc(t.titel_id)).join(',')}}`)
     const verkeerd = dragers.filter((d) => !pastOpSpeler(d.drager, soort)).map((d) => d.id)
-    if (verkeerd.length) throw new AanvraagFout('verkeerde_speler', soort === 'cd' ? 'Je zit aan een cd-speler. Platen kun je daar niet afspelen; haal ze uit je aanvraag of kies een platenspeler.' : 'Je zit aan een platenspeler. Cd\'s kun je daar niet afspelen; haal ze uit je aanvraag of kies de cd-speler.', { titelIds: verkeerd })
+    if (verkeerd.length) throw new AanvraagFout('verkeerde_speler', soort === 'cd' ? 'Je zit aan een cd-speler. Platen kun je daar niet afspelen; haal ze uit je aanvraag of kies een draaitafel.' : 'Je zit aan een draaitafel. Cd\'s kun je daar niet afspelen; haal ze uit je aanvraag of kies de cd-speler.', { titelIds: verkeerd })
     const keuze: { titel_id: number; exemplaar_id: number }[] = []
     const niet: number[] = []
     for (const t of titels) {
@@ -164,8 +164,8 @@ export async function dienAanvraagIn(inv: { platenspeler: number; sessie?: strin
   await beschikbaarheidGewijzigd(resultaat.titelIds)
   if (inst.melding_email_aan && inst.melding_email_adres) {
     // Open punt O-9: optionele e-mailmelding, standaard uit.
-    await stuurMail(inst.melding_email_adres, `Nieuwe aanvraag #${String(resultaat.bestelnummer).padStart(3, '0')} voor platenspeler ${resultaat.platenspeler}`,
-      `Er is een nieuwe aanvraag (#${String(resultaat.bestelnummer).padStart(3, '0')}) voor platenspeler ${resultaat.platenspeler} met ${resultaat.titelIds.length} titel(s).`).catch(() => {})
+    await stuurMail(inst.melding_email_adres, `Nieuwe aanvraag #${String(resultaat.bestelnummer).padStart(3, '0')} voor draaitafel ${resultaat.platenspeler}`,
+      `Er is een nieuwe aanvraag (#${String(resultaat.bestelnummer).padStart(3, '0')}) voor draaitafel ${resultaat.platenspeler} met ${resultaat.titelIds.length} titel(s).`).catch(() => {})
   }
   return resultaat
 }
