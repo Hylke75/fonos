@@ -298,4 +298,10 @@ const EN: Record<string, string> = {
   'Uit alle genres': 'From all genres',
   'In dit genre is nu niets beschikbaar. Kies een ander genre.': 'Nothing is available in this genre right now. Choose another genre.',
   '{naam}: gekozen. Tik om dit genre uit te zetten': '{naam}: selected. Tap to turn this genre off',
+  // Oneindig scrollen
+  'Meer titels laden…': 'Loading more titles…',
+  'Je hebt alle {n} titels gezien.': "You've seen all {n} titles.",
+  // Filteren en sorteren
+  'Filteren': 'Filter',
+  'Wis filters': 'Clear filters',
 }
