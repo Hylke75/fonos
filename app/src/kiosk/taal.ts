@@ -287,4 +287,10 @@ const EN: Record<string, string> = {
   'Nee, ik luister nog': "No, I'm still listening",
   'Je platenspeler is vrijgegeven. Kies opnieuw een platenspeler om verder te gaan.': 'Your record player has been released. Choose a record player again to continue.',
   '"{titel}" is helaas niet beschikbaar{reden}. Kies gerust iets anders.': 'Unfortunately "{titel}" is not available{reden}. Feel free to choose something else.',
+  // Zijbalk met je aanvraag
+  '{n} van {max}': '{n} of {max}',
+  'Je hebt nog niets gekozen.': "You haven't chosen anything yet.",
+  'Tik bij een plaat op Aanvragen om hem hier te zetten.': 'Tap Request on a record to add it here.',
+  '{n} bewaard voor later': '{n} saved for later',
+  'Aanvraag afronden': 'Complete request',
 }

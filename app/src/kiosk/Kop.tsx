@@ -30,13 +30,15 @@ export function TekstKnop() {
   )
 }
 
+/** Opent de zijbalk met je aanvraag; de teller springt even op als er iets bijkomt. */
 export function MandKnop() {
-  const { mand } = useKiosk()
+  const { mand, mandOpen, zetMandOpen } = useKiosk()
   return (
-    <Link to="/aanvraag" className="icon-btn mand-knop" aria-label={t('Jouw aanvraag, {n} titels', { n: mand.length })}>
+    <button className="icon-btn mand-knop" onClick={() => zetMandOpen(!mandOpen)} aria-expanded={mandOpen} aria-haspopup="dialog"
+      aria-label={t('Jouw aanvraag, {n} titels', { n: mand.length })}>
       <ShoppingBag size={22} />
-      {mand.length > 0 && <span className="teller">{mand.length}</span>}
-    </Link>
+      {mand.length > 0 && <span className="teller" key={mand.length}>{mand.length}</span>}
+    </button>
   )
 }
 

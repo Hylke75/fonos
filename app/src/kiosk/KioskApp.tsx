@@ -13,6 +13,7 @@ import { Aanvraag } from './Aanvraag'
 import { Verstuurd } from './Verstuurd'
 import { Lezen } from './Lezen'
 import { SpelerKiezen, SpelerViaLink } from './SpelerKiezen'
+import { MandZijbalk } from './MandZijbalk'
 import { Laden } from '../components/Iconen'
 import { t, zetTaal, type Taal } from './taal'
 import { useVerbinding } from '../api'
@@ -51,6 +52,9 @@ type Ctx = {
   kiesTaal: (t: Taal) => void
   groot: boolean
   zetGroot: (g: boolean) => void
+  /** Zijbalk met de aanvraag ("winkelwagen"). */
+  mandOpen: boolean
+  zetMandOpen: (open: boolean) => void
 }
 export type Speler = { nummer: number; sessie: string }
 export type MijnAanvraag = { id: number; bestelnummer: number; status: string; items: { id: number; titel_id: number; titel: string; artiesten: string | null; hoes: string | null; verwijderd: number; reden: string | null }[] }
@@ -84,6 +88,7 @@ export function KioskApp() {
   useEffect(() => { try { groot ? sessionStorage.setItem('fonos-groot', '1') : sessionStorage.removeItem('fonos-groot') } catch { /* niets */ } }, [groot])
   const verbinding = useVerbinding()
   const [bewaard, setBewaard] = useState<Item[]>([])
+  const [mandOpen, zetMandOpen] = useState(false)
   const gemeld = useRef(new Set<number>())
   const nav = useNavigate()
   const loc = useLocation()
@@ -160,6 +165,7 @@ export function KioskApp() {
     setSpelerState(null)
     setMijnAanvraag(null)
     setBewaard([])
+    zetMandOpen(false)
     gemeld.current.clear()
     kiesTaal('nl')
     setGroot(false)
@@ -213,7 +219,7 @@ export function KioskApp() {
 
   const ctx = useMemo<Ctx | null>(() => config && {
     config, mand, beschikbaar, versie, toast, wisSessie, speler, mijnAanvraag,
-    spelerSoort: speler ? config.platenspelers.find((p) => p.nummer === speler.nummer)?.soort ?? 'lp' : null, bewaard, taal, kiesTaal, groot, zetGroot: setGroot, wacht, zetWacht,
+    spelerSoort: speler ? config.platenspelers.find((p) => p.nummer === speler.nummer)?.soort ?? 'lp' : null, bewaard, taal, kiesTaal, groot, zetGroot: setGroot, wacht, zetWacht, mandOpen, zetMandOpen,
     bewaar: (i) => { setBewaard((b) => (b.some((x) => x.titel_id === i.titel_id) ? b : [...b, i])); toast(t('{titel} bewaard voor later', { titel: i.titel })) },
     vergeet: (id) => setBewaard((b) => b.filter((x) => x.titel_id !== id)),
     kiesSpeler: async (nummer, wachtlijst) => {
@@ -237,7 +243,7 @@ export function KioskApp() {
     },
     verwijder: (id) => setMand((m) => m.filter((x) => x.titel_id !== id)),
     leegMand: () => setMand([]),
-  }, [config, mand, beschikbaar, versie, toast, wisSessie, speler, laadConfig, mijnAanvraag, bewaard, taal, kiesTaal, groot, wacht])
+  }, [config, mand, beschikbaar, versie, toast, wisSessie, speler, laadConfig, mijnAanvraag, bewaard, taal, kiesTaal, groot, wacht, mandOpen])
 
   if (!ctx) return <div className="kiosk"><Laden tekst={onbereikbaar ? t('De Luisterbar is even niet bereikbaar. We proberen het zo opnieuw…') : t('De Luisterbar wordt geladen…')} /></div>
 
@@ -306,6 +312,7 @@ export function KioskApp() {
             </div>
           </div>
         )}
+        {speler && <MandZijbalk />}
         {melding && <div className="toast" role="status">{melding}</div>}
       </div>
     </KioskCtx.Provider>

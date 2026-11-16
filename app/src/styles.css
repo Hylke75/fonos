@@ -917,3 +917,27 @@ pre.rapport { background: #07111f; border: 1px solid var(--line); border-radius:
   .kh-titel { font-size: 18px; }
   .keuzehulp .knoppen .btn { flex: 1 1 100%; }
 }
+
+/* Zijbalk met je aanvraag ("winkelwagen") */
+.zijbalk-achter { position: fixed; inset: 0; z-index: 90; background: rgba(2, 5, 16, .55); backdrop-filter: blur(2px); }
+.zijbalk { position: absolute; top: 0; right: 0; bottom: 0; width: min(440px, 100%); border-radius: 0; display: flex; flex-direction: column; padding: 24px; gap: 16px; box-shadow: -24px 0 48px rgba(0, 0, 0, .5); animation: zijbalk-in .18s ease-out; }
+@keyframes zijbalk-in { from { transform: translateX(32px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .zijbalk { animation: none; } }
+.zijbalk-kop { display: flex; align-items: center; gap: 12px; }
+.zijbalk-kop h2 { margin: 0; font-size: 24px; display: flex; align-items: center; gap: 10px; }
+.zijbalk-kop .muted { margin-right: auto; }
+.zijbalk-leeg { flex: 1; font-size: 17px; }
+.zijbalk-lijst { list-style: none; margin: 0; padding: 0; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.zijbalk-lijst li { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+.zijbalk-lijst li.weg .cover { opacity: .45; }
+.zijbalk-titel { flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; background: none; border: 0; padding: 0; text-align: left; color: inherit; min-height: 64px; }
+.zijbalk-titel .cover { width: 64px; }
+.zijbalk-titel > span { display: flex; flex-direction: column; min-width: 0; }
+.zijbalk-titel .a { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.zijbalk-titel .t { color: var(--muted); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.zijbalk-titel .niet { color: var(--red); font-size: 13px; font-weight: 600; margin-top: 2px; }
+.zijbalk-bewaard { margin: 0; }
+.zijbalk-voet { display: flex; flex-direction: column; gap: 10px; }
+.mand-knop .teller { animation: teller-tik .3s ease-out; }
+@keyframes teller-tik { 0% { transform: scale(1.6); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .mand-knop .teller { animation: none; } }
