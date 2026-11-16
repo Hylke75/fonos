@@ -30,11 +30,17 @@ export type TitelRij = {
 const gelijk = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
 
 /** De getoonde waarden: de Fonos-waarde als die er is, anders de Muziekweb-waarde. */
+/** Plaatsvervangers die Muziekweb als artiest gebruikt; die tonen we niet en tellen niet mee bij zoeken. */
+const GEEN_ARTIEST = /^(no artist|unknown artist|onbekende? artiest)$/i
+export const echteArtiesten = (a?: string[]) => (a ?? []).filter((x) => x && !GEEN_ARTIEST.test(x.trim()))
+
 export function getoond(rij: Pick<TitelRij, 'mw_data' | 'fonos_data'>): TitelVelden {
   const mw = json<TitelVelden>(rij.mw_data, {})
   const fonos = json<TitelVelden>(rij.fonos_data, {})
   const out: any = {}
   for (const { veld } of TWEELAAGS) out[veld] = veld in fonos ? (fonos as any)[veld] : (mw as any)[veld]
+  if (Array.isArray(out.artiesten)) out.artiesten = echteArtiesten(out.artiesten)
+  if (Array.isArray(out.tracklist)) out.tracklist = out.tracklist.map((t: any) => (t.uitvoerenden ? { ...t, uitvoerenden: t.uitvoerenden.filter((u: string) => !GEEN_ARTIEST.test(u.replace(/\s*\(.*\)$/, '').trim())) } : t))
   return out
 }
 

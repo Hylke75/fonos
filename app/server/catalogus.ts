@@ -8,11 +8,16 @@ import { platenspelers } from './aanvragen.ts'
 
 /** Beschikbaar: minstens één exemplaar in de collectie dat niet in een open aanvraag zit. */
 const BESCHIKBAAR = `EXISTS (SELECT 1 FROM exemplaren e WHERE e.titel_id = t.id AND e.status = 'in_collectie' AND e.id NOT IN (${OPEN_ITEMS_SQL}))`
-const KAART = `t.id, t.d_titel AS titel, COALESCE(t.d_artiesten, '') AS artiesten, t.d_jaar AS jaar, t.d_drager AS drager, t.d_hoes AS hoes,
+const KAART = `t.id, t.d_titel AS titel, COALESCE(t.d_artiesten, '') AS artiesten, t.d_jaar AS jaar, t.d_drager AS drager, CASE WHEN t.hoes_kapot = 1 THEN NULL ELSE t.d_hoes END AS hoes,
   (${BESCHIKBAAR}) AS beschikbaar`
+/** Als KAART, maar beschikbaar als een exemplaar van deze titel óf van een andere uitgave (zelfde sleutel) vrij is. */
+const KAART_GROEP = `t.id, t.d_titel AS titel, COALESCE(t.d_artiesten, '') AS artiesten, t.d_jaar AS jaar, t.d_drager AS drager, CASE WHEN t.hoes_kapot = 1 THEN NULL ELSE t.d_hoes END AS hoes,
+  EXISTS (SELECT 1 FROM exemplaren e JOIN titels t3 ON t3.id = e.titel_id WHERE (t3.id = t.id OR (t3.d_sleutel = t.d_sleutel AND t.d_sleutel NOT LIKE '|%' AND t.d_sleutel NOT LIKE '%|'))
+    AND t3.zichtbaar = 1 AND e.status = 'in_collectie' AND e.id NOT IN (${OPEN_ITEMS_SQL})) AS beschikbaar`
 const GENRES_IN = `t.d_genres::jsonb ?| ARRAY(SELECT jsonb_array_elements_text(?::jsonb))`
 
-export type Kaart = { id: number; titel: string; artiesten: string; jaar: number | null; drager: string | null; hoes: string | null; beschikbaar: boolean }
+export type Kaart = { id: number; titel: string; artiesten: string; jaar: number | null; drager: string | null; hoes: string | null; beschikbaar: boolean; reden?: Reden }
+export type Reden = { soort: 'nummer' | 'componist' | 'met' | 'label'; tekst: string }
 const kaarten = (rijen: any[]): Kaart[] => rijen.map((r) => ({ ...r, titel: r.titel ?? '', beschikbaar: !!r.beschikbaar }))
 const intArray = (ids: number[]) => `{${ids.map((i) => Math.trunc(i)).join(',')}}`
 
@@ -69,8 +74,9 @@ export async function kioskConfig() {
     instellingen: {
       max_titels: inst.max_titels, inactiviteit_sec: inst.inactiviteit_sec, waarschuwing_sec: inst.waarschuwing_sec,
       speler_inactief_min: Number(inst.speler_inactief_min), speler_reactie_min: Number(inst.speler_reactie_min),
-      bevestiging_sec: inst.bevestiging_sec, fonos_paginas: inst.fonos_paginas, privacy_tekst: inst.privacy_tekst,
+      bevestiging_sec: inst.bevestiging_sec, fonos_paginas: inst.fonos_paginas, privacy_tekst: inst.privacy_tekst, privacy_tekst_en: inst.privacy_tekst_en,
       privacy_url: inst.privacy_url, nl_weergave: inst.nl_weergave, bumper_video_url: inst.bumper_video_url,
+      redactie_titel: inst.redactie_titel, redactie_tekst: inst.redactie_tekst, redactie_titel_en: inst.redactie_titel_en, redactie_tekst_en: inst.redactie_tekst_en,
       vindcode_label: VINDCODE_LABEL[inst.vindcode_bron] ?? 'Vindcode',
       nieuwsbrief: inst.nieuwsbrief_koppeling !== 'geen', // O-4: zonder koppeling geen aanmelding
       nieuwsbrief_bevestigingsmail: inst.nieuwsbrief_koppeling === 'webhook', // het externe systeem stuurt de bevestiging
@@ -149,6 +155,11 @@ export async function zoekCatalogus(f: Filters) {
     const nl = ks.find((k) => k.nederlands) ?? (await knoppen(false)).find((k) => k.nederlands)
     if (nl) w.push({ sql: GENRES_IN, p: [JSON.stringify(nl.genres)] })
   }
+  // Dubbele titels (zelfde titel en eerste artiest) als één album tonen (verbetering 15): alleen de eerste tonen;
+  // de albumpagina laat de exemplaren van de andere uitgaven ook zien.
+  const samenvoegen = !!(await instellingen()).dubbelen_samenvoegen
+  if (samenvoegen) w.push({ sql: `NOT (t.soort = 'populair' AND t.d_sleutel NOT LIKE '|%' AND t.d_sleutel NOT LIKE '%|' AND EXISTS (SELECT 1 FROM titels t2 WHERE t2.d_sleutel = t.d_sleutel AND t2.id < t.id AND t2.zichtbaar = 1 AND t2.soort = 'populair'
+      AND EXISTS (SELECT 1 FROM exemplaren e2 WHERE e2.titel_id = t2.id AND e2.status = 'in_collectie')))`, p: [] })
   // Alleen wat nu beschikbaar is: minstens één exemplaar in de collectie dat niet in een open aanvraag zit.
   if (f.beschikbaar) w.push({ sql: `EXISTS (SELECT 1 FROM exemplaren e WHERE e.titel_id = t.id AND e.status = 'in_collectie' AND e.id NOT IN (${OPEN_ITEMS_SQL}))`, p: [] })
   const waar = (lijst: Voorwaarde[]) => ({ sql: lijst.map((x) => `(${x.sql})`).join(' AND '), p: lijst.flatMap((x) => x.p) })
@@ -189,12 +200,60 @@ export async function zoekCatalogus(f: Filters) {
   const per = Math.min(f.per ?? 48, 120)
   const pagina = Math.max(1, f.pagina ?? 1)
   const totaal = (await get<any>(`SELECT COUNT(*)::int AS n FROM titels t WHERE ${b.sql}`, ...b.p))!.n
-  const titels = kaarten(await all(`SELECT ${KAART} FROM titels t WHERE ${b.sql} ORDER BY ${orde.sql} LIMIT ? OFFSET ?`, ...b.p, ...orde.p, per, (pagina - 1) * per))
+  const titels = kaarten(await all(`SELECT ${samenvoegen ? KAART_GROEP : KAART} FROM titels t WHERE ${b.sql} ORDER BY ${orde.sql} LIMIT ? OFFSET ?`, ...b.p, ...orde.p, per, (pagina - 1) * per))
+  if (volgorde && f.q) await voegRedenenToe(titels, f.q)
   return {
     totaal, pagina, per, sort, titels,
     facetten: { dragers, decennia, jaren, subfilters },
     knop: knop ? { id: knop.id, naam: knop.naam, kleur: knop.kleur } : null,
   }
+}
+
+/** Waarom een titel gevonden is, als dat niet uit de titel of de artiest blijkt: "Nummer: Suzanne", "Componist: …". */
+export function zoekreden(v: ReturnType<typeof getoond>, q: string): Reden | undefined {
+  const woorden = normaliseer(q).split(' ').filter((w) => w.length >= 2)
+  if (!woorden.length) return undefined
+  const raakt = (tekst?: string | null) => { const n = normaliseer(tekst ?? '').split(' '); return woorden.every((w) => n.some((x) => x.startsWith(w))) }
+  const deels = (tekst?: string | null) => { const n = normaliseer(tekst ?? '').split(' '); return woorden.some((w) => n.some((x) => x.startsWith(w))) }
+  if (raakt([v.titel, ...(v.artiesten ?? [])].join(' '))) return undefined
+  const tracks = v.tracklist ?? []
+  const nummer = tracks.find((t) => raakt(t.titel)) ?? tracks.find((t) => deels(t.titel))
+  if (nummer) return { soort: 'nummer', tekst: nummer.titel }
+  const componist = [...(v.componisten ?? []), ...tracks.flatMap((t) => t.componisten ?? [])].find((c) => deels(c))
+  if (componist) return { soort: 'componist', tekst: componist }
+  const uitvoerende = [...(v.uitvoerenden ?? []), ...tracks.flatMap((t) => t.uitvoerenden ?? [])].find((u) => deels(u.replace(/\s*\(.*\)$/, '')))
+  if (uitvoerende) return { soort: 'met', tekst: uitvoerende.replace(/\s*\(.*\)$/, '') }
+  if (deels(v.label)) return { soort: 'label', tekst: v.label! }
+  return undefined
+}
+
+async function voegRedenenToe(titels: Kaart[], q: string) {
+  if (!titels.length) return
+  const rijen = await all<any>('SELECT id, mw_data, fonos_data FROM titels WHERE id = ANY(?::int[])', intArray(titels.map((t) => t.id)))
+  const perId = new Map(rijen.map((r) => [r.id, r]))
+  for (const t of titels) {
+    const r = perId.get(t.id)
+    if (r) { const reden = zoekreden(getoond(r), q); if (reden) t.reden = reden }
+  }
+}
+
+// ------------------------------------------------------------------ "Ook luisteren" op de albumpagina
+
+/** Andere beschikbare platen van dezelfde artiest(en), aangevuld met dezelfde stijl. Niet: andere uitgaven van dit album. */
+export async function ookLuisteren(id: number, n = 10): Promise<{ artiest: Kaart[]; stijl: Kaart[]; stijlnaam: string | null }> {
+  const t = await get<any>('SELECT id, d_personen, d_genres, d_sleutel FROM titels WHERE id = ?', id)
+  if (!t) return { artiest: [], stijl: [], stijlnaam: null }
+  const personen = (JSON.parse(t.d_personen || '[]') as string[]).slice(0, 3)
+  const artiest = personen.length ? kaarten(await all(`SELECT ${KAART} FROM titels t
+      WHERE t.d_personen::jsonb ?| ?::text[] AND t.id <> ? AND t.d_sleutel IS DISTINCT FROM ? AND ${ZICHTBAAR_SQL} AND ${BESCHIKBAAR}
+      ORDER BY t.d_hoes IS NULL, t.d_jaar DESC NULLS LAST, t.id LIMIT ?`, `{${personen.map((p) => `"${p.replace(/["\\]/g, '')}"`).join(',')}}`, id, t.d_sleutel, n)) : []
+  const stijlnaam = (JSON.parse(t.d_genres || '[]') as string[]).find((g) => !/^(nederlands product|diverse)/i.test(g)) ?? null
+  const gezien = [id, ...artiest.map((k) => k.id)]
+  // Willekeurig maar herhaalbaar per album: zo verandert de rij niet bij elke keer openen.
+  const stijl = stijlnaam ? kaarten(await all(`SELECT ${KAART} FROM titels t
+      WHERE t.d_genres::jsonb @> jsonb_build_array(?::text) AND NOT (t.id = ANY(?::int[])) AND t.d_sleutel IS DISTINCT FROM ? AND t.d_hoes IS NOT NULL AND ${ZICHTBAAR_SQL} AND ${BESCHIKBAAR}
+      ORDER BY md5(t.id::text || ?), t.id LIMIT ?`, stijlnaam, intArray(gezien), t.d_sleutel, String(id), n)) : []
+  return { artiest, stijl, stijlnaam }
 }
 
 // ------------------------------------------------------------------ albumpagina (7.6)
@@ -204,6 +263,8 @@ export async function album(id: number, voorbeeld = false) {
   if (!t) return null
   if (!t.in_app && !voorbeeld) return null // niet zichtbaar in de app
   const v = getoond(t)
+  // Hoes laadt niet (nachtelijke controle): de kiosk toont de vervangende afbeelding.
+  if (t.hoes_kapot) { delete v.hoes_voor; delete v.hoes_achter }
   const vc = await vindcoder()
   // "Beschikbare exemplaren": de exemplaren van deze titel en van andere uitgaven (zelfde titel en artiest).
   const uitgaven = await all<any>(`SELECT t.id, t.d_drager, t.d_jaar FROM titels t WHERE t.d_sleutel = ? AND t.id <> ? AND ${ZICHTBAAR_SQL} LIMIT 5`, t.d_sleutel, id)
@@ -240,6 +301,35 @@ export async function verrasMe(knopId?: number): Promise<number | null> {
       AND t.id >= (SELECT floor(random() * (MAX(id) + 1))::int FROM titels) ORDER BY t.id LIMIT 1`, ...p)
     ?? await get<{ id: number }>(`SELECT t.id FROM titels t WHERE t.d_hoes IS NOT NULL ${w} AND ${ZICHTBAAR_SQL} AND ${BESCHIKBAAR} ORDER BY t.id LIMIT 1`, ...p)
   return r?.id ?? null
+}
+
+/** Keuzehulp "Dokter Vinyl": een beschikbare plaat met hoes bij de antwoorden van de bezoeker.
+ *  voorkeur = genreknoppen van best tot minst passend (de kiosk rekent dat uit de antwoorden uit).
+ *  durf 0: de best passende stijl. durf 1: de op één na beste, en geen veelgevraagde platen.
+ *  durf 2: een stijl buiten de top drie (verrassend, maar nog steeds een echte stijl uit de collectie).
+ *  Lukt het niet in het gekozen decennium, dan zonder decennium; lukt het helemaal niet, dan "Verras me". */
+export async function keuzehulp(inv: { voorkeur: number[]; decennium?: number | null; durf: number; eerder?: number[]; speler?: 'lp' | 'cd' | null }) {
+  const ks = (await knoppen()).filter((k) => k.genres.length)
+  const opVolgorde = [...inv.voorkeur.map((id) => ks.find((k) => k.id === id)).filter((k): k is Knop => !!k), ...ks.filter((k) => !inv.voorkeur.includes(k.id))]
+  const durf = Math.max(0, Math.min(2, Math.floor(Number(inv.durf) || 0)))
+  const kandidaten = durf === 0 ? [opVolgorde[0]] : durf === 1 ? [opVolgorde[1] ?? opVolgorde[0]] : opVolgorde.slice(3).length ? opVolgorde.slice(3) : opVolgorde
+  const knop = kandidaten[Math.floor(Math.random() * kandidaten.length)] as Knop | undefined
+  const eerder = intArray(inv.eerder ?? [])
+  // Alleen wat op de gekozen speler past: cd's op de cd-speler, vinyl op een platenspeler.
+  const drager = inv.speler === 'cd' ? `AND t.d_drager = 'CD'` : inv.speler === 'lp' ? `AND t.d_drager IS DISTINCT FROM 'CD'` : ''
+  const populair = durf > 0 ? `AND t.id NOT IN (SELECT i.titel_id FROM aanvraag_items i GROUP BY i.titel_id ORDER BY count(*) DESC LIMIT 100)` : ''
+  const zoekEen = async (dec: number | null) => !knop ? undefined : get<Kaart>(`SELECT ${KAART} FROM titels t WHERE t.d_hoes IS NOT NULL AND COALESCE(t.hoes_kapot, 0) = 0 AND ${GENRES_IN} AND ${ZICHTBAAR_SQL} AND ${BESCHIKBAAR}
+      AND NOT (t.id = ANY(?::int[])) ${drager} ${populair} ${dec ? 'AND t.d_jaar >= ? AND t.d_jaar < ?' : ''} ORDER BY random() LIMIT 1`, JSON.stringify(knop.genres), eerder, ...(dec ? [dec, dec + 10] : []))
+  const dec = inv.decennium ? Math.floor(Number(inv.decennium) / 10) * 10 : null
+  let titel = (dec ? await zoekEen(dec) : undefined) ?? await zoekEen(null)
+  const inDecennium = !!titel && !!dec && titel.jaar != null && titel.jaar >= dec && titel.jaar < dec + 10
+  const viaStijl = !!titel
+  if (!titel && !drager) { const id = await verrasMe(); titel = id ? await get<Kaart>(`SELECT ${KAART} FROM titels t WHERE t.id = ?`, id) : undefined }
+  // Laatste redmiddel: een beschikbare plaat zonder hoes (een collectie zonder hoezen, zoals in de tests).
+  if (!titel) titel = await get<Kaart>(`SELECT ${KAART} FROM titels t WHERE ${ZICHTBAAR_SQL} AND ${BESCHIKBAAR} AND NOT (t.id = ANY(?::int[])) ${drager} ORDER BY random() LIMIT 1`, eerder)
+  if (!titel) return null
+  // Zonder passende stijl (geen genreknoppen gekoppeld) wordt het een willekeurige plaat: stijl = null.
+  return { titel: { ...titel, beschikbaar: !!titel.beschikbaar }, stijl: viaStijl && knop ? knop.naam : null, favoriet: opVolgorde[0]?.naam ?? null, inDecennium }
 }
 
 /** Per titel: beschikbaar, en de vindcode van het exemplaar dat bij aanvragen gereserveerd zou worden. */

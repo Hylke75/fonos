@@ -7,6 +7,7 @@ import { Laden } from '../components/Iconen'
 import { useKiosk } from './KioskApp'
 import { KioskKopTerug } from './Kop'
 import { AlbumKaart, type Kaart } from './Kaarten'
+import { t } from './taal'
 
 export function Artiest() {
   const { naam = '' } = useParams()
@@ -19,10 +20,10 @@ export function Artiest() {
       <main className="kiosk-inhoud">
         <div className="resultaten-kop">
           <h1 style={{ fontSize: 38 }}>{naam}</h1>
-          {d && <span className="muted">{d.titels.length} {d.titels.length === 1 ? 'titel' : 'titels'} in de collectie</span>}
+          {d && <span className="muted">{t(d.titels.length === 1 ? '{n} titel in de collectie' : '{n} titels in de collectie', { n: d.titels.length })}</span>}
         </div>
         {!d && <Laden />}
-        {d && d.titels.length === 0 && <div className="leeg"><h2>Geen titels gevonden</h2></div>}
+        {d && d.titels.length === 0 && <div className="leeg"><h2>{t('Geen titels gevonden')}</h2></div>}
         {d && <div className="raster">{d.titels.map((k) => <AlbumKaart key={k.id} k={k} voet />)}</div>}
       </main>
     </div>

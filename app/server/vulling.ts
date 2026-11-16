@@ -10,6 +10,9 @@ import { exportDelen, leesExportDeel, leesFonotheekDb, type CollectieItem, type 
 import { koppelLosseExemplaren, leegRapport, rondImportAf, startImport, verwerkRecords } from './importers/muziekweb-verwerk.ts'
 import { analyseer, leesBestand, voerDoor, type Regel } from './importers/collectie.ts'
 import { maakGebruiker, hashWachtwoord } from './auth.ts'
+import { verversWeergave } from './titels.ts'
+import { stuurMail } from './mail.ts'
+import { ontvangers } from './meldingen.ts'
 import { SYSTEEM } from './log.ts'
 
 const WIE = { ...SYSTEEM, naam: 'Eerste vulling' }
@@ -51,14 +54,33 @@ export async function laadFonotheek(pad = process.env.FONOS_FONOTHEEK_DB ?? FONO
   const importId = await startImport(WIE)
   const rapport = leegRapport(importId)
   let batch: MwRecord[] = []
+  // Rapport (verbetering 16): welke albums zijn nieuw ten opzichte van de vorige versie.
+  const eerder = (await get<{ n: number }>('SELECT COUNT(*)::int AS n FROM mw_dump'))!.n > 0
+  const nieuw: string[] = []
+  let nieuweAlbums = 0
+  const verwerk = async (b: MwRecord[]) => {
+    if (eerder) {
+      const bekend = new Set((await all<{ t: string }>('SELECT titelnummer AS t FROM mw_dump WHERE titelnummer = ANY(?::text[])', `{${b.map((x) => `"${x.titelnummer.replace(/"/g, '')}"`).join(',')}}`)).map((x) => x.t))
+      for (const x of b) if (!bekend.has(x.titelnummer)) { nieuweAlbums++; if (nieuw.length < 50) nieuw.push(`${x.titelnummer} ${x.velden.titel ?? ''}`.trim()) }
+    }
+    await verwerkRecords(b, importId, rapport)
+  }
   for await (const r of leesFonotheekDb(pad, { opCollectie: (c) => { collectie = c } })) {
     batch.push(r)
-    if (batch.length >= 2000) { await verwerkRecords(batch, importId, rapport); batch = []; voortgang(`  ${rapport.in_dump} albums`) }
+    if (batch.length >= 2000) { await verwerk(batch); batch = []; voortgang(`  ${rapport.in_dump} albums`) }
   }
-  if (batch.length) await verwerkRecords(batch, importId, rapport)
+  if (batch.length) await verwerk(batch)
   const r = await rondImportAf(importId, rapport, WIE, `fonotheek.db (${hash.slice(0, 8)})`, true)
   voortgang(`fonotheek.db: ${r.in_dump} albums, ${r.bijgewerkt} bijgewerkt, ${r.ongewijzigd} ongewijzigd, ${r.nieuwe_conflicten} conflicten (${Math.round((Date.now() - t0) / 1000)} s)`)
-  await laadCollectieUitFonotheek(collectie, voortgang)
+  const nieuweExemplaren = await laadCollectieUitFonotheek(collectie, voortgang)
+  const verslag = { ...r, nieuwe_albums: nieuweAlbums, nieuwe_albums_voorbeelden: nieuw, nieuwe_exemplaren: nieuweExemplaren, bron: `fonotheek.db (${hash.slice(0, 8)})`, volledig: true, afgerond: true }
+  await run('UPDATE imports SET rapport = ? WHERE id = ?', JSON.stringify(verslag), importId)
+  // Beheerders krijgen het verslag ook per e-mail (alleen als er een vorige versie was).
+  if (eerder) await stuurMail(await ontvangers(), 'Nieuwe versie van fonotheek.db ingelezen', [
+    `fonotheek.db (versie ${hash.slice(0, 8)}) is ingelezen.`, '',
+    `Nieuwe albums: ${nieuweAlbums}`, `Bijgewerkte titels: ${r.bijgewerkt}`, `Nieuwe titels in de kiosk: ${r.nieuwe_titels}`, `Nieuwe exemplaren: ${nieuweExemplaren}`, `Nieuwe conflicten met Fonos-waarden: ${r.nieuwe_conflicten}`,
+    ...(nieuw.length ? ['', 'Bijvoorbeeld:', ...nieuw.slice(0, 20).map((x) => `- ${x}`)] : []), '', 'Het volledige verslag staat onder Beheer → Importeren → Historie.',
+  ].join('\n')).catch((e) => console.error('[vulling] verslag mailen mislukt', e))
   await run("INSERT INTO planner (taak, datum) VALUES (?, ?) ON CONFLICT (taak) DO UPDATE SET datum = excluded.datum", `fonotheek:${hash}`, new Date().toISOString().slice(0, 10))
   return true
 }
@@ -66,8 +88,8 @@ export async function laadFonotheek(pad = process.env.FONOS_FONOTHEEK_DB ?? FONO
 /** Gebruikscollectie uit fonotheek.db. Is er al een echte collectie, dan komen alleen nieuwe exemplaren mét titelnummer erbij;
  *  wijzigingen en afvoeren van bestaande exemplaren lopen via de bulkimport in het beheer (10.6).
  *  Regels zonder titelnummer worden niet ingelezen (zoals eerder de OUD-tabbladen). */
-export async function laadCollectieUitFonotheek(items: CollectieItem[], voortgang = console.log) {
-  if (!items.length) return
+export async function laadCollectieUitFonotheek(items: CollectieItem[], voortgang = console.log): Promise<number> {
+  if (!items.length) return 0
   const echte = (await get<{ n: number }>("SELECT COUNT(*)::int AS n FROM exemplaren WHERE bron IS DISTINCT FROM 'demo'"))!.n
   if (!echte) {
     await run("DELETE FROM exemplaren WHERE bron = 'demo' AND id NOT IN (SELECT exemplaar_id FROM aanvraag_items)")
@@ -78,10 +100,11 @@ export async function laadCollectieUitFonotheek(items: CollectieItem[], voortgan
   const bestaand = new Set((await all<{ o: string }>('SELECT objectnummer AS o FROM exemplaren')).map((r) => r.o))
   const regels: Regel[] = items.filter((i) => i.titelnummer && !bestaand.has(i.objectnummer))
     .map((i, n) => ({ objectnummer: i.objectnummer, titelnummer: i.titelnummer, vindcode: null, bron: `fonotheek.db: ${i.lijst}`, regel: n + 1 }))
-  if (!regels.length) { voortgang('Gebruikscollectie: geen nieuwe exemplaren'); return }
+  if (!regels.length) { voortgang('Gebruikscollectie: geen nieuwe exemplaren'); return 0 }
   const a = await analyseer(regels, 'fonotheek.db')
   const r = await voerDoor(a.token, ['nieuw', 'onbekend', 'dubbel'], WIE)
   voortgang(`Gebruikscollectie: ${JSON.stringify(r.doorgevoerd)}, ${r.nieuwe_titels} nieuwe titels`)
+  return (r.doorgevoerd.nieuw ?? 0) + (r.doorgevoerd.onbekend ?? 0)
 }
 
 /** Spotify-koppelingen uit spotify/koppelingen.jsonl.gz (gemaakt met scripts/spotify-export.ts).
@@ -97,6 +120,15 @@ export async function laadSpotifyKoppelingen(pad = join(ROOT, '..', 'spotify', '
     n += r.changes
   }
   voortgang(`Spotify-koppelingen: ${n} nieuw van ${regels.length} in het bestand`)
+}
+
+/** Eenmalige correctie: plaatsvervangers als "No Artist" uit de afgeleide kolommen en de zoekindex halen. */
+export async function herstelPlaatsvervangers(voortgang = console.log) {
+  if (await get("SELECT 1 FROM planner WHERE taak = 'herstel:geen-artiest'")) return
+  const ids = await all<{ id: number }>(`SELECT id FROM titels WHERE mw_data ~* '"(no artist|unknown artist)"' OR fonos_data ~* '"(no artist|unknown artist)"'`)
+  for (const { id } of ids) await verversWeergave(id)
+  await run("INSERT INTO planner (taak, datum) VALUES ('herstel:geen-artiest', ?) ON CONFLICT (taak) DO NOTHING", new Date().toISOString().slice(0, 10))
+  voortgang(`Plaatsvervangers voor artiesten verwijderd bij ${ids.length} titels`)
 }
 
 /** Eenmalige correctie: "voor 1988" gaf ten onrechte jaar 1988. */

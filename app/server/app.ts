@@ -9,7 +9,9 @@ import { versies } from './events.ts'
 import { COOKIE, gebruikerBijToken } from './auth.ts'
 import { tik, tikTerloops } from './planner.ts'
 import { openBlob } from './opslag.ts'
-import { run } from './db.ts'
+import { get, run } from './db.ts'
+import { meld } from './meldingen.ts'
+import BEVEILIGING from '../shared/beveiligingsheaders.json' with { type: 'json' }
 
 export const app = new Hono()
 
@@ -25,18 +27,63 @@ function kioskGezien(naam: string | undefined, pagina: string | undefined) {
 }
 
 app.use('*', async (c, next) => {
-  tikTerloops()
+  await tikTerloops()
   const dec = (v?: string) => { try { return v ? decodeURIComponent(v) : undefined } catch { return undefined } }
   kioskGezien(dec(c.req.header('x-fonos-tablet')), dec(c.req.header('x-fonos-pagina')))
   await next()
-  c.header('X-Content-Type-Options', 'nosniff')
-  c.header('Referrer-Policy', 'same-origin')
-  if (c.req.path.startsWith('/api/')) c.header('Cache-Control', 'no-store')
+  // Beveiligingsheaders (IT-beleid 5.6); op Vercel zet scripts/bouw-vercel.mjs dezelfde voor de statische bestanden.
+  // Lokaal (http) geen HSTS en geen upgrade-insecure-requests.
+  const https = new URL(c.req.url).protocol === 'https:' || c.req.header('x-forwarded-proto') === 'https'
+  for (const [k, v] of Object.entries(BEVEILIGING)) {
+    if (k === 'Strict-Transport-Security' && !https) continue
+    c.header(k, k === 'Content-Security-Policy' && !https ? v.replace(/;\s*upgrade-insecure-requests/, '') : v)
+  }
+  if (c.req.path.startsWith('/api/') && !c.res.headers.get('Cache-Control')) c.header('Cache-Control', 'no-store')
 })
 
-app.onError((e, c) => {
+app.onError(async (e, c) => {
   console.error(e)
+  // IT-beleid 6.2: beheerders krijgen hooguit één melding per dag over serverfouten. Afwachten: op Vercel stopt de functie na het antwoord.
+  await meld('serverfout', 'Fout in de Fonotheek-server', `${c.req.method} ${c.req.path}\n\n${e?.stack ?? e?.message ?? e}`).catch(() => {})
+  // Wachten op het platenspeler-slot duurde te lang (lock_timeout): een begrijpelijke melding in plaats van de databasefout.
+  if ((e as any)?.code === '55P03') return c.json({ fout: 'Het lukt even niet. Probeer het zo nog eens.', code: 'druk' }, 503)
   return c.json({ fout: e.message || 'Er ging iets mis' }, 500)
+})
+
+/** Fouten uit de browser (verbetering 20). Geen login nodig (kiosk); begrensd en zonder persoonsgegevens. */
+let foutenDitUur = { uur: '', n: 0 }
+app.post('/api/fout', async (c) => {
+  const uur = new Date().toISOString().slice(0, 13)
+  if (foutenDitUur.uur !== uur) foutenDitUur = { uur, n: 0 }
+  if (++foutenDitUur.n > 200) return c.json({ ok: false }, 429)
+  const b = await c.req.json<{ bericht?: string; bron?: string; stack?: string; pagina?: string }>().catch(() => ({} as any))
+  const bericht = String(b.bericht ?? '').slice(0, 500)
+  if (!bericht) return c.json({ ok: false }, 400)
+  const dec = (v?: string) => { try { return v ? decodeURIComponent(v) : null } catch { return null } }
+  const tablet = dec(c.req.header('x-fonos-tablet'))?.slice(0, 60) ?? null
+  console.error(`[browser] ${tablet ?? 'onbekend apparaat'} ${b.pagina ?? ''}: ${bericht}`)
+  await run('INSERT INTO browserfouten (tablet, pagina, bericht, bron, stack, apparaat) VALUES (?, ?, ?, ?, ?, ?)',
+    tablet, String(b.pagina ?? '').slice(0, 200), bericht, String(b.bron ?? '').slice(0, 300), String(b.stack ?? '').slice(0, 3000), (c.req.header('user-agent') ?? '').slice(0, 200))
+  await run("DELETE FROM browserfouten WHERE tijd < nu('-30 days')")
+  // Komt dezelfde fout vaak voor (5× in een uur), dan een storingsmelding (hooguit één per dag per fout).
+  const n = (await get<{ n: number }>("SELECT COUNT(*)::int AS n FROM browserfouten WHERE bericht = ? AND tijd > nu('-1 hour')", bericht))!.n
+  if (n >= 5) await meld(`browserfout:${bericht.slice(0, 80)}`, 'Herhaalde fout in de browser', `Deze fout trad het afgelopen uur ${n} keer op${tablet ? ` (laatst op ${tablet})` : ''}:\n\n${bericht}\n${b.bron ?? ''}\n\n${String(b.stack ?? '').slice(0, 1500)}`)
+  return c.json({ ok: true })
+})
+
+/** Voor de monitoring van B&G (IT-beleid 6.2): 200 als alles goed is, 503 bij een probleem. Geen gevoelige gegevens. */
+app.get('/api/gezond', async (c) => {
+  const controles: Record<string, boolean> = {}
+  try { await get('SELECT 1'); controles.database = true } catch { controles.database = false }
+  if (controles.database) {
+    const cron = await get<{ datum: string }>("SELECT datum FROM planner WHERE taak = 'cron:laatst'").catch(() => null)
+    if (cron) {
+      controles.nachtelijke_taak = !!(await get("SELECT 1 FROM planner WHERE taak = 'cron:laatst' AND datum > nu('-26 hours')").catch(() => null))
+      controles.backup = !!(await get("SELECT 1 FROM backups WHERE status = 'gelukt' AND tijd > nu('-26 hours')").catch(() => null))
+    }
+  }
+  const ok = Object.values(controles).every(Boolean)
+  return c.json({ ok, controles, tijd: new Date().toISOString() }, ok ? 200 : 503)
 })
 
 app.route('/api/kiosk', kiosk)

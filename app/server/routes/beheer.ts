@@ -5,8 +5,9 @@ import { join, extname, basename } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import JSZip from 'jszip'
-import { vereist, wie, maakGebruiker, maakResetToken } from '../auth.ts'
+import { vereist, wie, maakGebruiker, maakResetToken, isVerlopen } from '../auth.ts'
 import { all, get, run, insert, json, instellingen, zetInstelling, syncPlatenspelers, STANDAARD_INSTELLINGEN, tx, ROOT } from '../db.ts'
+import { periode, statistieken, statistiekenCsv } from '../statistieken.ts'
 import { log } from '../log.ts'
 import { TWEELAAGS, ROLLEN, REDENEN_AFVOER, type TitelVelden } from '../../shared/velden.ts'
 import {
@@ -16,6 +17,7 @@ import { album, wisConfigCache, wisHomeCache, selectieIds } from '../catalogus.t
 import { analyseer, leesBestand, samenvatting, voerDoor, type Categorie } from '../importers/collectie.ts'
 import { exportDelen, fonotheekAlbums, leesExportDeel, leesFonotheekCollectie, leesFonotheekDb, leesStandaard, type MwRecord } from '../importers/muziekweb-lezers.ts'
 import { FONOTHEEK_DB, laadCollectieUitFonotheek } from '../vulling.ts'
+import { googleAan } from '../google.ts'
 import { laatsteImportId, leegRapport, rondImportAf, startImport, verwerkRecords } from '../importers/muziekweb-verwerk.ts'
 import { backupAdres, leesBackup, maakBackup, maakZip, vergelijk, zetTerug } from '../backup.ts'
 import { beschikbaarheidGewijzigd, catalogusVersieOmhoog } from '../events.ts'
@@ -421,6 +423,17 @@ beheer.post('/import/muziekweb/afronden', alleenBeheerder, async (c) => {
   } catch (e: any) { return fout(c, e.message) }
 })
 
+// ------------------------------------------------------------------ statistieken (verbetering 12)
+
+beheer.get('/statistieken', async (c) => {
+  const p = periode(c.req.query('van'), c.req.query('tot'))
+  return c.json(await statistieken(p.van, p.tot))
+})
+beheer.get('/statistieken.csv', async (c) => {
+  const p = periode(c.req.query('van'), c.req.query('tot'))
+  return new Response(await statistiekenCsv(p.van, p.tot), { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="fonotheek-aanvragen-${p.van}-${p.tot}.csv"` } })
+})
+
 // ------------------------------------------------------------------ datakwaliteit (10.7)
 
 const TOELICHTING = `COALESCE(NULLIF(t.fonos_data::jsonb->>'toelichting', ''), NULLIF(t.mw_data::jsonb->>'toelichting', ''))`
@@ -435,6 +448,11 @@ const DQ: Record<string, { naam: string; sql: (laatste: number) => string }> = {
       SELECT t.id, NULL, NULL, t.titelnummer FROM titels t LEFT JOIN mw_dump m ON m.titelnummer = t.titelnummer
         WHERE t.titelnummer IS NOT NULL AND (m.titelnummer IS NULL OR m.import_id < ${Math.trunc(laatste)})` },
   zonder_hoes: { naam: 'Titels zonder hoes', sql: () => `SELECT t.id AS titel_id, t.titelnummer, t.d_titel AS titel, t.d_artiesten AS artiesten FROM titels t WHERE t.d_hoes IS NULL` },
+  // Verbetering 14: de nachtelijke controle vond geen afbeelding op het hoesadres.
+  kapotte_hoezen: { naam: 'Hoezen die niet (meer) laden', sql: () => `SELECT t.id AS titel_id, t.titelnummer, t.d_titel AS titel, t.d_artiesten AS artiesten, t.hoes_gecontroleerd_op AS gecontroleerd FROM titels t WHERE t.hoes_kapot = 1 AND t.d_hoes IS NOT NULL` },
+  // Verbetering 15: zelfde titel en eerste artiest, ander titelnummer (persingen, heruitgaven, of dubbel ingevoerd).
+  dubbele_titels: { naam: 'Dubbele titels (zelfde titel en artiest, populair)', sql: () => `SELECT MIN(t.id) AS titel_id, MIN(t.d_titel) AS titel, MIN(t.d_artiesten) AS artiesten, COUNT(*)::int AS aantal, string_agg(t.titelnummer, ', ' ORDER BY t.titelnummer) AS titelnummers
+      FROM titels t WHERE t.zichtbaar = 1 AND t.soort = 'populair' AND t.d_sleutel IS NOT NULL AND t.d_sleutel NOT LIKE '|%' AND t.d_sleutel NOT LIKE '%|' GROUP BY t.d_sleutel HAVING COUNT(*) > 1 ORDER BY COUNT(*) DESC, MIN(t.d_titel)` },
   zonder_toelichting: { naam: 'Titels zonder toelichting', sql: () => `SELECT t.id AS titel_id, t.titelnummer, t.d_titel AS titel, t.d_artiesten AS artiesten FROM titels t WHERE ${TOELICHTING} IS NULL` },
   ongekoppelde_genres: { naam: 'Muziekweb-genres zonder genreknop', sql: () => `SELECT j.value AS genre, COUNT(*)::int AS aantal FROM titels t, jsonb_array_elements_text(t.d_genres::jsonb) j(value)
       WHERE j.value NOT IN (SELECT mw_genre FROM genre_koppelingen) GROUP BY j.value ORDER BY aantal DESC` },
@@ -451,6 +469,17 @@ async function dqTellingen() {
 beheer.get('/datakwaliteit', async (c) => {
   const t = await dqTellingen()
   return c.json(Object.entries(DQ).map(([sleutel, v]) => ({ sleutel, naam: v.naam, aantal: t[sleutel] })))
+})
+
+/** Hele lijst als CSV (werklijst, verbetering 13), met een link naar Muziekweb bij elk titelnummer. */
+beheer.get('/datakwaliteit-csv/:lijst', async (c) => {
+  const l = DQ[c.req.param('lijst')]
+  if (!l) return fout(c, 'Onbekende lijst', 404)
+  const rijen = await all<any>(`SELECT * FROM (${l.sql(await laatsteImportId())}) x LIMIT 100000`)
+  const koppen = rijen[0] ? Object.keys(rijen[0]).filter((k) => !k.endsWith('_id')) : []
+  const cel = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
+  const csv = ['\ufeff' + [...koppen, 'muziekweb'].join(';'), ...rijen.map((r) => [...koppen.map((k) => cel(r[k])), cel(r.titelnummer ? `https://www.muziekweb.nl/Link/${r.titelnummer}` : '')].join(';'))].join('\n')
+  return new Response(csv, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="fonotheek-${c.req.param('lijst')}.csv"` } })
 })
 
 beheer.get('/datakwaliteit/:lijst', async (c) => {
@@ -628,6 +657,8 @@ beheer.put('/instellingen', alleenBeheerder, async (c) => {
       if (await get(`SELECT 1 FROM aanvragen WHERE platenspeler > ? AND status IN ('ingediend', 'uitgegeven')`, n)) return fout(c, 'Er lopen nog aanvragen op platenspelers boven dit aantal')
       await syncPlatenspelers(n)
     }
+    if (k === 'tweestaps' && !['iedereen', 'beheerders', 'uit'].includes(String(waarde))) return fout(c, 'Kies iedereen, beheerders of uit')
+    if (k === 'wachtwoord_inloggen' && waarde === false && !googleAan()) return fout(c, 'Inloggen via Google is nog niet ingesteld; zonder wachtwoord kan dan niemand meer inloggen.')
     await zetInstelling(k, waarde)
     await log(wie(c), 'instelling gewijzigd', { type: 'instelling', id: k, label: k, veld: k, oud: huidig[k], nieuw: waarde })
   }
@@ -639,7 +670,22 @@ beheer.put('/instellingen', alleenBeheerder, async (c) => {
 // ------------------------------------------------------------------ gebruikers (10.11), beheerder
 
 beheer.get('/gebruikers', alleenBeheerder, async (c) =>
-  c.json((await all<any>('SELECT id, email, naam, rollen, actief, aangemaakt FROM gebruikers ORDER BY naam')).map((g) => ({ ...g, rollen: json(g.rollen, []), actief: !!g.actief }))))
+  c.json((await all<any>(`SELECT id, email, naam, rollen, actief, aangemaakt, soort_account, geldig_tot, totp_aan, laatste_aanmelding
+    FROM gebruikers ORDER BY naam`)).map((g) => ({ ...g, rollen: json(g.rollen, []), actief: !!g.actief, totp_aan: !!g.totp_aan, verlopen: isVerlopen(g) }))))
+
+const SOORTEN_ACCOUNT = ['vast', 'tijdelijk', 'extern'] as const
+const eindVanHetJaar = () => `${new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Amsterdam' }).slice(0, 4)}-12-31`
+
+/** IT-beleid 8.4: vast = geen einddatum; tijdelijk = einde contract; extern = einde inhuur, uiterlijk 31 december. */
+export function accountGeldigheid(soort: string | undefined, geldigTot: string | null | undefined): { soort: string; geldig_tot: string | null } | { fout: string } {
+  const s = soort ?? 'vast'
+  if (!(SOORTEN_ACCOUNT as readonly string[]).includes(s)) return { fout: 'Onbekende soort account' }
+  if (s === 'vast') return { soort: s, geldig_tot: null }
+  const d = geldigTot || (s === 'extern' ? eindVanHetJaar() : '')
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return { fout: 'Vul de einddatum van het contract of de inhuur in' }
+  if (s === 'extern' && d > eindVanHetJaar()) return { fout: `Een extern account verloopt uiterlijk aan het eind van het kalenderjaar (${eindVanHetJaar()}).` }
+  return { soort: s, geldig_tot: d }
+}
 
 async function stuurReset(c: Context, gebruikerId: number, email: string, welkom: boolean) {
   const token = await maakResetToken(gebruikerId)
@@ -650,13 +696,16 @@ async function stuurReset(c: Context, gebruikerId: number, email: string, welkom
 }
 
 beheer.post('/gebruikers', alleenBeheerder, async (c) => {
-  const b = await c.req.json<{ email: string; naam: string; rollen: string[] }>()
+  const b = await c.req.json<{ email: string; naam: string; rollen: string[]; soort_account?: string; geldig_tot?: string | null }>()
   if (!b.email?.includes('@') || !b.naam?.trim()) return fout(c, 'Vul naam en e-mailadres in')
   const rollen = (b.rollen ?? []).filter((r) => (ROLLEN as readonly string[]).includes(r))
   if (!rollen.length) return fout(c, 'Kies minstens één rol')
+  const geldig = accountGeldigheid(b.soort_account, b.geldig_tot)
+  if ('fout' in geldig) return fout(c, geldig.fout)
   if (await get('SELECT id FROM gebruikers WHERE lower(email) = lower(?)', b.email.trim())) return fout(c, 'Dit e-mailadres bestaat al', 409)
   const id = await maakGebruiker({ email: b.email, naam: b.naam, rollen: rollen as any })
-  await log(wie(c), 'gebruiker aangemaakt', { type: 'gebruiker', id, label: b.naam, nieuw: { rollen } })
+  await run('UPDATE gebruikers SET soort_account = ?, geldig_tot = ? WHERE id = ?', geldig.soort, geldig.geldig_tot, id)
+  await log(wie(c), 'gebruiker aangemaakt', { type: 'gebruiker', id, label: b.naam, nieuw: { rollen, soort_account: geldig.soort, geldig_tot: geldig.geldig_tot } })
   await stuurReset(c, id, b.email.trim(), true).catch((e) => console.error(e))
   return c.json({ id })
 })
@@ -665,8 +714,17 @@ beheer.patch('/gebruiker/:id', alleenBeheerder, async (c) => {
   const id = Number(c.req.param('id'))
   const g = await get<any>('SELECT * FROM gebruikers WHERE id = ?', id)
   if (!g) return fout(c, 'Niet gevonden', 404)
-  const b = await c.req.json<{ naam?: string; rollen?: string[]; actief?: boolean }>()
+  const b = await c.req.json<{ naam?: string; rollen?: string[]; actief?: boolean; soort_account?: string; geldig_tot?: string | null }>()
   const ik = wie(c)
+  if (b.soort_account !== undefined || b.geldig_tot !== undefined) {
+    const geldig = accountGeldigheid(b.soort_account ?? g.soort_account, b.geldig_tot !== undefined ? b.geldig_tot : g.geldig_tot)
+    if ('fout' in geldig) return fout(c, geldig.fout)
+    if (id === ik.id && geldig.geldig_tot && geldig.geldig_tot < new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Amsterdam' })) return fout(c, 'Je kunt je eigen account niet laten verlopen')
+    if (geldig.soort !== g.soort_account || geldig.geldig_tot !== g.geldig_tot) {
+      await run('UPDATE gebruikers SET soort_account = ?, geldig_tot = ? WHERE id = ?', geldig.soort, geldig.geldig_tot, id)
+      await log(ik, 'veld gewijzigd', { type: 'gebruiker', id, label: g.naam, veld: 'geldigheid', oud: { soort_account: g.soort_account, geldig_tot: g.geldig_tot }, nieuw: geldig })
+    }
+  }
   if (id === ik.id && (b.actief === false || (b.rollen && !b.rollen.includes('beheerder')))) return fout(c, 'Je kunt je eigen beheerdersrechten niet intrekken')
   if (b.naam !== undefined && b.naam.trim() !== g.naam) { await run('UPDATE gebruikers SET naam = ? WHERE id = ?', b.naam.trim(), id); await log(ik, 'veld gewijzigd', { type: 'gebruiker', id, label: g.naam, veld: 'naam', oud: g.naam, nieuw: b.naam }) }
   if (b.rollen) {
@@ -689,6 +747,45 @@ beheer.post('/gebruiker/:id/reset', alleenBeheerder, async (c) => {
   await stuurReset(c, g.id, g.email, false)
   await log(wie(c), 'wachtwoord-reset verstuurd', { type: 'gebruiker', id: g.id, label: g.naam })
   return c.json({ ok: true })
+})
+
+beheer.post('/gebruiker/:id/tweestaps-reset', alleenBeheerder, async (c) => {
+  const g = await get<any>('SELECT * FROM gebruikers WHERE id = ?', Number(c.req.param('id')))
+  if (!g) return fout(c, 'Niet gevonden', 404)
+  await run('UPDATE gebruikers SET totp_geheim = NULL, totp_aan = 0, totp_laatste_stap = NULL WHERE id = ?', g.id)
+  await run('DELETE FROM sessies WHERE gebruiker_id = ?', g.id)
+  await log(wie(c), 'tweestapsverificatie gereset', { type: 'gebruiker', id: g.id, label: g.naam })
+  return c.json({ ok: true })
+})
+
+// ------------------------------------------------------------------ aanmeldingen (IT-beleid 6.3), beheerder
+
+function aanmeldingenFilter(q: Record<string, string>) {
+  const waar: string[] = []
+  const p: any[] = []
+  if (q.email) { waar.push('lower(email) LIKE lower(?)'); p.push(`%${q.email.trim()}%`) }
+  if (q.gelukt === '0' || q.gelukt === '1') { waar.push('gelukt = ?'); p.push(Number(q.gelukt)) }
+  if (q.van) { waar.push('tijd >= ?'); p.push(q.van) }
+  return { sql: waar.length ? `WHERE ${waar.join(' AND ')}` : '', p }
+}
+
+beheer.get('/aanmeldingen', alleenBeheerder, async (c) => {
+  const q = c.req.query()
+  const f = aanmeldingenFilter(q)
+  const pagina = Math.max(1, Number(q.pagina) || 1)
+  const rijen = await all<any>(`SELECT * FROM aanmeldingen ${f.sql} ORDER BY id DESC LIMIT 100 OFFSET ?`, ...f.p, (pagina - 1) * 100)
+  const totaal = (await get<any>(`SELECT COUNT(*)::int AS n FROM aanmeldingen ${f.sql}`, ...f.p))!.n
+  const mislukt24u = (await get<any>("SELECT COUNT(*)::int AS n FROM aanmeldingen WHERE gelukt = 0 AND tijd > nu('-1 day')"))!.n
+  return c.json({ rijen, totaal, pagina, mislukt_24u: mislukt24u })
+})
+
+beheer.get('/aanmeldingen.csv', alleenBeheerder, async (c) => {
+  const f = aanmeldingenFilter(c.req.query())
+  const rijen = await all<any>(`SELECT tijd, email, gelukt, methode, reden, ip, apparaat FROM aanmeldingen ${f.sql} ORDER BY id DESC LIMIT 100000`, ...f.p)
+  const cel = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
+  const csv = ['tijd (UTC);e-mail;gelukt;methode;reden;ip;apparaat', ...rijen.map((r) => [r.tijd, r.email, r.gelukt ? 'ja' : 'nee', r.methode, r.reden, r.ip, r.apparaat].map(cel).join(';'))].join('\n')
+  await log(wie(c), 'aanmeldingen geëxporteerd', { type: 'aanmeldingen', nieuw: { aantal: rijen.length } })
+  return new Response('\ufeff' + csv, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="aanmeldingen.csv"' } })
 })
 
 // ------------------------------------------------------------------ wijzigingslog (10.12)
@@ -917,6 +1014,10 @@ beheer.get('/status', alleenBeheerder, async (c) => {
     laatste_import: (await get<any>("SELECT tijd FROM imports WHERE soort = 'muziekweb' AND (rapport::jsonb->>'afgerond' = 'true' OR rapport::jsonb->>'bron' IS NOT NULL) ORDER BY id DESC LIMIT 1"))?.tijd ?? null,
     laatste_backup: (await get<any>("SELECT tijd, soort FROM backups WHERE status = 'gelukt' ORDER BY id DESC LIMIT 1")) ?? null,
     laatste_backup_fout: (await get<any>("SELECT tijd, fout FROM backups WHERE status <> 'gelukt' ORDER BY id DESC LIMIT 1")) ?? null,
+    browserfouten: await all<any>("SELECT bericht, COUNT(*)::int AS aantal, MAX(tijd) AS laatst, string_agg(DISTINCT COALESCE(tablet, '?'), ', ') AS tablets FROM browserfouten WHERE tijd > nu('-1 day') GROUP BY bericht ORDER BY MAX(tijd) DESC LIMIT 10"),
+    wachtlijst: (await get<any>("SELECT COUNT(*)::int AS n FROM wachtlijst WHERE status IN ('wacht', 'opgeroepen')"))!.n,
+    kapotte_hoezen: (await get<any>('SELECT COUNT(*)::int AS n FROM titels WHERE hoes_kapot = 1'))!.n,
+    push_apparaten: (await get<any>('SELECT COUNT(*)::int AS n FROM push_abonnementen'))!.n,
     laatste_cron: (await get<any>("SELECT datum FROM planner WHERE taak = 'cron:laatst'"))?.datum ?? null,
     kiosks: await all("SELECT naam, laatst_gezien, pagina, laatst_gezien > nu('-2 minutes') AS online FROM kiosks ORDER BY naam"),
     platenspelers: await all('SELECT nummer, actief, sessie IS NOT NULL AS vastgehouden, bezet_sinds, laatst_actief FROM platenspelers ORDER BY nummer'),

@@ -8,7 +8,8 @@ import { Melding, Toggle } from './ui'
 type Veld = { k: string; label: string; soort: 'getal' | 'tekst' | 'tijd' | 'lang' | 'keuze' | 'bool'; opties?: [string, string][]; uitleg?: string }
 const GROEPEN: { naam: string; velden: Veld[] }[] = [
   { naam: 'Luisterbar', velden: [
-    { k: 'aantal_platenspelers', label: 'Aantal platenspelers', soort: 'getal' },
+    { k: 'aantal_platenspelers', label: 'Aantal spelers (platenspelers en cd-spelers samen)', soort: 'getal' },
+    { k: 'cd_spelers', label: 'Nummers van de cd-spelers', soort: 'tekst', uitleg: 'Gescheiden door komma’s, bijvoorbeeld 5. De andere nummers zijn platenspelers. Op een platenspeler kun je geen cd aanvragen en andersom.' },
     { k: 'max_titels', label: 'Maximum titels per aanvraag', soort: 'getal', uitleg: 'Open punt O-5: 3 of 5.' },
     { k: 'sluitingstijd', label: 'Sluitingstijd (open aanvragen automatisch afsluiten)', soort: 'tijd', uitleg: 'Vul de openingstijden van Fonos in.' },
     ...(['ma', 'di', 'wo', 'do', 'vr', 'za', 'zo'] as const).map((d) => ({ k: `sluitingstijd_${d}`, label: `Sluitingstijd ${{ ma: 'maandag', di: 'dinsdag', wo: 'woensdag', do: 'donderdag', vr: 'vrijdag', za: 'zaterdag', zo: 'zondag' }[d]}`, soort: 'tijd' as const, uitleg: 'Leeg = de algemene sluitingstijd.' })),
@@ -19,15 +20,22 @@ const GROEPEN: { naam: string; velden: Veld[] }[] = [
   { naam: 'Kiosk', velden: [
     { k: 'speler_inactief_min', label: 'Platenspeler: "Ben je er nog?" na (minuten zonder gebruik)', soort: 'getal' },
     { k: 'speler_reactie_min', label: 'Platenspeler: automatisch vrijgeven na (minuten zonder reactie)', soort: 'getal' },
+    { k: 'wachtlijst_reserveer_min', label: 'Wachtlijst: vrijgekomen speler vasthouden voor de eerste wachtende (minuten)', soort: 'getal' },
     { k: 'inactiviteit_sec', label: 'Zonder gekozen platenspeler: sessie wissen na (seconden)', soort: 'getal' },
     { k: 'waarschuwing_sec', label: 'Zonder gekozen platenspeler: waarschuwing vooraf (seconden)', soort: 'getal' },
     { k: 'bevestiging_sec', label: 'Duur bevestigingsscherm (seconden)', soort: 'getal' },
+    { k: 'dubbelen_samenvoegen', label: 'Dubbele titels als één album tonen', soort: 'bool', uitleg: 'Populaire titels met dezelfde titel en artiest maar een ander titelnummer (persingen, heruitgaven); klassieke opnames blijven apart. De albumpagina toont dan de exemplaren van alle uitgaven. Zie Datakwaliteit → Dubbele titels.' },
     { k: 'vaak_periode_dagen', label: 'Periode "Vaak aangevraagd" (dagen)', soort: 'getal' },
     { k: 'spotify_aan', label: 'Spotify-speler en QR-code op de albumpagina', soort: 'bool', uitleg: 'Ook het menu Spotify-koppelingen. Bestaande koppelingen blijven bewaard.' },
     { k: 'bumper_video_url', label: 'Bumper op het rustscherm (adres van de video)', soort: 'tekst', uitleg: 'Leeg = het welkomstscherm "De Fonotheek".' },
+    { k: 'redactie_titel', label: 'Homepagina: kop van het redactionele blok', soort: 'tekst', uitleg: 'Leeg (kop en tekst) = geen blok.' },
+    { k: 'redactie_tekst', label: 'Homepagina: tekst van het redactionele blok', soort: 'lang' },
+    { k: 'redactie_titel_en', label: 'Homepagina: kop in het Engels', soort: 'tekst' },
+    { k: 'redactie_tekst_en', label: 'Homepagina: tekst in het Engels', soort: 'lang' },
   ] },
   { naam: 'Nieuwsbrief en privacy', velden: [
     { k: 'privacy_tekst', label: 'Privacytekst', soort: 'lang' },
+    { k: 'privacy_tekst_en', label: 'Privacytekst in het Engels (kiosk in het Engels)', soort: 'lang' },
     { k: 'privacy_url', label: 'Link naar de privacyverklaring', soort: 'tekst' },
     { k: 'nieuwsbrief_koppeling', label: 'Nieuwsbriefsysteem', soort: 'keuze', opties: [['beheer', 'Bewaren in de beheeromgeving (menu Nieuwsbrief)'], ['webhook', 'Webhook (POST met e-mail, naam, bron)'], ['geen', 'Geen aanmelding in de kiosk']], uitleg: 'Open punt O-4. Bij "bewaren" exporteert een beheerder de aanmeldingen als CSV naar het nieuwsbriefsysteem.' },
     { k: 'nieuwsbrief_url', label: 'Webhook-adres', soort: 'tekst' },
@@ -37,6 +45,15 @@ const GROEPEN: { naam: string; velden: Veld[] }[] = [
   { naam: 'Meldingen', velden: [
     { k: 'melding_email_aan', label: 'E-mail bij elke nieuwe aanvraag', soort: 'bool', uitleg: 'Open punt O-9, standaard uit.' },
     { k: 'melding_email_adres', label: 'E-mailadres voor meldingen', soort: 'tekst' },
+  ] },
+  { naam: 'Beveiliging (IT-beleid B&G)', velden: [
+    { k: 'tweestaps', label: 'Tweestapsverificatie (code uit een authenticator-app)', soort: 'keuze', opties: [['iedereen', 'Verplicht voor iedereen'], ['beheerders', 'Verplicht voor beheerders'], ['uit', 'Niet verplicht']], uitleg: 'IT-beleid 6.1: alleen een wachtwoord is niet afdoende. Inloggen via Google telt al als tweestaps.' },
+    { k: 'wachtwoord_inloggen', label: 'Inloggen met e-mail en wachtwoord toestaan', soort: 'bool', uitleg: 'Uit = alleen inloggen via Google (de IDP). Kan pas uit als inloggen via Google is ingesteld.' },
+    { k: 'beheer_meldingen_adres', label: 'Extra adressen voor storingsmeldingen', soort: 'tekst', uitleg: 'IT-beleid 6.2: naast alle beheerders, bijvoorbeeld de Topdesk-mailbox. Meerdere adressen met komma’s.' },
+    { k: 'aanmeldingen_bewaar_dagen', label: 'Log van aanmeldingen bewaren (dagen)', soort: 'getal', uitleg: '0 = niet automatisch verwijderen.' },
+    { k: 'beheer_uitloggen_min', label: 'Beheer: automatisch uitloggen na (minuten zonder gebruik)', soort: 'getal', uitleg: 'IT-beleid 8.5 (clear screen). 0 = nooit.' },
+    { k: 'medewerker_vergrendel_min', label: 'Medewerkersscherm: vergrendelen na (minuten zonder gebruik)', soort: 'getal', uitleg: 'Ontgrendelen met de code uit de authenticator-app (of het wachtwoord). 0 = nooit.' },
+    { k: 'account_herinnering_dagen', label: 'Herinnering vóór de einddatum van een account (dagen)', soort: 'getal', uitleg: 'IT-beleid 8.4: de gebruiker en de beheerders krijgen een e-mail; verlenging gaat via HR.' },
   ] },
   { naam: 'Back-ups', velden: [
     { k: 'backup_tijd', label: 'Tijdstip nachtelijke back-up', soort: 'tijd' },

@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
 import { Logo } from '../components/Logo'
 import { useKiosk } from './KioskApp'
+import { t } from './taal'
+import { TaalKnop } from './Kop'
 
 export function Rust() {
   const nav = useNavigate()
@@ -12,21 +14,21 @@ export function Rust() {
   if (bumper) {
     // De bumper (B&G-logo dat verandert in het Fonos-logo) in een lus.
     return (
-      <div className="hero" onPointerDown={start} role="button" aria-label="Tik om te beginnen">
+      <div className="hero" onPointerDown={start} role="button" aria-label={t('Tik om te beginnen')}>
         <video src={bumper} autoPlay muted loop playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
       </div>
     )
   }
   return (
-    <div className="hero" onPointerDown={start} role="button" aria-label="Tik om te beginnen">
+    <div className="hero" onPointerDown={start} role="button" aria-label={t('Tik om te beginnen')}>
       <div className="vorm vorm-a" />
       <div className="vorm vorm-b" />
       <div className="vorm vorm-c" />
       <div className="hero-inhoud">
-        <div className="top"><Logo /><span className="badge-nl" style={{ marginRight: '0' }}>NL</span></div>
-        <h1>De<br />Fonotheek</h1>
-        <p className="lead">Ontdek, luister en laat je verrassen door onze collectie lp's en cd's.</p>
-        <button className="btn btn-pink btn-l" onClick={start}>Begin met zoeken <ArrowRight size={24} /></button>
+        <div className="top"><Logo /><TaalKnop /></div>
+        <h1>{t('De<br />Fonotheek') === 'De<br />Fonotheek' ? <>De<br />Fonotheek</> : <>The<br />Fonotheek</>}</h1>
+        <p className="lead">{t("Ontdek, luister en laat je verrassen door onze collectie lp's en cd's.")}</p>
+        <button className="btn btn-pink btn-l" onClick={start}>{t('Begin met zoeken')} <ArrowRight size={24} /></button>
       </div>
     </div>
   )

@@ -2,5 +2,11 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "installCommand": "cd app && npm ci",
-  "buildCommand": "cd app && npm run vercel-build"
+  "buildCommand": "cd app && npm run vercel-build",
+  "git": {
+    "deploymentEnabled": {
+      "claude/**": false,
+      "dependabot/**": false
+    }
+  }
 }

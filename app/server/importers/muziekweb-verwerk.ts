@@ -15,6 +15,7 @@ export type MwRapport = {
   nieuwe_conflicten: number
   niet_in_dump: number
   niet_in_dump_voorbeelden: string[]
+  bijgewerkt_voorbeelden?: string[]
 }
 
 export const leegRapport = (importId: number): MwRapport => ({ import_id: importId, in_dump: 0, bijgewerkt: 0, ongewijzigd: 0, nieuwe_titels: 0, nieuwe_conflicten: 0, niet_in_dump: 0, niet_in_dump_voorbeelden: [] })
@@ -42,6 +43,7 @@ export async function verwerkRecords(records: MwRecord[], importId: number, rapp
         if (!t) continue
         if (t.mw_data === JSON.stringify(r.velden) && t.soort === r.soort && !!t.tip === r.tip) { rapport.ongewijzigd++; continue }
         rapport.bijgewerkt++
+        if ((rapport.bijgewerkt_voorbeelden ??= []).length < 50) rapport.bijgewerkt_voorbeelden.push(r.titelnummer)
         // Met Fonos-waarden per titel (conflicten); zonder Fonos-waarden in één UPDATE voor het hele blok.
         if (t.fonos_data && t.fonos_data !== '{}') { rapport.nieuwe_conflicten += await verwerkMuziekweb(t.id, r.velden, { soort: r.soort, tip: r.tip }); continue }
         const a = afgeleid(getoond({ mw_data: JSON.stringify(r.velden), fonos_data: '{}' }), {})
@@ -99,7 +101,7 @@ export async function maakTitelsBulk(rijen: { titelnummer: string | null; soort:
     const p: unknown[] = []
     const woorden = new Set<string>()
     const waarden = blok.map((r) => {
-      const a = afgeleid(r.mw, {})
+      const a = afgeleid(getoond({ mw_data: JSON.stringify(r.mw), fonos_data: '{}' }), {})
       a.woorden.forEach((w) => woorden.add(w))
       p.push(r.titelnummer, r.soort, JSON.stringify(r.mw), r.tip ? 1 : 0, a.d_titel, a.d_artiesten, a.d_jaar, a.d_drager, a.d_genres, a.d_hoes, a.d_label,
         a.d_personen, a.d_sleutel, a.z.a, a.z.b, a.z.c, a.z.d)

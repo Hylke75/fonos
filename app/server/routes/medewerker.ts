@@ -5,9 +5,25 @@ import { instellingen, run, get } from '../db.ts'
 import { log } from '../log.ts'
 import { AanvraagFout, aanvraagDetail, geefSpelerVrij, looplijst, terugTeZetten, vandaagOverzicht, zetTerugInArchief, annuleren, lijstAanvragen, minutenOpen, ophalen, platenspelers, uitgeven, verwijderItem, vrijgeven } from '../aanvragen.ts'
 import { aanvragenGewijzigd, beschikbaarheidGewijzigd } from '../events.ts'
+import { abonneer, afmelden, stuurPush, vapid, type Abonnement } from '../push.ts'
 
 export const medewerker = new Hono()
 medewerker.use('*', vereist('medewerker', 'beheerder'))
+
+// Pushmeldingen op dit apparaat (verbetering 9).
+medewerker.get('/push/sleutel', async (c) => c.json({ publicKey: (await vapid()).publicKey }))
+medewerker.post('/push', async (c) => {
+  const { abonnement } = await c.req.json<{ abonnement: Abonnement }>()
+  try { await abonneer(wie(c).id!, abonnement, c.req.header('user-agent')) } catch (e: any) { return c.json({ fout: e.message }, 400) }
+  await log(wie(c), 'pushmeldingen aangezet', { type: 'gebruiker', id: wie(c).id, label: wie(c).naam })
+  return c.json({ ok: true })
+})
+medewerker.post('/push/uit', async (c) => {
+  const { endpoint } = await c.req.json<{ endpoint: string }>()
+  await afmelden(String(endpoint ?? ''))
+  return c.json({ ok: true })
+})
+medewerker.post('/push/test', async (c) => c.json({ verstuurd: await stuurPush({ titel: 'Fonotheek', tekst: 'Pushmeldingen staan aan op dit apparaat.', url: '/medewerker', tag: 'test' }) }))
 
 medewerker.get('/aanvragen', async (c) => {
   const tab = c.req.query('tab') === 'afgerond' ? 'afgerond' : 'actief'
