@@ -126,9 +126,10 @@ export function Zoeken() {
                 <button className="tekst" onClick={() => nav(`/album/${k.id}`)}>
                   <div style={{ fontWeight: 600 }}>{k.titel}</div>
                   <div className="muted" style={{ marginTop: 4 }}>{k.artiesten || t('Diverse artiesten')}</div>
+                  {/* Beschikbaarheid bij de titel, niet naast de knop: één actie per regel. */}
+                  <div style={{ marginTop: 6 }}><Beschikbaarheid drager={k.drager} beschikbaar={k.beschikbaar} /></div>
                 </button>
                 <span className="muted">{k.jaar ?? ''}</span>
-                <Beschikbaarheid drager={k.drager} beschikbaar={k.beschikbaar} />
                 <AanvraagMini k={k} />
               </div>
             ))}
