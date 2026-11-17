@@ -199,7 +199,9 @@ export const OPEN_ITEMS_SQL = `SELECT i.exemplaar_id FROM aanvraag_items i JOIN 
   WHERE i.verwijderd = 0 AND a.status IN ('ingediend', 'uitgegeven')`
 
 /** Titels die in de bezoekersapp zichtbaar zijn (6.3). */
-export const ZICHTBAAR_SQL = `t.zichtbaar = 1 AND EXISTS (SELECT 1 FROM exemplaren e WHERE e.titel_id = t.id AND e.status = 'in_collectie')`
+export const ZICHTBAAR_SQL = `t.zichtbaar = 1 AND (t.collectie = 'muziekweb' OR EXISTS (SELECT 1 FROM exemplaren e WHERE e.titel_id = t.id AND e.status = 'in_collectie'))`
+/** Alleen de eigen collectie van de Luisterbar (zonder de Muziekweb-naslag). */
+export const EIGEN_SQL = `t.collectie = 'fonos'`
 
 export function vindcodeMet(bron: string) {
   return (e: { vindcode?: string | null; objectnummer: string; titelnummer?: string | null }): string | null => {

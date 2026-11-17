@@ -8,7 +8,18 @@ import { t } from './taal'
 
 const REDEN = { nummer: 'Nummer: {x}', componist: 'Componist: {x}', met: 'Met: {x}', label: 'Label: {x}' } as const
 
-export type Kaart = { id: number; titel: string; artiesten: string; jaar: number | null; drager: string | null; hoes: string | null; beschikbaar: boolean; reden?: { soort: 'nummer' | 'componist' | 'met' | 'label'; tekst: string } }
+export type Kaart = { id: number; titel: string; artiesten: string; jaar: number | null; drager: string | null; hoes: string | null; collectie?: 'fonos' | 'muziekweb'; beschikbaar: boolean; reden?: { soort: 'nummer' | 'componist' | 'met' | 'label'; tekst: string } }
+
+/** Titels uit de collectie van Muziekweb: cd's zijn te beluisteren (aan te vragen), lp's alleen te bekijken. */
+export function muziekweb(collectie: string | undefined | null, drager: string | null | undefined) {
+  if (collectie !== 'muziekweb') return null
+  return drager === 'CD' ? { beluisterbaar: true, tekst: t('Muziekweb-cd') } : { beluisterbaar: false, tekst: t('Muziekweb-lp · niet te beluisteren in Fonos') }
+}
+
+export function CollectieLabel({ collectie, drager }: { collectie?: string | null; drager?: string | null }) {
+  const m = muziekweb(collectie, drager)
+  return m ? <span className={`collectie-label ${m.beluisterbaar ? '' : 'alleen-kijken'}`}>{m.tekst}</span> : null
+}
 
 export function AlbumKaart({ k, voet = false }: { k: Kaart; voet?: boolean }) {
   const nav = useNavigate()
@@ -18,10 +29,11 @@ export function AlbumKaart({ k, voet = false }: { k: Kaart; voet?: boolean }) {
         {/* Beschikbaarheid als badge op de hoes: zo staat er in de voet maar één knop (Aanvragen). */}
         <div className="hoes-vak">
           <Hoes src={k.hoes} alt="" />
-          {voet && <span className="hoes-badge"><Beschikbaarheid drager={k.drager} beschikbaar={k.beschikbaar} tekst={false} /></span>}
+          {voet && muziekweb(k.collectie, k.drager)?.beluisterbaar !== false && <span className="hoes-badge"><Beschikbaarheid drager={k.drager} beschikbaar={k.beschikbaar} tekst={false} /></span>}
         </div>
         <div className="a">{k.artiesten || t('Diverse artiesten')}</div>
         <div className="t">{k.titel}</div>
+        <CollectieLabel collectie={k.collectie} drager={k.drager} />
         {k.reden && <div className="reden">{t(REDEN[k.reden.soort], { x: k.reden.tekst })}</div>}
       </button>
       {voet && (
@@ -39,6 +51,7 @@ export const pastOpSpeler = (drager: string | null | undefined, soort: 'lp' | 'c
 
 export function AanvraagMini({ k }: { k: Kaart }) {
   const { mand, voegToe, toast, config, bewaard, bewaar, spelerSoort } = useKiosk()
+  if (muziekweb(k.collectie, k.drager)?.beluisterbaar === false) return <button className="aanvraag-mini" disabled>{t('Niet in Fonos')}</button>
   if (!pastOpSpeler(k.drager, spelerSoort)) {
     return <button className="aanvraag-mini" disabled title={spelerSoort === 'lp' ? t('Een cd kun je niet op een draaitafel afspelen.') : t('Een plaat kun je niet op een cd-speler afspelen.')}>
       {spelerSoort === 'lp' ? t('Cd-speler nodig') : t('Draaitafel nodig')}</button>

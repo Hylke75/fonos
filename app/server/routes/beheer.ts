@@ -11,7 +11,7 @@ import { periode, statistieken, statistiekenCsv } from '../statistieken.ts'
 import { log } from '../log.ts'
 import { TWEELAAGS, ROLLEN, REDENEN_AFVOER, type TitelVelden } from '../../shared/velden.ts'
 import {
-  getoond, zetFonosWaarde, besluitConflict, zetFonosEigen, FONOS_EIGEN, maakTitel, koppelTitelnummer, exemplarenVan, OPEN_ITEMS_SQL, vindcoder, ZICHTBAAR_SQL,
+  getoond, zetFonosWaarde, besluitConflict, zetFonosEigen, FONOS_EIGEN, maakTitel, koppelTitelnummer, exemplarenVan, OPEN_ITEMS_SQL, vindcoder, ZICHTBAAR_SQL, EIGEN_SQL,
 } from '../titels.ts'
 import { album, wisConfigCache, wisHomeCache, selectieIds } from '../catalogus.ts'
 import { analyseer, leesBestand, samenvatting, voerDoor, type Categorie } from '../importers/collectie.ts'
@@ -38,7 +38,7 @@ beheer.get('/tellers', async (c) => {
   const n = async (sql: string) => (await get<{ n: number }>(sql))!.n
   return c.json({
     titels: await n('SELECT COUNT(*) AS n FROM titels'),
-    exemplaren: await n("SELECT COUNT(*) AS n FROM exemplaren WHERE status = 'in_collectie'"),
+    exemplaren: await n("SELECT COUNT(*) AS n FROM exemplaren WHERE status = 'in_collectie' AND bron IS DISTINCT FROM 'muziekweb'"),
     datakwaliteit: Object.values(await dqTellingen()).reduce((a, b) => a + b, 0),
     laatste_import: (await get<any>("SELECT tijd FROM imports WHERE soort = 'muziekweb' AND (rapport::jsonb->>'afgerond' = 'true' OR rapport::jsonb->>'bron' IS NOT NULL) ORDER BY id DESC LIMIT 1"))?.tijd ?? null,
     laatste_backup: (await get<any>("SELECT tijd FROM backups WHERE status = 'gelukt' ORDER BY id DESC LIMIT 1"))?.tijd ?? null,
@@ -937,7 +937,7 @@ beheer.get('/spotify', async (c) => {
   const pagina = Math.max(1, Number(c.req.query('pagina') ?? 1))
   const zoek = (c.req.query('zoek') ?? '').trim().toLowerCase()
   const per = 25
-  const w: string[] = [ZICHTBAAR_SQL]
+  const w: string[] = [EIGEN_SQL, ZICHTBAAR_SQL]
   const p: unknown[] = []
   if ((SPOTIFY_STATUSSEN as readonly string[]).includes(status)) { w.push('t.spotify_status = ?'); p.push(status) }
   if (zoek) { w.push("(lower(t.d_titel) LIKE ? OR lower(COALESCE(t.d_artiesten, '')) LIKE ?)"); p.push(`%${zoek}%`, `%${zoek}%`) }
@@ -947,7 +947,7 @@ beheer.get('/spotify', async (c) => {
   const rijen = await all<any>(`SELECT t.id, t.d_titel AS titel, t.d_artiesten AS artiesten, t.d_jaar AS jaar, t.d_hoes AS hoes, t.d_label AS label, t.titelnummer,
       t.spotify_status, t.spotify_album_id, t.spotify_score, t.spotify_kandidaat, t.spotify_gecontroleerd_op
     FROM titels t WHERE ${w.join(' AND ')} ORDER BY ${volgorde} LIMIT ${per} OFFSET ${(pagina - 1) * per}`, ...p)
-  const tel = await all<any>(`SELECT t.spotify_status AS status, COUNT(*)::int AS n FROM titels t WHERE ${ZICHTBAAR_SQL} GROUP BY 1`)
+  const tel = await all<any>(`SELECT t.spotify_status AS status, COUNT(*)::int AS n FROM titels t WHERE ${EIGEN_SQL} AND ${ZICHTBAAR_SQL} GROUP BY 1`)
   return c.json({
     status, pagina, per, totaal,
     tellingen: Object.fromEntries(tel.map((r) => [r.status, r.n])),
@@ -1008,7 +1008,7 @@ beheer.get('/status', alleenBeheerder, async (c) => {
       fonotheek_geladen: fonotheek?.datum ?? null,
       titels: await n('SELECT COUNT(*)::int AS n FROM titels'),
       zichtbare_titels: await n(`SELECT COUNT(*)::int AS n FROM titels t WHERE ${ZICHTBAAR_SQL}`),
-      exemplaren: await n("SELECT COUNT(*)::int AS n FROM exemplaren WHERE status = 'in_collectie'"),
+      exemplaren: await n("SELECT COUNT(*)::int AS n FROM exemplaren WHERE status = 'in_collectie' AND bron IS DISTINCT FROM 'muziekweb'"),
       wacht_op_muziekweb: await n("SELECT COUNT(*)::int AS n FROM exemplaren e WHERE e.status = 'in_collectie' AND e.titel_id IS NULL AND e.titelnummer IS NOT NULL AND NOT EXISTS (SELECT 1 FROM mw_dump m WHERE m.titelnummer = e.titelnummer)"),
       ontbrekende_titelnummers: await n("SELECT COUNT(DISTINCT e.titelnummer)::int AS n FROM exemplaren e WHERE e.status = 'in_collectie' AND e.titel_id IS NULL AND e.titelnummer IS NOT NULL AND NOT EXISTS (SELECT 1 FROM mw_dump m WHERE m.titelnummer = e.titelnummer)"),
     },

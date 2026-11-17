@@ -1,7 +1,7 @@
 // Koppelen van titels aan Spotify-albums. Hervatbaar: pakt alleen titels met status 'nog_niet' op
 // en slaat elk resultaat direct op. Zie scripts/spotify-koppel.ts.
 import { all, get, instellingen, run } from '../db.ts'
-import { getoond, ZICHTBAAR_SQL } from '../titels.ts'
+import { EIGEN_SQL, getoond, ZICHTBAAR_SQL } from '../titels.ts'
 import { zoekAlbums } from './client.ts'
 import { eersteArtiest, normaliseer, scoreKandidaat, statusBij, uitsluitReden, type Kandidaat } from './normaliseer.ts'
 
@@ -50,16 +50,16 @@ export async function instellingenVoorKoppelen() {
 
 /** Willekeurige zichtbare titels met status 'nog_niet' (voor de proef). */
 export async function proefTitels(n: number) {
-  return all<any>(`SELECT * FROM titels t WHERE ${ZICHTBAAR_SQL} AND t.spotify_status = 'nog_niet' ORDER BY random() LIMIT ?`, n)
+  return all<any>(`SELECT * FROM titels t WHERE ${EIGEN_SQL} AND ${ZICHTBAAR_SQL} AND t.spotify_status = 'nog_niet' ORDER BY random() LIMIT ?`, n)
 }
 
 /** Volgende reeks voor de volledige koppeling: zichtbare titels met status 'nog_niet'. */
 export async function volgendeTitels(n: number) {
-  return all<any>(`SELECT * FROM titels t WHERE ${ZICHTBAAR_SQL} AND t.spotify_status = 'nog_niet' ORDER BY t.id LIMIT ?`, n)
+  return all<any>(`SELECT * FROM titels t WHERE ${EIGEN_SQL} AND ${ZICHTBAAR_SQL} AND t.spotify_status = 'nog_niet' ORDER BY t.id LIMIT ?`, n)
 }
 
 export async function tellingen() {
-  const rijen = await all<{ spotify_status: string; n: number }>(`SELECT t.spotify_status, COUNT(*)::int AS n FROM titels t WHERE ${ZICHTBAAR_SQL} GROUP BY 1`)
+  const rijen = await all<{ spotify_status: string; n: number }>(`SELECT t.spotify_status, COUNT(*)::int AS n FROM titels t WHERE ${EIGEN_SQL} AND ${ZICHTBAAR_SQL} GROUP BY 1`)
   return Object.fromEntries(rijen.map((r) => [r.spotify_status, r.n])) as Record<string, number>
 }
 

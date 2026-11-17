@@ -249,7 +249,7 @@ function Looplijst({ versie }: { versie: number }) {
       <p>{new Date().toLocaleString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })} · {l.length} {l.length === 1 ? 'plaat' : 'platen'}</p>
       <table>
         <thead><tr><th>✓</th><th>Catalogusnr.</th><th>Artiest en titel</th><th>Drager</th><th>Speler</th><th>Aanvraag</th></tr></thead>
-        <tbody>{l.map((r) => <tr key={r.id}><td className="vak">☐</td><td><b>{r.vindcode ?? '–'}</b></td><td>{r.artiesten}{r.artiesten ? ' – ' : ''}{r.titel}</td><td>{r.drager}</td><td>{r.platenspeler}</td><td>{bestelnr(r.bestelnummer)}</td></tr>)}</tbody>
+        <tbody>{l.map((r) => <tr key={r.id}><td className="vak">☐</td><td><b>{r.vindcode ?? '–'}</b></td><td>{r.artiesten}{r.artiesten ? ' – ' : ''}{r.titel}</td><td>{r.drager}{r.bron === 'muziekweb' ? ' (Muziekweb)' : ''}</td><td>{r.platenspeler}</td><td>{bestelnr(r.bestelnummer)}</td></tr>)}</tbody>
       </table>
     </div>
     <div className="tabel-kaart">
@@ -370,7 +370,7 @@ function Detail() {
               <span className="volg">{n + 1}</span>
               <Hoes src={i.hoes} />
               <div className="namen"><div>{i.artiesten}</div><div className="muted">{i.titel}</div>{i.verwijderd ? <div className="tekst-klein" style={{ color: 'var(--red)' }}>Uit aanvraag gehaald{i.reden ? `: ${i.reden}` : ''}</div> : null}</div>
-              <div className="info"><div>{[i.drager, i.jaar].filter(Boolean).join(' · ')}</div><div>{a.vindcode_label ?? 'Vindcode'}: <b>{i.vindcode ?? '–'}</b></div><div className="dim tekst-klein">Object {i.objectnummer}</div></div>
+              <div className="info"><div>{[i.drager, i.jaar].filter(Boolean).join(' · ')}</div><div>{a.vindcode_label ?? 'Vindcode'}: <b>{i.vindcode ?? '–'}</b></div><div className="dim tekst-klein">Object {i.objectnummer}</div>{i.bron === 'muziekweb' && <div className="collectie-label">Muziekweb-cd: ophalen bij Muziekweb (titelnummer {i.titelnummer})</div>}</div>
               {open && !i.verwijderd ? <button className="icon-btn" title="Uit de aanvraag halen" aria-label={`Haal ${i.titel} uit de aanvraag`} onClick={() => { setReden(''); setVraag({ soort: 'item', item: i }) }}><X size={20} /></button> : <span />}
             </div>
           ))}

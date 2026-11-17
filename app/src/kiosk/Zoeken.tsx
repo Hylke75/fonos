@@ -9,7 +9,7 @@ import { useKiosk } from './KioskApp'
 import { KioskKop } from './Kop'
 import { GenreTegels } from './Home'
 import { getal, t } from './taal'
-import { AanvraagMini, AlbumKaart, type Kaart } from './Kaarten'
+import { AanvraagMini, AlbumKaart, CollectieLabel, muziekweb, type Kaart } from './Kaarten'
 
 type Res = {
   totaal: number; pagina: number; per: number; sort: string; titels: Kaart[]
@@ -165,7 +165,8 @@ export function Zoeken() {
                   <div style={{ fontWeight: 600 }}>{k.titel}</div>
                   <div className="muted" style={{ marginTop: 4 }}>{k.artiesten || t('Diverse artiesten')}</div>
                   {/* Beschikbaarheid bij de titel, niet naast de knop: één actie per regel. */}
-                  <div style={{ marginTop: 6 }}><Beschikbaarheid drager={k.drager} beschikbaar={k.beschikbaar} /></div>
+                  {muziekweb(k.collectie, k.drager)?.beluisterbaar !== false && <div style={{ marginTop: 6 }}><Beschikbaarheid drager={k.drager} beschikbaar={k.beschikbaar} /></div>}
+                  <CollectieLabel collectie={k.collectie} drager={k.drager} />
                 </button>
                 <span className="muted">{k.jaar ?? ''}</span>
                 <AanvraagMini k={k} />

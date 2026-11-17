@@ -2,21 +2,21 @@
 import { VINDCODE_LABEL } from '../shared/velden.ts'
 import { all, get, instellingen } from './db.ts'
 import { zoek } from './zoeken.ts'
-import { exemplarenVan, getoond, OPEN_ITEMS_SQL, ZICHTBAAR_SQL, vindcoder } from './titels.ts'
+import { EIGEN_SQL, exemplarenVan, getoond, OPEN_ITEMS_SQL, ZICHTBAAR_SQL, vindcoder } from './titels.ts'
 import { normaliseer } from '../shared/velden.ts'
 import { platenspelers } from './aanvragen.ts'
 
 /** Beschikbaar: minstens één exemplaar in de collectie dat niet in een open aanvraag zit. */
 const BESCHIKBAAR = `EXISTS (SELECT 1 FROM exemplaren e WHERE e.titel_id = t.id AND e.status = 'in_collectie' AND e.id NOT IN (${OPEN_ITEMS_SQL}))`
-const KAART = `t.id, t.d_titel AS titel, COALESCE(t.d_artiesten, '') AS artiesten, t.d_jaar AS jaar, t.d_drager AS drager, CASE WHEN t.hoes_kapot = 1 THEN NULL ELSE t.d_hoes END AS hoes,
+const KAART = `t.id, t.d_titel AS titel, COALESCE(t.d_artiesten, '') AS artiesten, t.d_jaar AS jaar, t.d_drager AS drager, CASE WHEN t.hoes_kapot = 1 THEN NULL ELSE t.d_hoes END AS hoes, t.collectie,
   (${BESCHIKBAAR}) AS beschikbaar`
 /** Als KAART, maar beschikbaar als een exemplaar van deze titel óf van een andere uitgave (zelfde sleutel) vrij is. */
-const KAART_GROEP = `t.id, t.d_titel AS titel, COALESCE(t.d_artiesten, '') AS artiesten, t.d_jaar AS jaar, t.d_drager AS drager, CASE WHEN t.hoes_kapot = 1 THEN NULL ELSE t.d_hoes END AS hoes,
+const KAART_GROEP = `t.id, t.d_titel AS titel, COALESCE(t.d_artiesten, '') AS artiesten, t.d_jaar AS jaar, t.d_drager AS drager, CASE WHEN t.hoes_kapot = 1 THEN NULL ELSE t.d_hoes END AS hoes, t.collectie,
   EXISTS (SELECT 1 FROM exemplaren e JOIN titels t3 ON t3.id = e.titel_id WHERE (t3.id = t.id OR (t3.d_sleutel = t.d_sleutel AND t.d_sleutel NOT LIKE '|%' AND t.d_sleutel NOT LIKE '%|'))
     AND t3.zichtbaar = 1 AND e.status = 'in_collectie' AND e.id NOT IN (${OPEN_ITEMS_SQL})) AS beschikbaar`
 const GENRES_IN = `t.d_genres::jsonb ?| ARRAY(SELECT jsonb_array_elements_text(?::jsonb))`
 
-export type Kaart = { id: number; titel: string; artiesten: string; jaar: number | null; drager: string | null; hoes: string | null; beschikbaar: boolean; reden?: Reden }
+export type Kaart = { id: number; titel: string; artiesten: string; jaar: number | null; drager: string | null; hoes: string | null; collectie: 'fonos' | 'muziekweb'; beschikbaar: boolean; reden?: Reden }
 export type Reden = { soort: 'nummer' | 'componist' | 'met' | 'label'; tekst: string }
 const kaarten = (rijen: any[]): Kaart[] => rijen.map((r) => ({ ...r, titel: r.titel ?? '', beschikbaar: !!r.beschikbaar }))
 const intArray = (ids: number[]) => `{${ids.map((i) => Math.trunc(i)).join(',')}}`
@@ -99,7 +99,8 @@ export async function selectieIds(s: any, alleenBeschikbaar: boolean, limiet = s
   const inst = await instellingen()
   const filter = `${ZICHTBAAR_SQL}${alleenBeschikbaar ? ` AND ${BESCHIKBAAR}` : ''}`
   if (s.soort === 'uitgelicht') return (await all(`SELECT t.id FROM titels t WHERE t.uitgelicht = 1 AND ${filter} ORDER BY t.id DESC LIMIT ?`, limiet)).map((r) => r.id)
-  if (s.soort === 'nieuw') return (await all(`SELECT t.id FROM titels t WHERE ${filter}
+  // Nieuw binnen: alleen de eigen collectie (de Muziekweb-naslag is niet "nieuw binnen").
+  if (s.soort === 'nieuw') return (await all(`SELECT t.id FROM titels t WHERE ${EIGEN_SQL} AND ${filter}
       ORDER BY (SELECT MIN(e.aangemaakt) FROM exemplaren e WHERE e.titel_id = t.id AND e.status = 'in_collectie') DESC, t.d_jaar DESC NULLS LAST, t.id DESC LIMIT ?`, limiet)).map((r) => r.id)
   if (s.soort === 'vaak') {
     // De periode staat in Instellingen (10.10); de kolom per selectie is alleen nog een terugval.
@@ -110,7 +111,7 @@ export async function selectieIds(s: any, alleenBeschikbaar: boolean, limiet = s
   const ids = (await all(`SELECT x.titel_id AS id FROM selectie_titels x JOIN titels t ON t.id = x.titel_id WHERE x.selectie_id = ? AND ${filter}
       ORDER BY x.volgorde LIMIT ?`, s.id, limiet)).map((r) => r.id)
   if (s.soort === 'seizoen' && s.mw_genre && ids.length < limiet) {
-    const extra = await all(`SELECT t.id FROM titels t WHERE ${GENRES_IN} AND t.d_hoes IS NOT NULL AND ${filter} AND NOT (t.id = ANY(?::int[]))
+    const extra = await all(`SELECT t.id FROM titels t WHERE ${GENRES_IN} AND t.d_hoes IS NOT NULL AND ${EIGEN_SQL} AND ${filter} AND NOT (t.id = ANY(?::int[]))
         ORDER BY t.d_jaar DESC NULLS LAST LIMIT ?`, JSON.stringify([s.mw_genre]), intArray(ids), limiet - ids.length)
     ids.push(...extra.map((r) => r.id))
   }
@@ -192,11 +193,12 @@ export async function zoekCatalogus(f: Filters) {
   const b = waar(w)
 
   const sort = f.sort ?? (volgorde ? 'relevantie' : 'artiest')
+  // Bij bladeren eerst de eigen collectie van de Luisterbar, daarna de Muziekweb-naslag (bij zoeken telt de relevantie).
   const orde = sort === 'relevantie' && volgorde
     ? { sql: 'array_position(?::int[], t.id)', p: [intArray(volgorde)] }
-    : sort === 'album' ? { sql: 'lower(t.d_titel), t.id', p: [] }
-    : sort === 'jaar' ? { sql: 't.d_jaar DESC NULLS LAST, lower(t.d_artiesten), t.id', p: [] }
-    : { sql: 't.d_artiesten IS NULL, lower(t.d_artiesten), lower(t.d_titel), t.id', p: [] }
+    : sort === 'album' ? { sql: `${EIGEN_SQL} DESC, lower(t.d_titel), t.id`, p: [] }
+    : sort === 'jaar' ? { sql: `${EIGEN_SQL} DESC, t.d_jaar DESC NULLS LAST, lower(t.d_artiesten), t.id`, p: [] }
+    : { sql: `${EIGEN_SQL} DESC, t.d_artiesten IS NULL, lower(t.d_artiesten), lower(t.d_titel), t.id`, p: [] }
   const per = Math.min(f.per ?? 48, 120)
   const pagina = Math.max(1, f.pagina ?? 1)
   const totaal = (await get<any>(`SELECT COUNT(*)::int AS n FROM titels t WHERE ${b.sql}`, ...b.p))!.n
@@ -273,7 +275,7 @@ export async function album(id: number, voorbeeld = false) {
     exemplaar_id: e.id, titel_id: r.id, drager: r.drager, jaar: r.jaar, vindcode: vc(e), beschikbaar: !e.in_gebruik, deze_titel: r.id === id,
   }))))).flat()
   return {
-    id, titelnummer: t.titelnummer, soort: t.soort, velden: v, jaar: t.d_jaar,
+    id, titelnummer: t.titelnummer, soort: t.soort, collectie: t.collectie, velden: v, jaar: t.d_jaar,
     fonos_verhaal: t.fonos_verhaal, ai_tekst: !!t.ai_tekst, tip: !!t.tip,
     // Alleen goedgekeurde koppelingen (automatisch goed of handmatig) tonen; anders niets.
     spotify_album_id: (await instellingen()).spotify_aan && t.spotify_album_id && ['auto_goed', 'handmatig'].includes(t.spotify_status) && /^[A-Za-z0-9]{22}$/.test(t.spotify_album_id) ? t.spotify_album_id : null,

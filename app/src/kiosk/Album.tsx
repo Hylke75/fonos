@@ -7,12 +7,12 @@ import { Hoes } from '../components/Hoes'
 import { Laden } from '../components/Iconen'
 import { useKiosk } from './KioskApp'
 import { KioskKopTerug } from './Kop'
-import { AlbumKaart, pastOpSpeler, type Kaart } from './Kaarten'
+import { AlbumKaart, CollectieLabel, muziekweb, pastOpSpeler, type Kaart } from './Kaarten'
 import { huidigeTaal, t } from './taal'
 
 type Ex = { exemplaar_id: number; titel_id: number; drager: string | null; jaar: number | null; vindcode: string | null; beschikbaar: boolean; deze_titel: boolean }
 export type AlbumData = {
-  id: number; titelnummer: string | null; soort: string; jaar: number | null; fonos_verhaal: string | null; ai_tekst: boolean; beschikbaar: boolean; spotify_album_id?: string | null
+  id: number; titelnummer: string | null; soort: string; collectie?: 'fonos' | 'muziekweb'; jaar: number | null; fonos_verhaal: string | null; ai_tekst: boolean; beschikbaar: boolean; spotify_album_id?: string | null
   velden: { titel?: string; artiesten?: string[]; uitgave?: string; drager?: string; aantal?: number; label?: string; genres?: string[]; speelduur?: string; toelichting?: string; tracklist?: { pos: number; titel: string; duur?: string | null; componisten?: string[]; uitvoerenden?: string[] }[]; hoes_voor?: string; hoes_achter?: string; componisten?: string[]; uitvoerenden?: string[] }
   exemplaren: Ex[]
 }
@@ -66,6 +66,8 @@ export function AlbumWeergave({ a, voorbeeld = false }: { a: AlbumData; voorbeel
   const personen = klassiek && v.componisten?.length ? v.componisten : v.artiesten ?? []
   const vol = kiosk && kiosk.mand.length >= kiosk.config.instellingen.max_titels && !inMand
   const verkeerdeSpeler = !!kiosk && !!gekozen && !pastOpSpeler(gekozen.drager, kiosk.spelerSoort)
+  // Muziekweb-lp: alleen te bekijken, niet te beluisteren in Fonos.
+  const alleenKijken = muziekweb(a.collectie, v.drager)?.beluisterbaar === false
 
   const voegToe = () => {
     if (!kiosk || !gekozen) return
@@ -99,6 +101,7 @@ export function AlbumWeergave({ a, voorbeeld = false }: { a: AlbumData; voorbeel
           {(a.jaar || v.uitgave) && <span className="pill">{a.jaar ?? uitgaveTekst(v.uitgave)}</span>}
           {(v.genres ?? []).slice(0, 2).map((g) => <span key={g} className="pill">{g}</span>)}
           {v.drager && <span className="pill">{dragerTekst(v.drager, v.aantal)}</span>}
+          <CollectieLabel collectie={a.collectie} drager={v.drager} />
         </div>
         {v.toelichting && (
           <>
@@ -146,7 +149,7 @@ export function AlbumWeergave({ a, voorbeeld = false }: { a: AlbumData; voorbeel
       <div className="exemplaren-kolom">
         <div className="card exemplaren-paneel">
           <h2>{t('Beschikbare exemplaren')}</h2>
-          {a.exemplaren.length === 0 && <p className="muted">{t('Geen exemplaren in de collectie.')}</p>}
+          {a.exemplaren.length === 0 && <p className="muted">{alleenKijken ? t('Deze lp staat in de collectie van Muziekweb en is niet te beluisteren in Fonos.') : t('Geen exemplaren in de collectie.')}</p>}
           {a.exemplaren.map((e) => (
             <button key={e.exemplaar_id} className={`exemplaar ${keuze === e.exemplaar_id ? 'gekozen' : ''}`} disabled={!e.beschikbaar}
               onClick={() => setKeuze(e.exemplaar_id)} role="radio" aria-checked={keuze === e.exemplaar_id}>
@@ -172,7 +175,7 @@ export function AlbumWeergave({ a, voorbeeld = false }: { a: AlbumData; voorbeel
               </div>
             )}
             <button className="btn btn-pink btn-l btn-block" disabled={!gekozen || inMand || !!vol || verkeerdeSpeler} onClick={voegToe}>
-              {inMand ? t('Staat in je aanvraag') : gekozen ? t('Voeg toe aan aanvraag') : t('Nu in gebruik')}
+              {inMand ? t('Staat in je aanvraag') : gekozen ? t('Voeg toe aan aanvraag') : alleenKijken ? t('Niet te beluisteren in Fonos') : t('Nu in gebruik')}
             </button>
             {vol && gekozen && (
               <>

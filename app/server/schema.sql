@@ -55,6 +55,10 @@ CREATE INDEX IF NOT EXISTS idx_titels_personen ON titels USING gin ((d_personen:
 CREATE INDEX IF NOT EXISTS idx_titels_sleutel ON titels(d_sleutel);
 -- Nachtelijke controle van hoesadressen (verbetering 14): 1 = laadt niet (de kiosk toont dan de vervangende afbeelding).
 ALTER TABLE titels ADD COLUMN IF NOT EXISTS hoes_kapot integer NOT NULL DEFAULT 0;
+-- Herkomst: 'fonos' = de gebruikscollectie van de Luisterbar; 'muziekweb' = de collectie van Muziekweb (naslag).
+-- Muziekweb-cd's zijn te beluisteren (een exemplaar met bron 'muziekweb'); Muziekweb-lp's alleen te bekijken.
+ALTER TABLE titels ADD COLUMN IF NOT EXISTS collectie text NOT NULL DEFAULT 'fonos';
+CREATE INDEX IF NOT EXISTS idx_titels_collectie ON titels(collectie);
 ALTER TABLE titels ADD COLUMN IF NOT EXISTS hoes_gecontroleerd_op text;
 
 -- Woorden voor typfouttolerantie bij zoeken (7.4).
