@@ -177,7 +177,7 @@ export async function aanvraagDetail(id: number) {
   if (!a) return null
   const vc = await vindcoder()
   const items = (await all<any>(`SELECT i.id, i.titel_id, i.exemplaar_id, i.verwijderd, i.reden, t.d_titel AS titel, t.d_artiesten AS artiesten,
-      t.d_jaar AS jaar, t.d_drager AS drager, t.d_hoes AS hoes, e.objectnummer, e.vindcode, e.titelnummer
+      t.d_jaar AS jaar, t.d_drager AS drager, t.d_hoes AS hoes, e.objectnummer, e.vindcode, e.titelnummer, e.bron
     FROM aanvraag_items i JOIN titels t ON t.id = i.titel_id JOIN exemplaren e ON e.id = i.exemplaar_id WHERE i.aanvraag_id = ?`, id))
     .map((i) => ({ ...i, vindcode: vc(i) }))
   // Gesorteerd op vindcode: zo kan de medewerker in één ronde door het archief (9).
@@ -276,7 +276,7 @@ export async function aanvraagVanSessie(nummer: number, sessie: string) {
 export async function looplijst() {
   const vc = await vindcoder()
   const rijen = await all<any>(`SELECT i.id, i.aanvraag_id, a.bestelnummer, a.platenspeler, a.opgepakt_op, t.d_titel AS titel, t.d_artiesten AS artiesten,
-      t.d_drager AS drager, t.d_hoes AS hoes, e.objectnummer, e.vindcode, e.titelnummer
+      t.d_drager AS drager, t.d_hoes AS hoes, e.objectnummer, e.vindcode, e.titelnummer, e.bron
     FROM aanvraag_items i JOIN aanvragen a ON a.id = i.aanvraag_id JOIN titels t ON t.id = i.titel_id JOIN exemplaren e ON e.id = i.exemplaar_id
     WHERE a.status = 'ingediend' AND i.verwijderd = 0`)
   return rijen.map((r) => ({ ...r, vindcode: vc(r) }))
@@ -287,7 +287,7 @@ export async function looplijst() {
 export async function terugTeZetten() {
   const vc = await vindcoder()
   const rijen = await all<any>(`SELECT i.id, a.bestelnummer, a.platenspeler, a.afgesloten_op, a.geannuleerd_op, t.d_titel AS titel, t.d_artiesten AS artiesten,
-      t.d_drager AS drager, t.d_hoes AS hoes, e.objectnummer, e.vindcode, e.titelnummer
+      t.d_drager AS drager, t.d_hoes AS hoes, e.objectnummer, e.vindcode, e.titelnummer, e.bron
     FROM aanvraag_items i JOIN aanvragen a ON a.id = i.aanvraag_id JOIN titels t ON t.id = i.titel_id JOIN exemplaren e ON e.id = i.exemplaar_id
     WHERE a.status IN ('afgesloten', 'geannuleerd') AND i.verwijderd = 0 AND i.teruggezet_op IS NULL
       AND (a.uitgegeven_op IS NOT NULL OR a.opgepakt_op IS NOT NULL)

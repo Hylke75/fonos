@@ -145,7 +145,8 @@ async function bewaarAnalyse(a: Analyse) {
 export async function analyseer(regels: Regel[], bestand: string, overgeslagen: string[] = []): Promise<Analyse> {
   const cat: Record<Categorie, Item[]> = { nieuw: [], gewijzigd: [], ontbrekend: [], onbekend: [], dubbel: [], zonder_titelnummer: [] }
   const bestaand = new Map<string, any>()
-  for (const e of await all<any>('SELECT id, objectnummer, titelnummer, vindcode, status FROM exemplaren')) bestaand.set(e.objectnummer, e)
+  // Exemplaren van de Muziekweb-cd's horen niet bij de gebruikscollectie en worden hier niet vergeleken.
+  for (const e of await all<any>("SELECT id, objectnummer, titelnummer, vindcode, status FROM exemplaren WHERE bron IS DISTINCT FROM 'muziekweb'")) bestaand.set(e.objectnummer, e)
   const bekend = new Set((await all<{ t: string }>('SELECT titelnummer AS t FROM mw_dump UNION SELECT titelnummer FROM titels WHERE titelnummer IS NOT NULL')).map((r) => r.t))
   const gezien = new Map<string, number>()
   for (const r of regels) if (r.objectnummer) gezien.set(r.objectnummer, (gezien.get(r.objectnummer) ?? 0) + 1)

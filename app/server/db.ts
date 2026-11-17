@@ -80,9 +80,27 @@ export function plaatshouders(sql: string): string {
   return uit
 }
 
+/** Alleen voor bulkladen vanaf een machine zonder Postgres-verbinding (alleen HTTPS): elke query gaat als POST naar
+ *  een tijdelijke Supabase Edge Function (supabase/functions/sql-relay) die hem uitvoert. Geen echte transacties. */
+function maakRelay(url: string, sleutel: string): Verbinding {
+  const stuur = async (body: object) => {
+    for (let poging = 1; ; poging++) {
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Relay-Sleutel': sleutel }, body: JSON.stringify(body) })
+      const d = await r.json().catch(() => ({ fout: `HTTP ${r.status}` })) as any
+      if (r.ok) return d
+      // Tijdelijke fouten (time-out, 5xx zonder databasefout) een paar keer opnieuw; databasefouten direct door.
+      if (d.code || poging >= 4 || r.status < 500) throw Object.assign(new Error(`relay: ${d.fout ?? r.status}`), { code: d.code })
+      await new Promise((ok) => setTimeout(ok, 2000 * poging))
+    }
+  }
+  const uit: Uitvoerder = { query: async (q, p) => { const d = await stuur({ q, p }); return { rows: d.rows, count: d.count } } }
+  return { ...uit, exec: async (q) => { await stuur({ q, exec: true }) }, transactie: (fn) => fn(uit), sluit: async () => {} }
+}
+
 export function db(): Promise<Verbinding> {
   if (!verbinding) {
     verbinding = (async () => {
+      if (process.env.FONOS_DB_RELAY) return maakRelay(process.env.FONOS_DB_RELAY, process.env.FONOS_DB_RELAY_SLEUTEL ?? '')
       if (!process.env.DATABASE_URL && process.env.VERCEL) throw new Error('DATABASE_URL ontbreekt in de omgevingsvariabelen van Vercel')
       const v = process.env.DATABASE_URL ? await eersteBereikbare(process.env.DATABASE_URL) : await maakPglite()
       await zorgVoorSchema(v)

@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
     "import:muziekweb": "tsx scripts/import-muziekweb.ts",
+    "laad:naslag": "tsx scripts/laad-naslag.ts",
     "import:collectie": "tsx scripts/import-collectie.ts",
     "demo": "tsx scripts/demo.ts",
     "gebruiker": "tsx scripts/gebruiker.ts",

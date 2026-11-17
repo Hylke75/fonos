@@ -94,7 +94,7 @@ export async function verwerkMuziekwebImport(records: AsyncIterable<MwRecord>, w
 }
 
 /** Nieuwe titels in bulk (één INSERT per blok), met afgeleide kolommen en zoekvector. */
-export async function maakTitelsBulk(rijen: { titelnummer: string | null; soort: string; tip: boolean; mw: TitelVelden }[]): Promise<Map<string, number>> {
+export async function maakTitelsBulk(rijen: { titelnummer: string | null; soort: string; tip: boolean; mw: TitelVelden }[], collectie: 'fonos' | 'muziekweb' = 'fonos'): Promise<Map<string, number>> {
   const ids = new Map<string, number>()
   for (let i = 0; i < rijen.length; i += 150) {
     const blok = rijen.slice(i, i + 150)
@@ -103,16 +103,30 @@ export async function maakTitelsBulk(rijen: { titelnummer: string | null; soort:
     const waarden = blok.map((r) => {
       const a = afgeleid(getoond({ mw_data: JSON.stringify(r.mw), fonos_data: '{}' }), {})
       a.woorden.forEach((w) => woorden.add(w))
-      p.push(r.titelnummer, r.soort, JSON.stringify(r.mw), r.tip ? 1 : 0, a.d_titel, a.d_artiesten, a.d_jaar, a.d_drager, a.d_genres, a.d_hoes, a.d_label,
+      p.push(r.titelnummer, collectie, r.soort, JSON.stringify(r.mw), r.tip ? 1 : 0, a.d_titel, a.d_artiesten, a.d_jaar, a.d_drager, a.d_genres, a.d_hoes, a.d_label,
         a.d_personen, a.d_sleutel, a.z.a, a.z.b, a.z.c, a.z.d)
-      return `(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${ZOEK_SQL})`
+      return `(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${ZOEK_SQL})`
     })
-    const r = await run(`INSERT INTO titels (titelnummer, soort, mw_data, tip, d_titel, d_artiesten, d_jaar, d_drager, d_genres, d_hoes, d_label, d_personen, d_sleutel, zoek)
+    const r = await run(`INSERT INTO titels (titelnummer, collectie, soort, mw_data, tip, d_titel, d_artiesten, d_jaar, d_drager, d_genres, d_hoes, d_label, d_personen, d_sleutel, zoek)
       VALUES ${waarden.join(',')} ON CONFLICT (titelnummer) DO NOTHING RETURNING id, titelnummer`, ...p)
     for (const x of r.rows) ids.set(x.titelnummer, x.id)
     await bewaarWoorden([...woorden])
   }
   return ids
+}
+
+/** Muziekweb-naslag in de kiosk: titels (collectie 'muziekweb') voor albums die nog geen titel hebben.
+ *  Cd's krijgen één exemplaar (bron 'muziekweb', objectnummer MW-<titelnummer>): zo zijn ze aan te vragen zoals de platen.
+ *  Lp's krijgen geen exemplaar: die zijn alleen te bekijken. Geeft het aantal nieuwe titels terug. */
+export async function maakNaslagTitels(records: MwRecord[]): Promise<number> {
+  const nummers = `{${records.map((r) => `"${r.titelnummer.replace(/"/g, '')}"`).join(',')}}`
+  const bekend = new Set((await all<{ t: string }>('SELECT titelnummer AS t FROM titels WHERE titelnummer = ANY(?::text[])', nummers)).map((r) => r.t))
+  const ids = await maakTitelsBulk(records.filter((r) => !bekend.has(r.titelnummer)).map((r) => ({ titelnummer: r.titelnummer, soort: r.soort, tip: r.tip, mw: r.velden })), 'muziekweb')
+  await run(`INSERT INTO exemplaren (objectnummer, titel_id, titelnummer, vindcode, bron)
+      SELECT 'MW-' || t.titelnummer, t.id, t.titelnummer, t.titelnummer, 'muziekweb' FROM titels t
+      WHERE t.collectie = 'muziekweb' AND t.d_drager = 'CD' AND t.titelnummer = ANY(?::text[])
+      ON CONFLICT (objectnummer) DO NOTHING`, nummers)
+  return ids.size
 }
 
 /** Maakt titels aan voor exemplaren met een bekend titelnummer zonder gekoppelde titel. */

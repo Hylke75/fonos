@@ -5,7 +5,8 @@ import { all, tx, run } from './db.ts'
 import { ZICHTBAAR_SQL } from './titels.ts'
 import { normaliseer } from '../shared/velden.ts'
 
-const RANG = "ts_rank('{0.05, 0.2, 0.5, 1.0}', t.zoek, q)"
+// De eigen collectie van de Luisterbar weegt zwaarder dan de Muziekweb-naslag.
+const RANG = "ts_rank('{0.05, 0.2, 0.5, 1.0}', t.zoek, q) * CASE WHEN t.collectie = 'fonos' THEN 2 ELSE 1 END"
 
 async function vindTitels(tsquery: string, limiet: number) {
   return all<{ id: number; score: number }>(

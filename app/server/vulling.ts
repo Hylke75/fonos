@@ -93,7 +93,7 @@ export async function laadCollectieUitFonotheek(items: CollectieItem[], voortgan
   const echte = (await get<{ n: number }>("SELECT COUNT(*)::int AS n FROM exemplaren WHERE bron IS DISTINCT FROM 'demo'"))!.n
   if (!echte) {
     await run("DELETE FROM exemplaren WHERE bron = 'demo' AND id NOT IN (SELECT exemplaar_id FROM aanvraag_items)")
-    await run(`DELETE FROM titels t WHERE NOT EXISTS (SELECT 1 FROM exemplaren e WHERE e.titel_id = t.id) AND t.heeft_fonos = 0
+    await run(`DELETE FROM titels t WHERE t.collectie = 'fonos' AND NOT EXISTS (SELECT 1 FROM exemplaren e WHERE e.titel_id = t.id) AND t.heeft_fonos = 0
       AND NOT EXISTS (SELECT 1 FROM aanvraag_items i WHERE i.titel_id = t.id) AND NOT EXISTS (SELECT 1 FROM selectie_titels s WHERE s.titel_id = t.id)`)
     await run('UPDATE titels SET uitgelicht = 0')
   }
