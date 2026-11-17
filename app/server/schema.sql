@@ -111,6 +111,8 @@ CREATE INDEX IF NOT EXISTS idx_titels_kiosk2 ON titels (zichtbaar, collectie, he
 CREATE INDEX IF NOT EXISTS idx_titels_sort_artiest ON titels ((collectie = 'fonos') DESC, (d_artiesten IS NULL), lower(d_artiesten), lower(d_titel), id);
 CREATE INDEX IF NOT EXISTS idx_titels_sort_jaar ON titels ((collectie = 'fonos') DESC, d_jaar DESC NULLS LAST, lower(d_artiesten), id);
 CREATE INDEX IF NOT EXISTS idx_titels_sort_album ON titels ((collectie = 'fonos') DESC, lower(d_titel), id);
+-- Homepagina "Uitgelicht": zonder deze index loopt de database alle titels af (hoogste id eerst).
+CREATE INDEX IF NOT EXISTS idx_titels_uitgelicht ON titels (id DESC) WHERE uitgelicht = 1;
 -- Tellingen bij bladeren (totaal en filters) per filtercombinatie, voor grote groepen zoals een genre.
 CREATE TABLE IF NOT EXISTS kiosk_tellingen (sleutel text PRIMARY KEY, data text NOT NULL, versie text NOT NULL DEFAULT '', tijd text NOT NULL DEFAULT nu());
 
