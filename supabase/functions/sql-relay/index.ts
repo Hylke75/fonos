@@ -29,8 +29,11 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST' || !(await magHet(req.headers.get('x-relay-sleutel')))) return new Response('Niet toegestaan', { status: 401 })
   const { q, p, exec } = await req.json()
   try {
-    if (exec) { await sql.unsafe(q); return Response.json({ rows: [], count: 0 }) }
-    const r: any = await sql.unsafe(q, p ?? [])
+    // Als de rol van de app (eigenaar van de tabellen), net als de app zelf; per verzoek één transactie.
+    const r: any = await sql.begin(async (tx: any) => {
+      await tx.unsafe('SET LOCAL ROLE fonos_app')
+      return exec ? (await tx.unsafe(q), []) : tx.unsafe(q, p ?? [])
+    })
     return Response.json({ rows: [...r], count: r.count ?? r.length })
   } catch (e) {
     return Response.json({ fout: (e as Error).message, code: (e as any).code ?? 'onbekend' }, { status: 500 })
