@@ -414,7 +414,8 @@ def build(src: Path, out: Path, collectie_csv: Path, alles: bool = False) -> Non
         if album not in from_page:
             pos = q("SELECT COUNT(*) FROM album_performers WHERE album_code = ?", (album,)).fetchone()[0]
             q("INSERT OR IGNORE INTO album_performers VALUES (?,?,?)", (album, pos, perf))
-    q("""INSERT INTO album_credits SELECT c.* FROM w.album_credits c JOIN albums a ON a.code = c.album_code""")
+    if heeft("album_credits"):  # uit de catalogusexport
+        q("""INSERT INTO album_credits SELECT c.* FROM w.album_credits c JOIN albums a ON a.code = c.album_code""")
     q("INSERT INTO performer_aliases SELECT * FROM w.performer_aliases")
     q("INSERT INTO performer_keywords SELECT * FROM w.performer_keywords")
 
@@ -423,7 +424,8 @@ def build(src: Path, out: Path, collectie_csv: Path, alles: bool = False) -> Non
     q("""INSERT OR IGNORE INTO album_genres
          SELECT album_code, genre_code FROM w.album_genres WHERE album_code IN (SELECT code FROM albums)
          UNION SELECT album_code, genre_code FROM w.album_page_genres WHERE album_code IN (SELECT code FROM albums)""")
-    q("INSERT INTO album_keywords SELECT k.* FROM w.album_keywords k JOIN albums a ON a.code = k.album_code")
+    if heeft("album_keywords"):  # uit de catalogusexport
+        q("INSERT INTO album_keywords SELECT k.* FROM w.album_keywords k JOIN albums a ON a.code = k.album_code")
     q("INSERT INTO media_types SELECT * FROM w.media_types")
     q("INSERT INTO album_media SELECT m.* FROM w.album_media m JOIN albums a ON a.code = m.album_code")
 
