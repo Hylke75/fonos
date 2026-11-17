@@ -155,7 +155,7 @@ export async function leesBackup(adresOfBuffer: string | Buffer, bron: string, t
     if (ix) index = JSON.parse(await ix.async('string'))
     for (const f of Object.values(zip.files)) if (f.name.startsWith('hoezen/') && !f.dir && !f.name.endsWith('index.json')) hoezen[basename(f.name)] = await f.async('nodebuffer')
   } else data = JSON.parse(buf.toString('utf8'))
-  if (data?.formaat !== 'fonotheek-backup' || !data.tabellen) throw new Error('Dit is geen back-up van de Fonotheek')
+  if (data?.formaat !== 'fonotheek-backup' || !data.tabellen) throw new Error('Dit is geen back-up van de Luisterbar')
   if (typeof adresOfBuffer === 'string') {
     await run("DELETE FROM taken WHERE soort = 'terugzetten' AND tijd < nu('-2 hours')")
     await run("INSERT INTO taken (id, soort, data) VALUES (?, 'terugzetten', ?) ON CONFLICT (id) DO NOTHING", token, JSON.stringify({ adres: adresOfBuffer, bron }))

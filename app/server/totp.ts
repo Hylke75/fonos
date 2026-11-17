@@ -54,6 +54,6 @@ export function controleer(geheim: string, invoer: string, ms = Date.now(), laat
   return null
 }
 
-export function otpauthUrl(geheim: string, email: string, uitgever = 'Fonotheek') {
+export function otpauthUrl(geheim: string, email: string, uitgever = 'Luisterbar') {
   return `otpauth://totp/${encodeURIComponent(`${uitgever}:${email}`)}?secret=${geheim}&issuer=${encodeURIComponent(uitgever)}&algorithm=SHA1&digits=6&period=${STAP}`
 }

@@ -75,7 +75,7 @@ export async function kioskConfig() {
       max_titels: inst.max_titels, inactiviteit_sec: inst.inactiviteit_sec, waarschuwing_sec: inst.waarschuwing_sec,
       speler_inactief_min: Number(inst.speler_inactief_min), speler_reactie_min: Number(inst.speler_reactie_min),
       bevestiging_sec: inst.bevestiging_sec, fonos_paginas: inst.fonos_paginas, privacy_tekst: inst.privacy_tekst, privacy_tekst_en: inst.privacy_tekst_en,
-      privacy_url: inst.privacy_url, nl_weergave: inst.nl_weergave, bumper_video_url: inst.bumper_video_url,
+      privacy_url: inst.privacy_url, nl_weergave: inst.nl_weergave, bumper_video_url: inst.bumper_video_url, instagram_url: inst.instagram_url,
       redactie_titel: inst.redactie_titel, redactie_tekst: inst.redactie_tekst, redactie_titel_en: inst.redactie_titel_en, redactie_tekst_en: inst.redactie_tekst_en,
       vindcode_label: VINDCODE_LABEL[inst.vindcode_bron] ?? 'Vindcode',
       nieuwsbrief: inst.nieuwsbrief_koppeling !== 'geen', // O-4: zonder koppeling geen aanmelding

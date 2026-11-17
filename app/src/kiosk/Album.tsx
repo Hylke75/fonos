@@ -167,8 +167,8 @@ export function AlbumWeergave({ a, voorbeeld = false }: { a: AlbumData; voorbeel
             {verkeerdeSpeler && (
               <div className="melding-blok speler-melding" role="status">
                 {kiosk!.spelerSoort === 'lp'
-                  ? t('Je zit aan platenspeler {n}. Deze cd kun je daar niet afspelen. Wil je cd’s luisteren, geef je speler dan vrij en kies de cd-speler.', { n: kiosk!.speler?.nummer ?? '' })
-                  : t('Je zit aan de cd-speler. Deze plaat kun je daar niet afspelen. Wil je platen luisteren, geef je speler dan vrij en kies een platenspeler.')}
+                  ? t('Je zit aan draaitafel {n}. Deze cd kun je daar niet afspelen. Wil je cd’s luisteren, geef je speler dan vrij en kies de cd-speler.', { n: kiosk!.speler?.nummer ?? '' })
+                  : t('Je zit aan de cd-speler. Deze plaat kun je daar niet afspelen. Wil je platen luisteren, geef je speler dan vrij en kies een draaitafel.')}
               </div>
             )}
             <button className="btn btn-pink btn-l btn-block" disabled={!gekozen || inMand || !!vol || verkeerdeSpeler} onClick={voegToe}>

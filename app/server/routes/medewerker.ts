@@ -23,7 +23,7 @@ medewerker.post('/push/uit', async (c) => {
   await afmelden(String(endpoint ?? ''))
   return c.json({ ok: true })
 })
-medewerker.post('/push/test', async (c) => c.json({ verstuurd: await stuurPush({ titel: 'Fonotheek', tekst: 'Pushmeldingen staan aan op dit apparaat.', url: '/medewerker', tag: 'test' }) }))
+medewerker.post('/push/test', async (c) => c.json({ verstuurd: await stuurPush({ titel: 'Luisterbar', tekst: 'Pushmeldingen staan aan op dit apparaat.', url: '/medewerker', tag: 'test' }) }))
 
 medewerker.get('/aanvragen', async (c) => {
   const tab = c.req.query('tab') === 'afgerond' ? 'afgerond' : 'actief'

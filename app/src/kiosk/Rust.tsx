@@ -26,7 +26,7 @@ export function Rust() {
       <div className="vorm vorm-c" />
       <div className="hero-inhoud">
         <div className="top"><Logo /><TaalKnop /></div>
-        <h1>{t('De<br />Fonotheek') === 'De<br />Fonotheek' ? <>De<br />Fonotheek</> : <>The<br />Fonotheek</>}</h1>
+        <h1>{t('De<br />Luisterbar') === 'De<br />Luisterbar' ? <>De<br />Luisterbar</> : <>The<br />Luisterbar</>}</h1>
         <p className="lead">{t("Ontdek, luister en laat je verrassen door onze collectie lp's en cd's.")}</p>
         <button className="btn btn-pink btn-l" onClick={start}>{t('Begin met zoeken')} <ArrowRight size={24} /></button>
       </div>

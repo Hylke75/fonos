@@ -15,14 +15,17 @@ export function AlbumKaart({ k, voet = false }: { k: Kaart; voet?: boolean }) {
   return (
     <div className="album-kaart">
       <button style={{ all: 'unset', cursor: 'pointer', display: 'block', width: '100%' }} onClick={() => nav(`/album/${k.id}`)} aria-label={`${k.artiesten} – ${k.titel}`}>
-        <Hoes src={k.hoes} alt="" />
+        {/* Beschikbaarheid als badge op de hoes: zo staat er in de voet maar één knop (Aanvragen). */}
+        <div className="hoes-vak">
+          <Hoes src={k.hoes} alt="" />
+          {voet && <span className="hoes-badge"><Beschikbaarheid drager={k.drager} beschikbaar={k.beschikbaar} tekst={false} /></span>}
+        </div>
         <div className="a">{k.artiesten || t('Diverse artiesten')}</div>
         <div className="t">{k.titel}</div>
         {k.reden && <div className="reden">{t(REDEN[k.reden.soort], { x: k.reden.tekst })}</div>}
       </button>
       {voet && (
         <div className="kaart-voet">
-          <Beschikbaarheid drager={k.drager} beschikbaar={k.beschikbaar} tekst={false} />
           <span className="dim" style={{ fontSize: 13 }}>{k.jaar ?? ''}</span>
           <AanvraagMini k={k} />
         </div>
@@ -37,8 +40,8 @@ export const pastOpSpeler = (drager: string | null | undefined, soort: 'lp' | 'c
 export function AanvraagMini({ k }: { k: Kaart }) {
   const { mand, voegToe, toast, config, bewaard, bewaar, spelerSoort } = useKiosk()
   if (!pastOpSpeler(k.drager, spelerSoort)) {
-    return <button className="aanvraag-mini" disabled title={spelerSoort === 'lp' ? t('Een cd kun je niet op een platenspeler afspelen.') : t('Een plaat kun je niet op een cd-speler afspelen.')}>
-      {spelerSoort === 'lp' ? t('Cd-speler nodig') : t('Platenspeler nodig')}</button>
+    return <button className="aanvraag-mini" disabled title={spelerSoort === 'lp' ? t('Een cd kun je niet op een draaitafel afspelen.') : t('Een plaat kun je niet op een cd-speler afspelen.')}>
+      {spelerSoort === 'lp' ? t('Cd-speler nodig') : t('Draaitafel nodig')}</button>
   }
   const in_ = mand.some((m) => m.titel_id === k.id)
   // Bij het maximum: bewaren voor later in plaats van aanvragen (7.8, verbetering 4).

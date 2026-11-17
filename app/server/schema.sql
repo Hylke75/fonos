@@ -1,4 +1,4 @@
--- Databaseschema van de Fonotheek-app (Postgres; zie functioneel ontwerp, hoofdstuk 6).
+-- Databaseschema van de Luisterbar-app (Postgres; zie functioneel ontwerp, hoofdstuk 6).
 -- Tijdstippen staan als tekst 'YYYY-MM-DD HH24:MI:SS' in UTC (functie nu()), JSON als tekst.
 -- Alle toegang loopt via de server; row level security staat aan zonder policies, zodat de
 -- publieke Supabase-API niets kan lezen of schrijven (13).
@@ -362,3 +362,7 @@ BEGIN
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
   END LOOP;
 END $$;
+
+-- Naam Fonotheek → Luisterbar: de welkomsttitel alleen bijwerken als die nog de oude standaardtekst is.
+UPDATE instellingen SET waarde = '"Welkom in de Luisterbar"' WHERE sleutel = 'redactie_titel' AND waarde = '"Welkom in de Fonotheek"';
+UPDATE instellingen SET waarde = '"Welcome to the Luisterbar"' WHERE sleutel = 'redactie_titel_en' AND waarde = '"Welcome to the Fonotheek"';

@@ -28,9 +28,9 @@ test.describe.serial('Fonotheek', () => {
     page.on('pageerror', (e) => fouten.push(e.message))
     await page.goto('/?tablet=E2E')
     await page.getByRole('button', { name: 'Begin met zoeken' }).click()
-    await expect(page.getByRole('heading', { name: 'Kies je platenspeler' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Kies je draaitafel' })).toBeVisible()
     await toegankelijk(page, 'speler kiezen')
-    await page.getByRole('radio', { name: 'Platenspeler 1' }).click()
+    await page.getByRole('radio', { name: 'Draaitafel 1' }).click()
     await expect(page.locator('.speler-knop')).toContainText('1')
 
     await page.getByRole('search').getByRole('textbox').fill('suzanne')
@@ -51,12 +51,16 @@ test.describe.serial('Fonotheek', () => {
     await page.getByRole('button', { name: 'Voeg toe aan aanvraag' }).click()
     await expect(page.locator('.mand-knop .teller')).toHaveText('1')
 
+    // De mandknop opent de zijbalk met je aanvraag; daar ga je door naar afronden.
     await page.locator('.mand-knop').click()
+    await expect(page.getByRole('dialog', { name: 'Jouw aanvraag' })).toBeVisible()
+    await toegankelijk(page, 'zijbalk aanvraag')
+    await page.getByRole('button', { name: 'Aanvraag afronden' }).click()
     await expect(page.getByRole('heading', { name: 'Jouw aanvraag' })).toBeVisible()
     await toegankelijk(page, 'aanvraag')
     await page.getByRole('button', { name: /Aanvraag versturen/ }).click()
     await expect(page.getByRole('heading', { name: 'Aanvraag verstuurd!' })).toBeVisible()
-    await page.getByRole('button', { name: 'Platenspeler vrijgeven' }).click()
+    await page.getByRole('button', { name: 'Draaitafel vrijgeven' }).click()
     await page.getByRole('button', { name: 'Ja, vrijgeven' }).click()
     await expect(page.getByRole('button', { name: 'Begin met zoeken' })).toBeVisible()
     expect(fouten).toEqual([])
@@ -76,7 +80,7 @@ test.describe.serial('Fonotheek', () => {
     await page.getByRole('button', { name: 'Bekijk deze plaat' }).click()
     await expect(page).toHaveURL(/\/album\/\d+/)
     await expect(page.getByRole('button', { name: 'Voeg toe aan aanvraag' })).toBeVisible()
-    await page.getByRole('button', { name: /Platenspeler \d+ vrijgeven/ }).click()
+    await page.getByRole('button', { name: /Draaitafel \d+ vrijgeven/ }).click()
     await page.getByRole('button', { name: /vrijgeven/i }).last().click()
   })
 
@@ -84,7 +88,7 @@ test.describe.serial('Fonotheek', () => {
     await page.goto('/')
     await page.locator('.taal-knop').click()
     await page.getByRole('button', { name: 'Start exploring' }).click()
-    await expect(page.getByRole('heading', { name: 'Choose your record player' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Choose your turntable' })).toBeVisible()
   })
 
   test('inloggen met tweestaps en het medewerkersscherm', async ({ page }) => {

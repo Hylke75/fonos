@@ -1,4 +1,4 @@
-/* Vormgeving volgens het ontwerp "Fonotheek" (bijlage bij het functioneel ontwerp). */
+/* Vormgeving volgens het ontwerp "Luisterbar" (bijlage bij het functioneel ontwerp). */
 @import '@fontsource/inter/400.css';
 @import '@fontsource/inter/500.css';
 @import '@fontsource/inter/600.css';
@@ -188,7 +188,9 @@ img { display: block; }
 .rij { display: flex; gap: 20px; overflow-x: auto; margin: 0 -32px; padding: 0 32px 8px; scrollbar-width: none; }
 .rij::-webkit-scrollbar { display: none; }
 .album-kaart { flex: none; width: 164px; border: 0; background: none; padding: 0; text-align: left; }
-.album-kaart .cover { width: 100%; margin-bottom: 12px; }
+.album-kaart .cover { width: 100%; }
+.album-kaart .hoes-vak { position: relative; margin-bottom: 12px; }
+.hoes-badge { position: absolute; top: 8px; left: 8px; display: inline-flex; align-items: center; padding: 5px 7px; border-radius: 999px; background: rgba(4, 10, 30, .82); backdrop-filter: blur(4px); }
 .album-kaart .a { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .album-kaart .t { color: var(--muted); font-size: 14px; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
@@ -222,7 +224,7 @@ img { display: block; }
 .aanvraag-mini.in { background: var(--surface-3); color: var(--cyan); }
 .aanvraag-mini:disabled { background: var(--surface-2); color: var(--dim); }
 .lijst-weergave { display: flex; flex-direction: column; }
-.lijst-regel { display: grid; grid-template-columns: 72px 1fr 90px 140px 150px; gap: 20px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.lijst-regel { display: grid; grid-template-columns: 72px 1fr 90px 150px; gap: 20px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
 .lijst-regel .cover { width: 72px; }
 .lijst-regel button.tekst { background: none; border: 0; padding: 0; text-align: left; min-height: 48px; }
 .meer-laden { display: flex; justify-content: center; margin: 32px 0; }
@@ -915,3 +917,57 @@ pre.rapport { background: #07111f; border: 1px solid var(--line); border-radius:
   .kh-titel { font-size: 18px; }
   .keuzehulp .knoppen .btn { flex: 1 1 100%; }
 }
+
+/* Zijbalk met je aanvraag ("winkelwagen") */
+.zijbalk-achter { position: fixed; inset: 0; z-index: 90; background: rgba(2, 5, 16, .55); backdrop-filter: blur(2px); }
+.zijbalk { position: absolute; top: 0; right: 0; bottom: 0; width: min(440px, 100%); border-radius: 0; display: flex; flex-direction: column; padding: 24px; gap: 16px; box-shadow: -24px 0 48px rgba(0, 0, 0, .5); animation: zijbalk-in .18s ease-out; }
+@keyframes zijbalk-in { from { transform: translateX(32px); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .zijbalk { animation: none; } }
+.zijbalk-kop { display: flex; align-items: center; gap: 12px; }
+.zijbalk-kop h2 { margin: 0; font-size: 24px; display: flex; align-items: center; gap: 10px; }
+.zijbalk-kop .muted { margin-right: auto; }
+.zijbalk-leeg { flex: 1; font-size: 17px; }
+.zijbalk-lijst { list-style: none; margin: 0; padding: 0; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.zijbalk-lijst li { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+.zijbalk-lijst li.weg .cover { opacity: .45; }
+.zijbalk-titel { flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; background: none; border: 0; padding: 0; text-align: left; color: inherit; min-height: 64px; }
+.zijbalk-titel .cover { width: 64px; }
+.zijbalk-titel > span { display: flex; flex-direction: column; min-width: 0; }
+.zijbalk-titel .a { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.zijbalk-titel .t { color: var(--muted); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.zijbalk-titel .niet { color: var(--red); font-size: 13px; font-weight: 600; margin-top: 2px; }
+.zijbalk-bewaard { margin: 0; }
+.zijbalk-voet { display: flex; flex-direction: column; gap: 10px; }
+.mand-knop .teller { animation: teller-tik .3s ease-out; }
+@keyframes teller-tik { 0% { transform: scale(1.6); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .mand-knop .teller { animation: none; } }
+
+/* Gekozen genre: zichtbaar uit te zetten */
+.tegel-uit { position: absolute; top: 8px; right: 8px; z-index: 2; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: rgba(4, 10, 30, .85); color: #fff; }
+
+/* Verras me: eerst een genre kiezen */
+.verras-keuze { position: relative; width: min(720px, 100%); text-align: left; }
+.verras-keuze h2 { display: flex; align-items: center; gap: 10px; }
+.verras-keuze .sluit { position: absolute; top: 16px; right: 16px; }
+.verras-genres { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin: 8px 0 16px; }
+.verras-genre { min-height: 64px; border-radius: 12px; border: 0; background: var(--k); color: #fff; font-weight: 700; font-size: 17px; padding: 0 14px; text-align: left; text-shadow: 0 1px 2px rgba(0, 0, 0, .35); }
+.verras-keuze .melding { margin-top: 12px; color: var(--red); }
+
+/* Filteren en sorteren als twee aparte groepen */
+.filterbalk { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; margin-bottom: 20px; }
+.filter-groep, .sorteer-groep { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.sorteer-groep { padding-left: 20px; border-left: 1px solid var(--line-2); }
+.groep-label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); margin-right: 4px; }
+.sorteer-groep .weergave { margin-left: 0; }
+.chip.wis-filters { display: inline-flex; align-items: center; gap: 6px; color: var(--cyan); border-style: dashed; }
+@media (max-width: 900px) {
+  .sorteer-groep { padding-left: 0; border-left: 0; padding-top: 12px; border-top: 1px solid var(--line); width: 100%; }
+}
+
+/* Volg Fonos op Instagram (homepagina kiosk) */
+.instagram-blok { display: flex; align-items: center; gap: 24px; margin: 48px 0 16px; padding: 24px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.instagram-blok .qr { width: 132px; flex: none; border-radius: 8px; overflow: hidden; background: #fff; }
+.instagram-blok .qr svg { display: block; width: 100%; height: auto; }
+.instagram-blok h2 { margin: 0 0 6px; font-size: 22px; }
+.instagram-blok p { margin: 0; }
+.instagram-blok .account { margin-top: 10px; font-weight: 700; color: var(--cyan); font-size: 18px; }

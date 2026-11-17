@@ -658,6 +658,7 @@ beheer.put('/instellingen', alleenBeheerder, async (c) => {
       await syncPlatenspelers(n)
     }
     if (k === 'tweestaps' && !['iedereen', 'beheerders', 'uit'].includes(String(waarde))) return fout(c, 'Kies iedereen, beheerders of uit')
+    if (k === 'instagram_url' && waarde && !/^https:\/\/(www\.)?instagram\.com\/[A-Za-z0-9._]+\/?$/.test(String(waarde).trim())) return fout(c, 'Vul het adres van een Instagram-account in, bv. https://www.instagram.com/fonos')
     if (k === 'wachtwoord_inloggen' && waarde === false && !googleAan()) return fout(c, 'Inloggen via Google is nog niet ingesteld; zonder wachtwoord kan dan niemand meer inloggen.')
     await zetInstelling(k, waarde)
     await log(wie(c), 'instelling gewijzigd', { type: 'instelling', id: k, label: k, veld: k, oud: huidig[k], nieuw: waarde })
@@ -691,8 +692,8 @@ async function stuurReset(c: Context, gebruikerId: number, email: string, welkom
   const token = await maakResetToken(gebruikerId)
   const basis = process.env.FONOS_BASIS_URL ?? new URL(c.req.url).origin
   const link = `${basis}/wachtwoord?token=${token}`
-  await stuurMail(email, welkom ? 'Je account voor de Fonotheek' : 'Nieuw wachtwoord voor de Fonotheek',
-    `${welkom ? 'Er is een account voor je aangemaakt in de Fonotheek-app.' : 'Er is een nieuw wachtwoord voor je aangevraagd.'}\n\nKies je wachtwoord via deze link (2 uur geldig):\n${link}`)
+  await stuurMail(email, welkom ? 'Je account voor de Luisterbar' : 'Nieuw wachtwoord voor de Luisterbar',
+    `${welkom ? 'Er is een account voor je aangemaakt in de Luisterbar-app.' : 'Er is een nieuw wachtwoord voor je aangevraagd.'}\n\nKies je wachtwoord via deze link (2 uur geldig):\n${link}`)
 }
 
 beheer.post('/gebruikers', alleenBeheerder, async (c) => {

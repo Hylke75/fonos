@@ -33,7 +33,7 @@ for (const [toestel, { defaultBrowserType: _, ...instellingen }] of Object.entri
     await page.getByRole('button', { name: 'Begin met zoeken' }).click()
     await pastInBeeld(page, 'platenspeler kiezen')
     await page.locator('.speler:not([disabled])').first().click()
-    await expect(page.getByRole('button', { name: /Platenspeler \d+ vrijgeven/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Draaitafel \d+ vrijgeven/ })).toBeVisible()
     await pastInBeeld(page, 'homepagina')
     // Logo en knoppen staan op één regel; de zoekbalk mag eronder.
     const midden = async (sel: string) => { const b = (await page.locator(sel).first().boundingBox())!; return b.y + b.height / 2 }
@@ -59,13 +59,15 @@ for (const [toestel, { defaultBrowserType: _, ...instellingen }] of Object.entri
       expect(knop.y + knop.height, 'knop "Voeg toe aan aanvraag" in beeld').toBeLessThanOrEqual(page.viewportSize()!.height)
     }
     await page.getByRole('button', { name: 'Voeg toe aan aanvraag' }).click()
-    await page.getByRole('link', { name: /Jouw aanvraag/ }).click()
+    await page.getByRole('button', { name: /Jouw aanvraag/ }).click()
+    await pastInBeeld(page, 'zijbalk aanvraag')
+    await page.getByRole('button', { name: 'Aanvraag afronden' }).click()
     await expect(page.getByRole('button', { name: /Aanvraag versturen/ })).toBeVisible()
     await pastInBeeld(page, 'aanvraag')
     await page.getByRole('button', { name: 'Grotere tekst en meer contrast' }).click()
     await pastInBeeld(page, 'aanvraag met grotere tekst')
     // Speler weer vrijgeven voor de volgende test.
-    await page.getByRole('button', { name: /Platenspeler \d+ vrijgeven/ }).click()
+    await page.getByRole('button', { name: /Draaitafel \d+ vrijgeven/ }).click()
     await page.getByRole('button', { name: /vrijgeven/i }).last().click()
     await expect(page.getByRole('button', { name: 'Begin met zoeken' })).toBeVisible()
     await page.goto('/medewerker')

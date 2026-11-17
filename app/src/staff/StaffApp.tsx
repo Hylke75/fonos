@@ -245,7 +245,7 @@ function Looplijst({ versie }: { versie: number }) {
     </div>
     {/* Printversie (verbetering 10): alleen zichtbaar bij afdrukken, met vakjes om af te vinken. */}
     <div className="alleen-afdruk">
-      <h1>Looplijst Fonotheek</h1>
+      <h1>Looplijst Luisterbar</h1>
       <p>{new Date().toLocaleString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })} · {l.length} {l.length === 1 ? 'plaat' : 'platen'}</p>
       <table>
         <thead><tr><th>✓</th><th>Catalogusnr.</th><th>Artiest en titel</th><th>Drager</th><th>Speler</th><th>Aanvraag</th></tr></thead>

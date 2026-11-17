@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { HoesPlaceholder } from './Iconen'
+import { viaApp } from './hoesUrl'
 
 /** Kleinere versie van een Muziekweb-hoes voor rasters en lijsten (sneller laden op de tablets). */
 const klein = (src: string) => src.replace('/COVER/MEDIUM/', '/COVER/SMALL/')
@@ -12,7 +13,7 @@ export function Hoes({ src, alt = '', className = '', style, groot = false }: { 
   const bron = !src ? null : !groot && poging === 0 && src.includes('/COVER/MEDIUM/') ? klein(src) : poging <= 1 ? src : null
   return (
     <div className={`cover ${className}`} style={style}>
-      {bron ? <img key={bron} src={bron} alt={alt} loading="lazy" decoding="async" onError={() => setPoging((p) => (bron !== src ? 1 : 2))} /> : <HoesPlaceholder />}
+      {bron ? <img key={bron} src={viaApp(bron)} alt={alt} loading="lazy" decoding="async" onError={() => setPoging((p) => (bron !== src ? 1 : 2))} /> : <HoesPlaceholder />}
     </div>
   )
 }

@@ -44,7 +44,7 @@ app.use('*', async (c, next) => {
 app.onError(async (e, c) => {
   console.error(e)
   // IT-beleid 6.2: beheerders krijgen hooguit één melding per dag over serverfouten. Afwachten: op Vercel stopt de functie na het antwoord.
-  await meld('serverfout', 'Fout in de Fonotheek-server', `${c.req.method} ${c.req.path}\n\n${e?.stack ?? e?.message ?? e}`).catch(() => {})
+  await meld('serverfout', 'Fout in de Luisterbar-server', `${c.req.method} ${c.req.path}\n\n${e?.stack ?? e?.message ?? e}`).catch(() => {})
   // Wachten op het platenspeler-slot duurde te lang (lock_timeout): een begrijpelijke melding in plaats van de databasefout.
   if ((e as any)?.code === '55P03') return c.json({ fout: 'Het lukt even niet. Probeer het zo nog eens.', code: 'druk' }, 503)
   return c.json({ fout: e.message || 'Er ging iets mis' }, 500)
@@ -106,6 +106,30 @@ app.get('/api/cron', async (c) => {
   await run("INSERT INTO planner (taak, datum) VALUES ('cron:laatst', nu()) ON CONFLICT (taak) DO UPDATE SET datum = excluded.datum")
   await tik({ backup: true, cron: true })
   return c.json({ ok: true })
+})
+
+/** Muziekweb-hoezen via ons eigen domein. Sommige netwerken (bv. met een bedrijfsfilter) laden media.cdr.nl niet,
+ *  waardoor de kiosk alleen placeholders toont; zo hangt de kiosk alleen van zijn eigen adres af.
+ *  Alleen media.cdr.nl (geen open proxy); lang gecachet, zodat Vercel elke hoes maar één keer ophaalt. */
+export const HOES_HOST = 'media.cdr.nl'
+app.get('/api/hoes', async (c) => {
+  let url: URL
+  try { url = new URL(c.req.query('u') ?? '') } catch { return c.json({ fout: 'Ongeldig adres' }, 400) }
+  if (url.hostname !== HOES_HOST || !/^https?:$/.test(url.protocol) || !url.pathname.startsWith('/COVER/')) return c.json({ fout: 'Niet toegestaan' }, 400)
+  url.protocol = 'https:'
+  const ac = new AbortController()
+  const t = setTimeout(() => ac.abort(), 10_000)
+  try {
+    const r = await fetch(url, { signal: ac.signal, redirect: 'follow' })
+    const type = r.headers.get('content-type') ?? ''
+    if (!r.ok || !type.startsWith('image/')) return c.json({ fout: 'Hoes niet gevonden' }, 404, { 'Cache-Control': 'public, max-age=3600, s-maxage=3600' })
+    return new Response(r.body, { headers: {
+      'Content-Type': type,
+      'Cache-Control': 'public, max-age=2592000, s-maxage=2592000, immutable',
+    } })
+  } catch {
+    return c.json({ fout: 'Hoes tijdelijk niet bereikbaar' }, 502, { 'Cache-Control': 'no-store' })
+  } finally { clearTimeout(t) }
 })
 
 /** Bestanden uit de privé Blob-store. Hoezen zijn voor iedereen; back-ups en uploads alleen voor beheerders. */
