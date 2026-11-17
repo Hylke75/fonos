@@ -301,7 +301,9 @@ def norm_number(s: str | None) -> str:
     return re.sub(r"[\s.\-/]+", "", (s or "").lower())
 
 
-def build(src: Path, out: Path, collectie_csv: Path) -> None:
+def build(src: Path, out: Path, collectie_csv: Path, alles: bool = False) -> None:
+    """alles=True: alle albums met een LP of cd als drager die níet in de gebruikscollectie staan
+    (de Muziekweb-collectie als naslag; collectie_items blijft dan leeg)."""
     if out.exists():
         out.unlink()
     dst = sqlite3.connect(out)
@@ -317,7 +319,9 @@ def build(src: Path, out: Path, collectie_csv: Path) -> None:
             rows.add((r["objectnummer"], r["titelnummer"] or None, lijst))
     with_code = {(o, l) for o, t, l in rows if t}
     rows = [(o, t, l) for o, t, l in rows if t or (o, l) not in with_code]  # dubbele regels zonder titelnummer weg
-    dst.executemany("INSERT OR IGNORE INTO collectie_items VALUES (?,?,?)", rows)
+    in_lists = {t for _, t, _ in rows if t}
+    if not alles:
+        dst.executemany("INSERT OR IGNORE INTO collectie_items VALUES (?,?,?)", rows)
 
     # --- albums: open data als basis, website en catalogus gaan voor
     lod = {r[0]: r for r in q("SELECT code, title, media_description, number_of_discs, date_published, "
@@ -326,9 +330,14 @@ def build(src: Path, out: Path, collectie_csv: Path) -> None:
     page = {r[0]: r for r in q("SELECT album_code, title, product, date_published, release_text, recording, "
                                "playtime, avg_rating, rating_count, description, description_author, remark, "
                                "cover_url, back_cover_url FROM w.album_pages")}
-    cat = {r[0]: r for r in q("SELECT album_code, titel_id, uitgebracht FROM w.catalogus_albums")}
-    in_lists = {r[0] for r in q("SELECT DISTINCT titelnummer FROM collectie_items WHERE titelnummer IS NOT NULL")}
-    for code in sorted(in_lists & (set(lod) | set(page))):
+    heeft = lambda t: q("SELECT 1 FROM w.sqlite_master WHERE name = ?", (t,)).fetchone() is not None
+    cat = {r[0]: r for r in q("SELECT album_code, titel_id, uitgebracht FROM w.catalogus_albums")} if heeft("catalogus_albums") else {}
+    if alles:
+        fysiek = {r[0] for r in q("SELECT album_code FROM w.album_media WHERE kind = 'drager' AND media_code IN ('LP', 'CD')")}
+        keuze = fysiek - in_lists
+    else:
+        keuze = in_lists
+    for code in sorted(keuze & (set(lod) | set(page))):
         L, P, C = lod.get(code), page.get(code), cat.get(code)
         if C:  # Klassiek: catalogus (al verwerkt in w.albums door catalogus_import.py)
             title = L[1] if L and L[1] else (P[1] if P else None)
@@ -375,8 +384,8 @@ def build(src: Path, out: Path, collectie_csv: Path) -> None:
         for n in (name, short):
             if n:
                 label_by_name.setdefault(n.strip().lower(), code)
-    for album, label, number in q("SELECT b.album_code, b.label, b.nummer FROM w.catalogus_bestelinfo b "
-                                  "JOIN albums a ON a.code = b.album_code").fetchall():
+    for album, label, number in (q("SELECT b.album_code, b.label, b.nummer FROM w.catalogus_bestelinfo b "
+                                   "JOIN albums a ON a.code = b.album_code").fetchall() if heeft("catalogus_bestelinfo") else []):
         add_release(album, label_by_name.get((label or "").strip().lower()), number)
 
     # --- uitvoerenden: open data + wie alleen op de website voorkomt
@@ -455,8 +464,9 @@ def main() -> None:
     p.add_argument("--src", type=Path, default=HERE.parent / "muziekweb.db")
     p.add_argument("--out", type=Path, default=HERE.parent / "fonotheek.db")
     p.add_argument("--collectie", type=Path, default=HERE / "gebruikscollectie.csv")
+    p.add_argument("--alles", action="store_true", help="alle LP's en cd's buiten de gebruikscollectie (naslag)")
     args = p.parse_args()
-    build(args.src, args.out, args.collectie)
+    build(args.src, args.out, args.collectie, args.alles)
     conn = sqlite3.connect(args.out)
     for (t,) in conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"):
         print(f"{t:<20} {conn.execute(f'SELECT COUNT(*) FROM {t}').fetchone()[0]:>8}")
