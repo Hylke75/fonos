@@ -9,6 +9,7 @@ import { resolve } from 'node:path'
 import { leesFonotheekDb, fonotheekAlbums, type MwRecord } from '../server/importers/muziekweb-lezers.ts'
 import { leegRapport, maakNaslagTitels, rondImportAf, startImport, verwerkRecords } from '../server/importers/muziekweb-verwerk.ts'
 import { SYSTEEM } from '../server/log.ts'
+import { warmTellingen } from '../server/catalogus.ts'
 
 const args = process.argv.slice(2)
 const titels = args.includes('--titels')
@@ -37,4 +38,6 @@ while (vanaf < totaal) {
 }
 const r = await rondImportAf(importId, rapport, WIE, `Muziekweb-naslag (${totaal} albums)`, false)
 console.log(`Klaar: ${r.in_dump} albums, ${nieuweTitels} nieuwe titels, ${r.nieuwe_titels} exemplaren gekoppeld, ${Math.round((Date.now() - t0) / 1000)} s`)
+// De kiosk telt bij bladeren uit een cache: die meteen bijwerken.
+if (titels) console.log(`Tellingen bijgewerkt: ${await warmTellingen()} ingangen`)
 process.exit(0)
