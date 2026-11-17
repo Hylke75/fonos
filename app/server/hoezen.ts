@@ -18,8 +18,9 @@ async function controleer(url: string): Promise<boolean | null> {
 
 /** Controleert de n titels die het langst niet gecontroleerd zijn. Geeft het aantal kapotte terug. */
 export async function controleerHoezen(n = 1500, tegelijk = 16) {
+  // Eerst de eigen collectie (die niet in de laatste 30 dagen gecontroleerd is), daarna de Muziekweb-naslag.
   const rijen = await all<{ id: number; d_hoes: string }>(`SELECT id, d_hoes FROM titels WHERE d_hoes LIKE 'http%'
-    ORDER BY hoes_gecontroleerd_op NULLS FIRST, id LIMIT ?`, n)
+    ORDER BY (collectie = 'fonos' AND (hoes_gecontroleerd_op IS NULL OR hoes_gecontroleerd_op < nu('-30 days'))) DESC, hoes_gecontroleerd_op NULLS FIRST, id LIMIT ?`, n)
   let kapot = 0, i = 0
   await Promise.all(Array.from({ length: tegelijk }, async () => {
     while (i < rijen.length) {

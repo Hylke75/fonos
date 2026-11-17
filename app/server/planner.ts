@@ -7,6 +7,7 @@ import { aanvragenGewijzigd, beschikbaarheidGewijzigd } from './events.ts'
 import { maakBackup } from './backup.ts'
 import { verdeel } from './wachtlijst.ts'
 import { controleerHoezen } from './hoezen.ts'
+import { warmTellingen } from './catalogus.ts'
 import { probeerWachtrij } from './nieuwsbrief.ts'
 import { log, SYSTEEM } from './log.ts'
 import { meld, ontvangers } from './meldingen.ts'
@@ -58,6 +59,8 @@ export async function tik(opts: { backup?: boolean; cron?: boolean } = {}) {
   }
   // Hoezen controleren: alleen bij de nachtelijke cron (die mag tot 5 minuten duren).
   if (opts.cron && (await claim('hoezen'))) await controleerHoezen().then((r) => console.log(`[planner] hoezen: ${r.gecontroleerd} gecontroleerd, ${r.kapot} kapot`)).catch((e) => console.error('[planner] hoezen mislukt', e))
+  // Tellingen bij bladeren (alles, elk genre) vooraf uitrekenen: alleen bij de nachtelijke cron.
+  if (opts.cron && (await claim('tellingen'))) await warmTellingen().then((n) => console.log(`[planner] tellingen: ${n} ingangen`)).catch((e) => console.error('[planner] tellingen mislukt', e))
   await probeerWachtrij().catch(() => {})
   // Aantal platenspelers gelijk aan de instelling (ook als alleen de standaardwaarde veranderde), tenzij er op een
   // speler boven dat aantal nog iemand zit of een aanvraag loopt.

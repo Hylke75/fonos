@@ -46,4 +46,13 @@ test('naslag: cd aan te vragen, lp alleen te bekijken, eigen collectie eerst', a
   const an = await analyseer([{ objectnummer: 'OBJ1', titelnummer: 'FON001', vindcode: 'A1', bron: 'test', regel: 1 }], 'test.xlsx')
   assert.equal(an.categorieen.ontbrekend.length, 0)
   assert.equal((await get<any>("SELECT status FROM exemplaren WHERE objectnummer = 'MW-MWCD01'")).status, 'in_collectie')
+
+  // heeft_exemplaar volgt de exemplaren (trigger): afvoeren maakt een eigen titel onzichtbaar, terugzetten weer zichtbaar.
+  await run("UPDATE exemplaren SET status = 'uit_collectie' WHERE objectnummer = 'OBJ1'")
+  assert.equal((await zoekCatalogus({})).totaal, 2)
+  await run("UPDATE exemplaren SET status = 'in_collectie' WHERE objectnummer = 'OBJ1'")
+  assert.equal((await zoekCatalogus({})).totaal, 3)
+  await run("DELETE FROM exemplaren WHERE objectnummer = 'MW-MWCD01'")
+  assert.equal((await beschikbaarheid([cd.id]))[cd.id].beschikbaar, false)
+  assert.equal((await zoekCatalogus({ beschikbaar: true })).totaal, 1)
 })

@@ -1,13 +1,17 @@
 // Catalogus voor de bezoekersapp (7.3–7.7). Leest alleen.
 import { VINDCODE_LABEL } from '../shared/velden.ts'
-import { all, get, instellingen } from './db.ts'
+import { all, get, instellingen, run } from './db.ts'
 import { zoek } from './zoeken.ts'
 import { EIGEN_SQL, exemplarenVan, getoond, OPEN_ITEMS_SQL, ZICHTBAAR_SQL, vindcoder } from './titels.ts'
 import { normaliseer } from '../shared/velden.ts'
 import { platenspelers } from './aanvragen.ts'
 
-/** Beschikbaar: minstens één exemplaar in de collectie dat niet in een open aanvraag zit. */
-const BESCHIKBAAR = `EXISTS (SELECT 1 FROM exemplaren e WHERE e.titel_id = t.id AND e.status = 'in_collectie' AND e.id NOT IN (${OPEN_ITEMS_SQL}))`
+/** Titels waarvan elk exemplaar in de collectie in een open aanvraag zit (een kleine groep). */
+const VOL_IN_GEBRUIK = `SELECT e.titel_id FROM exemplaren e WHERE e.titel_id IS NOT NULL AND e.id IN (${OPEN_ITEMS_SQL})
+  AND NOT EXISTS (SELECT 1 FROM exemplaren e2 WHERE e2.titel_id = e.titel_id AND e2.status = 'in_collectie' AND e2.id NOT IN (${OPEN_ITEMS_SQL}))`
+/** Beschikbaar: minstens één exemplaar in de collectie dat niet in een open aanvraag zit.
+ *  Via de kolom heeft_exemplaar (trigger), zodat dit ook bij ~700.000 titels snel is. */
+const BESCHIKBAAR = `(t.heeft_exemplaar = 1 AND t.id NOT IN (${VOL_IN_GEBRUIK}))`
 const KAART = `t.id, t.d_titel AS titel, COALESCE(t.d_artiesten, '') AS artiesten, t.d_jaar AS jaar, t.d_drager AS drager, CASE WHEN t.hoes_kapot = 1 THEN NULL ELSE t.d_hoes END AS hoes, t.collectie,
   (${BESCHIKBAAR}) AS beschikbaar`
 /** Als KAART, maar beschikbaar als een exemplaar van deze titel óf van een andere uitgave (zelfde sleutel) vrij is. */
@@ -162,35 +166,36 @@ export async function zoekCatalogus(f: Filters) {
   if (samenvoegen) w.push({ sql: `NOT (t.soort = 'populair' AND t.d_sleutel NOT LIKE '|%' AND t.d_sleutel NOT LIKE '%|' AND EXISTS (SELECT 1 FROM titels t2 WHERE t2.d_sleutel = t.d_sleutel AND t2.id < t.id AND t2.zichtbaar = 1 AND t2.soort = 'populair'
       AND EXISTS (SELECT 1 FROM exemplaren e2 WHERE e2.titel_id = t2.id AND e2.status = 'in_collectie')))`, p: [] })
   // Alleen wat nu beschikbaar is: minstens één exemplaar in de collectie dat niet in een open aanvraag zit.
-  if (f.beschikbaar) w.push({ sql: `EXISTS (SELECT 1 FROM exemplaren e WHERE e.titel_id = t.id AND e.status = 'in_collectie' AND e.id NOT IN (${OPEN_ITEMS_SQL}))`, p: [] })
+  if (f.beschikbaar) w.push({ sql: BESCHIKBAAR, p: [] })
   const waar = (lijst: Voorwaarde[]) => ({ sql: lijst.map((x) => `(${x.sql})`).join(' AND '), p: lijst.flatMap((x) => x.p) })
 
-  // Subfilters tellen binnen de gekozen knop, vóór het subfilter zelf.
-  let subfilters: { naam: string; aantal: number }[] = []
-  if (knop) {
-    const b = waar(w)
-    subfilters = (await all<any>(`SELECT k.weergavenaam AS naam, COUNT(DISTINCT t.id)::int AS aantal FROM titels t
-        CROSS JOIN LATERAL jsonb_array_elements_text(t.d_genres::jsonb) g(genre)
-        JOIN genre_koppelingen k ON k.mw_genre = g.genre AND k.knop_id = ? AND k.weergavenaam IS NOT NULL
-        WHERE ${b.sql} GROUP BY k.weergavenaam`, knop.id, ...b.p))
-    const volg = knop.subfilters.map((s) => s.naam)
-    subfilters.sort((a, b2) => volg.indexOf(a.naam) - volg.indexOf(b2.naam))
-    const s = f.sub ? knop.subfilters.find((x) => x.naam === f.sub) : undefined
-    if (s) w.push({ sql: GENRES_IN, p: [JSON.stringify(s.genres)] })
+  // Filters die alleen het totaal en de tellingen beïnvloeden; de pagina zelf komt via de sorteerindexen snel.
+  const s = knop && f.sub ? knop.subfilters.find((x) => x.naam === f.sub) : undefined
+  const metSub = s ? [...w, { sql: GENRES_IN, p: [JSON.stringify(s.genres)] }] : w
+  const metDrager = f.drager ? [...metSub, { sql: 't.d_drager = ?', p: [f.drager] }] : metSub
+  const metDecennium = f.decennium ? [...metDrager, { sql: 't.d_jaar >= ? AND t.d_jaar < ?', p: [f.decennium, f.decennium + 10] }] : metDrager
+  const alles = f.jaar ? [...metDecennium, { sql: 't.d_jaar = ?', p: [f.jaar] }] : metDecennium
+  const b = waar(alles)
+
+  const telAlles = async () => {
+    const [subfilters, dragers, decennia, jaren, totaal] = await Promise.all([
+      // Subfilters tellen binnen de gekozen knop, vóór het subfilter zelf.
+      knop ? (async () => {
+        const b0 = waar(w)
+        const r = await all<any>(`SELECT k.weergavenaam AS naam, COUNT(DISTINCT t.id)::int AS aantal FROM titels t
+          CROSS JOIN LATERAL jsonb_array_elements_text(t.d_genres::jsonb) g(genre)
+          JOIN genre_koppelingen k ON k.mw_genre = g.genre AND k.knop_id = ? AND k.weergavenaam IS NOT NULL
+          WHERE ${b0.sql} GROUP BY k.weergavenaam`, knop.id, ...b0.p)
+        const volg = knop.subfilters.map((x) => x.naam)
+        return r.sort((a, b2) => volg.indexOf(a.naam) - volg.indexOf(b2.naam))
+      })() : Promise.resolve([] as { naam: string; aantal: number }[]),
+      (async () => { const b1 = waar(metSub); return all<any>(`SELECT t.d_drager AS waarde, COUNT(*)::int AS aantal FROM titels t WHERE ${b1.sql} AND t.d_drager IN ('LP', 'CD') GROUP BY t.d_drager`, ...b1.p) })(),
+      (async () => { const b2 = waar(metDrager); return all<any>(`SELECT (t.d_jaar / 10) * 10 AS waarde, COUNT(*)::int AS aantal FROM titels t WHERE ${b2.sql} AND t.d_jaar IS NOT NULL GROUP BY 1 ORDER BY 1`, ...b2.p) })(),
+      f.decennium ? (async () => { const b3 = waar(metDecennium); return all<any>(`SELECT t.d_jaar AS waarde, COUNT(*)::int AS aantal FROM titels t WHERE ${b3.sql} GROUP BY 1 ORDER BY 1`, ...b3.p) })() : Promise.resolve([]),
+      get<any>(`SELECT COUNT(*)::int AS n FROM titels t WHERE ${b.sql}`, ...b.p).then((r) => r!.n as number),
+    ])
+    return { subfilters, dragers, decennia, jaren, totaal }
   }
-  const b1 = waar(w)
-  const dragers = await all<any>(`SELECT t.d_drager AS waarde, COUNT(*)::int AS aantal FROM titels t WHERE ${b1.sql} AND t.d_drager IN ('LP', 'CD') GROUP BY t.d_drager`, ...b1.p)
-  if (f.drager) w.push({ sql: 't.d_drager = ?', p: [f.drager] })
-  const b2 = waar(w)
-  const decennia = await all<any>(`SELECT (t.d_jaar / 10) * 10 AS waarde, COUNT(*)::int AS aantal FROM titels t WHERE ${b2.sql} AND t.d_jaar IS NOT NULL GROUP BY 1 ORDER BY 1`, ...b2.p)
-  let jaren: any[] = []
-  if (f.decennium) {
-    w.push({ sql: 't.d_jaar >= ? AND t.d_jaar < ?', p: [f.decennium, f.decennium + 10] })
-    const b3 = waar(w)
-    jaren = await all(`SELECT t.d_jaar AS waarde, COUNT(*)::int AS aantal FROM titels t WHERE ${b3.sql} GROUP BY 1 ORDER BY 1`, ...b3.p)
-  }
-  if (f.jaar) w.push({ sql: 't.d_jaar = ?', p: [f.jaar] })
-  const b = waar(w)
 
   const sort = f.sort ?? (volgorde ? 'relevantie' : 'artiest')
   // Bij bladeren eerst de eigen collectie van de Luisterbar, daarna de Muziekweb-naslag (bij zoeken telt de relevantie).
@@ -201,14 +206,67 @@ export async function zoekCatalogus(f: Filters) {
     : { sql: `${EIGEN_SQL} DESC, t.d_artiesten IS NULL, lower(t.d_artiesten), lower(t.d_titel), t.id`, p: [] }
   const per = Math.min(f.per ?? 48, 120)
   const pagina = Math.max(1, f.pagina ?? 1)
-  const totaal = (await get<any>(`SELECT COUNT(*)::int AS n FROM titels t WHERE ${b.sql}`, ...b.p))!.n
-  const titels = kaarten(await all(`SELECT ${samenvoegen ? KAART_GROEP : KAART} FROM titels t WHERE ${b.sql} ORDER BY ${orde.sql} LIMIT ? OFFSET ?`, ...b.p, ...orde.p, per, (pagina - 1) * per))
+  // Zoeken en selecties zijn hooguit een paar duizend titels: direct tellen. Bladeren (genre, alles): tellingen uit de cache.
+  const [tel, titelRijen] = await Promise.all([
+    volgorde ? telAlles() : getelde(tellingSleutel(f), !!f.beschikbaar, telAlles),
+    all(`SELECT ${samenvoegen ? KAART_GROEP : KAART} FROM titels t WHERE ${b.sql} ORDER BY ${orde.sql} LIMIT ? OFFSET ?`, ...b.p, ...orde.p, per, (pagina - 1) * per),
+  ])
+  const titels = kaarten(titelRijen)
+  const { subfilters, dragers, decennia, jaren, totaal } = tel
   if (volgorde && f.q) await voegRedenenToe(titels, f.q)
   return {
     totaal, pagina, per, sort, titels,
     facetten: { dragers, decennia, jaren, subfilters },
     knop: knop ? { id: knop.id, naam: knop.naam, kleur: knop.kleur } : null,
   }
+}
+
+// ------------------------------------------------------------------ tellingen bij bladeren (cache)
+
+type Tellingen = { subfilters: { naam: string; aantal: number }[]; dragers: any[]; decennia: any[]; jaren: any[]; totaal: number }
+const tellingSleutel = (f: Filters) => JSON.stringify([f.knop ?? null, f.sub ?? null, f.drager ?? null, f.decennium ?? null, f.jaar ?? null, !!f.nl, !!f.beschikbaar])
+const geheugen = new Map<string, { tijd: number; versie: string; data: Tellingen }>()
+const bezig = new Map<string, Promise<Tellingen>>()
+let opnieuwTellen = false // warmTellingen: alles opnieuw uitrekenen
+
+/** Tellingen uit de cache (geheugen, dan de tabel kiosk_tellingen). Ze horen bij een versie van de catalogus (en met
+ *  "beschikbaar" ook van de beschikbaarheid, zie events.ts) en zijn hooguit 6 uur (met "beschikbaar" 5 minuten) geldig.
+ *  Verouderd: de vorige tellingen meteen tonen en op de achtergrond vernieuwen; zo wacht niemand op een groot genre. */
+async function getelde(sleutel: string, beschikbaar: boolean, tel: () => Promise<Tellingen>): Promise<Tellingen> {
+  if (process.env.NODE_ENV === 'test') return tel() // tests veranderen de gegevens rechtstreeks
+  const namen = beschikbaar ? ['beschikbaarheid', 'catalogus'] : ['catalogus']
+  const versie = (await all<{ naam: string; waarde: number }>('SELECT naam, waarde FROM versies WHERE naam = ANY(?::text[]) ORDER BY naam', `{${namen.join(',')}}`))
+    .map((r) => `${r.naam}=${r.waarde}`).join(',')
+  const geldig = (beschikbaar ? 5 : 360) * 60_000
+  const ververs = () => {
+    if (!bezig.has(sleutel)) bezig.set(sleutel, tel().then(async (data) => {
+      geheugen.set(sleutel, { tijd: Date.now(), versie, data })
+      await run(`INSERT INTO kiosk_tellingen (sleutel, data, versie, tijd) VALUES (?, ?, ?, nu())
+        ON CONFLICT (sleutel) DO UPDATE SET data = excluded.data, versie = excluded.versie, tijd = excluded.tijd`, sleutel, JSON.stringify(data), versie)
+      return data
+    }).finally(() => bezig.delete(sleutel)))
+    return bezig.get(sleutel)!
+  }
+  if (opnieuwTellen) return ververs()
+  let c = geheugen.get(sleutel)
+  if (!c || c.versie !== versie) {
+    const r = await get<{ data: string; versie: string; ms: number }>(`SELECT data, versie, (extract(epoch FROM now() - (tijd || '+00')::timestamptz) * 1000)::bigint AS ms
+      FROM kiosk_tellingen WHERE sleutel = ?`, sleutel)
+    if (r && (!c || r.versie === versie)) { c = { tijd: Date.now() - Number(r.ms), versie: r.versie, data: JSON.parse(r.data) }; geheugen.set(sleutel, c) }
+  }
+  if (!c) return ververs()
+  if (c.versie !== versie || Date.now() - c.tijd > geldig) ververs().catch((e) => console.error('[tellingen] vernieuwen mislukt', e))
+  return c.data
+}
+
+/** Na een import of 's nachts: de tellingen van de veelgebruikte ingangen (alles, elk genre, met en zonder "beschikbaar") alvast uitrekenen. */
+export async function warmTellingen() {
+  const ingangen: Filters[] = [{}, { beschikbaar: true }, ...(await knoppen()).flatMap((k) => [{ knop: k.id }, { knop: k.id, beschikbaar: true }])]
+  opnieuwTellen = true
+  try { for (const f of ingangen) await zoekCatalogus({ ...f, per: 1 }) } finally { opnieuwTellen = false }
+  // Tellingen van filters die al lang niemand meer gebruikt opruimen.
+  await run("DELETE FROM kiosk_tellingen WHERE tijd < nu('-7 days')")
+  return ingangen.length
 }
 
 /** Waarom een titel gevonden is, als dat niet uit de titel of de artiest blijkt: "Nummer: Suzanne", "Componist: …". */

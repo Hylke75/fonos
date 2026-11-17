@@ -86,6 +86,33 @@ CREATE TABLE IF NOT EXISTS exemplaren (
 );
 CREATE INDEX IF NOT EXISTS idx_exemplaren_titel ON exemplaren(titel_id, status);
 CREATE INDEX IF NOT EXISTS idx_exemplaren_titelnummer ON exemplaren(titelnummer);
+-- heeft_exemplaar = 1 als er een exemplaar in de collectie is; bijgehouden door een trigger op exemplaren.
+-- Zo hoeft de kiosk bij ~700.000 titels niet per titel in exemplaren te kijken.
+ALTER TABLE titels ADD COLUMN IF NOT EXISTS heeft_exemplaar integer NOT NULL DEFAULT 0;
+CREATE OR REPLACE FUNCTION zet_heeft_exemplaar() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE tid integer;
+BEGIN
+  FOREACH tid IN ARRAY ARRAY[CASE WHEN TG_OP <> 'INSERT' THEN OLD.titel_id END, CASE WHEN TG_OP <> 'DELETE' THEN NEW.titel_id END] LOOP
+    IF tid IS NOT NULL THEN
+      UPDATE titels t SET heeft_exemplaar = x.h FROM (SELECT CASE WHEN EXISTS (SELECT 1 FROM exemplaren e WHERE e.titel_id = tid AND e.status = 'in_collectie') THEN 1 ELSE 0 END AS h) x
+        WHERE t.id = tid AND t.heeft_exemplaar <> x.h;
+    END IF;
+  END LOOP;
+  RETURN NULL;
+END $$;
+DROP TRIGGER IF EXISTS exemplaren_heeft_exemplaar ON exemplaren;
+CREATE TRIGGER exemplaren_heeft_exemplaar AFTER INSERT OR DELETE OR UPDATE OF titel_id, status ON exemplaren
+  FOR EACH ROW EXECUTE FUNCTION zet_heeft_exemplaar();
+UPDATE titels t SET heeft_exemplaar = 1 WHERE t.heeft_exemplaar = 0 AND EXISTS (SELECT 1 FROM exemplaren e WHERE e.titel_id = t.id AND e.status = 'in_collectie');
+UPDATE titels t SET heeft_exemplaar = 0 WHERE t.heeft_exemplaar = 1 AND NOT EXISTS (SELECT 1 FROM exemplaren e WHERE e.titel_id = t.id AND e.status = 'in_collectie');
+-- Bladeren in de kiosk: tellen via een smalle index, sorteren (eigen collectie eerst) via indexen die de volgorde precies volgen.
+DROP INDEX IF EXISTS idx_titels_kiosk;
+CREATE INDEX IF NOT EXISTS idx_titels_kiosk2 ON titels (zichtbaar, collectie, heeft_exemplaar, d_drager, d_jaar, id);
+CREATE INDEX IF NOT EXISTS idx_titels_sort_artiest ON titels ((collectie = 'fonos') DESC, (d_artiesten IS NULL), lower(d_artiesten), lower(d_titel), id);
+CREATE INDEX IF NOT EXISTS idx_titels_sort_jaar ON titels ((collectie = 'fonos') DESC, d_jaar DESC NULLS LAST, lower(d_artiesten), id);
+CREATE INDEX IF NOT EXISTS idx_titels_sort_album ON titels ((collectie = 'fonos') DESC, lower(d_titel), id);
+-- Tellingen bij bladeren (totaal en filters) per filtercombinatie, voor grote groepen zoals een genre.
+CREATE TABLE IF NOT EXISTS kiosk_tellingen (sleutel text PRIMARY KEY, data text NOT NULL, versie text NOT NULL DEFAULT '', tijd text NOT NULL DEFAULT nu());
 
 CREATE TABLE IF NOT EXISTS import_issues (
   id           serial PRIMARY KEY,
