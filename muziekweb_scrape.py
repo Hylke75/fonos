@@ -16,6 +16,7 @@ crawlers is uitgesloten, en wordt dus niet opgehaald.
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sqlite3
 import sys
@@ -34,7 +35,8 @@ HERE = Path(__file__).resolve().parent
 BASE_URL = "https://www.muziekweb.nl"
 DEFAULT_DB = HERE / "muziekweb.db"
 SCHEMA = HERE / "scrape_schema.sql"
-USER_AGENT = "fonos-muziekweb/1.0 (Beeld en Geluid; contact: hthiry@beeldengeluid.nl)"
+# Een contactadres in de User-Agent alleen als de gebruiker dat zelf instelt (FONOS_SCRAPE_CONTACT).
+USER_AGENT = "fonos-muziekweb/1.0" + (f" (contact: {c})" if (c := os.environ.get("FONOS_SCRAPE_CONTACT", "").strip()) else "")
 
 CODE_RE = re.compile(r"/Link/([A-Za-z0-9]+)")
 KIND_RE = re.compile(r"/Link/[A-Za-z0-9]+/(POPULAR|CLASSICAL)\b")
