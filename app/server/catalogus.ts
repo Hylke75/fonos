@@ -52,13 +52,34 @@ export async function knoppen(alleenActief = true): Promise<Knop[]> {
   })
 }
 
-/** Een hoes voor de genretegel: een eigen afbeelding, anders een tip met hoes uit dat genre. */
-async function tegelBeeld(k: Knop): Promise<string | null> {
-  if (k.afbeelding) return k.afbeelding
-  if (!k.genres.length) return null
-  const r = await get<{ d_hoes: string }>(`SELECT t.d_hoes FROM titels t WHERE t.d_hoes IS NOT NULL AND ${GENRES_IN} AND ${ZICHTBAAR_SQL}
-    ORDER BY t.tip DESC, t.d_jaar DESC NULLS LAST LIMIT 1`, JSON.stringify(k.genres))
+/** Een hoes voor de genretegel: een eigen afbeelding, anders een tip met hoes uit dat genre in de eigen collectie.
+ *  Niet in de hele Muziekweb-naslag (~700.000 titels): dat duurt per tegel tientallen seconden. */
+async function zoekTegelBeeld(genres: string[]): Promise<string | null> {
+  const r = await get<{ d_hoes: string }>(`SELECT t.d_hoes FROM titels t WHERE t.d_hoes IS NOT NULL AND ${EIGEN_SQL} AND ${GENRES_IN} AND ${ZICHTBAAR_SQL}
+    ORDER BY t.tip DESC, t.d_jaar DESC NULLS LAST LIMIT 1`, JSON.stringify(genres))
   return r?.d_hoes ?? null
+}
+
+/** De gekozen tegelhoezen staan in kiosk_tellingen, zodat niet elke nieuwe serverinstantie ze opnieuw zoekt. Per knop met
+ *  de genres waarvoor ze gezocht zijn: verandert beheer de genres, dan wordt alleen die tegel opnieuw gezocht. */
+type TegelBeelden = Record<string, { genres: string; beeld: string | null }>
+async function tegelBeelden(ks: Knop[], opnieuw = false): Promise<Record<number, string | null>> {
+  const r = await get<{ data: string }>("SELECT data FROM kiosk_tellingen WHERE sleutel = 'tegelbeelden'")
+  const opgeslagen: TegelBeelden = r ? JSON.parse(r.data) : {}
+  const uit: Record<number, string | null> = {}
+  let gewijzigd = false
+  for (const k of ks) { // na elkaar: niet de database met tien zoekopdrachten tegelijk belasten
+    if (k.afbeelding || !k.genres.length) { uit[k.id] = k.afbeelding ?? null; continue }
+    const genres = JSON.stringify(k.genres)
+    const o = opgeslagen[k.id]
+    if (!opnieuw && o && o.genres === genres) { uit[k.id] = o.beeld; continue }
+    uit[k.id] = await zoekTegelBeeld(k.genres)
+    opgeslagen[k.id] = { genres, beeld: uit[k.id] }
+    gewijzigd = true
+  }
+  if (gewijzigd) await run(`INSERT INTO kiosk_tellingen (sleutel, data, versie, tijd) VALUES ('tegelbeelden', ?, '', nu())
+    ON CONFLICT (sleutel) DO UPDATE SET data = excluded.data, tijd = excluded.tijd`, JSON.stringify(opgeslagen))
+  return uit
 }
 
 let configCache: { tijd: number; data: any } | null = null
@@ -68,9 +89,10 @@ export async function kioskConfig() {
   const inst = await instellingen()
   if (!configCache || Date.now() - configCache.tijd > 120_000) {
     const ks = (await knoppen()).filter((k) => !(k.nederlands && inst.nl_weergave === 'schakelaar'))
+    const beelden = await tegelBeelden(ks)
     configCache = {
       tijd: Date.now(),
-      data: await Promise.all(ks.map(async (k) => ({ id: k.id, naam: k.naam, kleur: k.kleur, beeld: await tegelBeeld(k), nederlands: k.nederlands, subfilters: k.subfilters.map((s) => s.naam) }))),
+      data: ks.map((k) => ({ id: k.id, naam: k.naam, kleur: k.kleur, beeld: beelden[k.id], nederlands: k.nederlands, subfilters: k.subfilters.map((s) => s.naam) })),
     }
   }
   return {
@@ -264,6 +286,7 @@ export async function warmTellingen() {
   const ingangen: Filters[] = [{}, { beschikbaar: true }, ...(await knoppen()).flatMap((k) => [{ knop: k.id }, { knop: k.id, beschikbaar: true }])]
   opnieuwTellen = true
   try { for (const f of ingangen) await zoekCatalogus({ ...f, per: 1 }) } finally { opnieuwTellen = false }
+  await tegelBeelden(await knoppen(), true) // nieuwe tips en hoezen op de genretegels
   // Tellingen van filters die al lang niemand meer gebruikt opruimen.
   await run("DELETE FROM kiosk_tellingen WHERE tijd < nu('-7 days')")
   return ingangen.length
