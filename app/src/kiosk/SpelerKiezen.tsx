@@ -92,13 +92,13 @@ function Koppelen() {
       </header>
       <main className="kiosk-inhoud speler-kiezen">
         <h1>{t('Deze tablet is nog niet gekoppeld')}</h1>
-        <p className="muted">{t('Je kunt de collectie bekijken, maar nog geen draaitafel kiezen of platen aanvragen. Vraag een medewerker om de tablet te koppelen.')}</p>
+        <p className="muted">{t('Op deze tablet kun je nog geen draaitafel kiezen of platen aanvragen. Vraag een medewerker om de tablet te koppelen.')}</p>
         <form className="card spelers-paneel koppel-form" onSubmit={koppel}>
           <label htmlFor="koppelcode">{t('Koppelcode (voor medewerkers)')}</label>
           <input id="koppelcode" className="kiosk-veld" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} autoComplete="off" autoCapitalize="characters" spellCheck={false} maxLength={12} placeholder="ABCD2345" />
           {fout && <p className="fout-tekst" role="alert">{fout}</p>}
           <button className="btn btn-pink btn-l" disabled={bezig || code.replace(/[^A-Z0-9]/g, '').length !== 8}>{t('Tablet koppelen')}</button>
-          <p className="muted tekst-klein">{t('Een beheerder maakt de code in Beheer → Status → Kiosks.')}</p>
+          <p className="muted tekst-klein">{t('Een beheerder maakt de code in Beheer → Status → Kiosktablets.')}</p>
         </form>
       </main>
     </div>
