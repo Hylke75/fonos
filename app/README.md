@@ -121,7 +121,7 @@ Gebruik de demovulling niet in productie.
 - **Koppelen (eenmalig per tablet):** alleen gekoppelde tablets kunnen een draaitafel kiezen en platen aanvragen.
   Een beheerder maakt in *Beheer → Status → Kiosktablets* een koppelcode (30 minuten geldig, één keer te gebruiken) en
   opent de link of QR-code op de tablet, of typt de code in op het scherm "Kies je draaitafel". De tablet krijgt een
-  cookie dat 400 dagen geldig is; ontkoppelen kan op dezelfde plek. Zonder koppeling kan een tablet alleen bladeren.
+  cookie dat 400 dagen geldig is; ontkoppelen kan op dezelfde plek. Zonder koppeling toont de tablet alleen het koppelscherm.
 - Open `/` in de kioskbrowser (bijvoorbeeld Fully Kiosk Browser) op de tablet, liggend.
 - Toegestane adressen: de app zelf, de fonos.nl-pagina's uit *Instellingen → Toegestane fonos.nl-pagina's*,
   de privacyverklaring en `media.cdr.nl` (hoezen van Muziekweb).
