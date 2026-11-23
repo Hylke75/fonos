@@ -24,6 +24,11 @@ import { beschikbaarheidGewijzigd, catalogusVersieOmhoog } from '../events.ts'
 import { bewaar, lees, BLOB_TOEGANG } from '../opslag.ts'
 import { stuurMail } from '../mail.ts'
 import { albumIdUit } from '../spotify/normaliseer.ts'
+import { foutTekst } from '../fouten.ts'
+import { basisUrl } from '../verzoek.ts'
+import { gebruiker, maakKoppelcode, ontkoppel } from '../toegang.ts'
+import { isEigenUpload } from '../opslag.ts'
+import { versleutelingAan } from '../geheimen.ts'
 
 export const beheer = new Hono()
 beheer.use('*', vereist('redacteur', 'beheerder'))
@@ -115,6 +120,9 @@ beheer.patch('/titel/:id', async (c) => {
   await tx(async () => {
     for (const [veld, waarde] of Object.entries(body.velden ?? {})) {
       if (!TWEELAAGS.some((v) => v.veld === veld)) throw new Error(`Onbekend veld ${veld}`)
+      // Een hoes is een https-adres of een eigen upload; geen javascript:, data: of interne adressen.
+      if (/^hoes/.test(veld) && waarde != null && waarde !== '' && !(typeof waarde === 'string' && (/^https:\/\/[^\s"'<>]+$/.test(waarde) || isEigenUpload(waarde))))
+        throw new Error('Een hoes moet een https-adres zijn (of upload een afbeelding)')
       await zetFonosWaarde(id, veld as keyof TitelVelden, waarde === null ? undefined : waarde, wie(c))
     }
     for (const [veld, waarde] of Object.entries(body.eigen ?? {})) {
@@ -145,20 +153,29 @@ beheer.post('/titel/:id/conflict', async (c) => {
 beheer.post('/titel/:id/koppel', async (c) => {
   const id = Number(c.req.param('id'))
   const { titelnummer } = await c.req.json<{ titelnummer: string }>()
-  try { await koppelTitelnummer(id, titelnummer.trim().toUpperCase(), wie(c)) } catch (e: any) { return fout(c, e.message) }
+  try { await koppelTitelnummer(id, titelnummer.trim().toUpperCase(), wie(c)) } catch (e: any) { return fout(c, foutTekst(e)) }
   await catalogusGewijzigd([id])
   return c.json(await titelDetail(id))
 })
 
-const AFBEELDING = /^image\/(jpeg|png|webp)$/
+/** Het echte type van een afbeelding, uit de eerste bytes (magic bytes); niet wat de browser opgeeft (securityreview R2). */
+export function afbeeldingType(b: Buffer): { type: string; ext: string } | null {
+  if (b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return { type: 'image/jpeg', ext: '.jpg' }
+  if (b.length > 8 && b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return { type: 'image/png', ext: '.png' }
+  if (b.length > 12 && b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP') return { type: 'image/webp', ext: '.webp' }
+  return null
+}
+
 async function bewaarUpload(c: Context): Promise<string> {
   const body = await c.req.parseBody()
   const f = body.bestand as File | undefined
   if (!f || typeof f === 'string') throw new Error('Geen bestand ontvangen')
-  if (!AFBEELDING.test(f.type)) throw new Error('Alleen jpg, png of webp')
   // Vercel-functies nemen maximaal 4,5 MB per verzoek aan.
   if (f.size > 4 * 1024 * 1024) throw new Error('Bestand is groter dan 4 MB')
-  return bewaar('hoezen', `hoes${extname(f.name).toLowerCase() || '.jpg'}`, Buffer.from(await f.arrayBuffer()), f.type)
+  const data = Buffer.from(await f.arrayBuffer())
+  const echt = afbeeldingType(data)
+  if (!echt) throw new Error('Alleen jpg, png of webp')
+  return bewaar('hoezen', `hoes${echt.ext}`, data, echt.type) // naam, extensie en type kiezen wij, niet de browser
 }
 
 beheer.post('/titel/:id/hoes/:kant', async (c) => {
@@ -167,7 +184,7 @@ beheer.post('/titel/:id/hoes/:kant', async (c) => {
   try {
     const url = await bewaarUpload(c)
     await zetFonosWaarde(id, kant, url, wie(c))
-  } catch (e: any) { return fout(c, e.message) }
+  } catch (e: any) { return fout(c, foutTekst(e)) }
   await catalogusGewijzigd([id])
   return c.json(await titelDetail(id))
 })
@@ -229,7 +246,7 @@ beheer.post('/titels', async (c) => {
       }
       return titelId
     })
-  } catch (e: any) { return fout(c, e.message) }
+  } catch (e: any) { return fout(c, foutTekst(e)) }
   await catalogusGewijzigd([id])
   return c.json(await titelDetail(id))
 })
@@ -329,7 +346,7 @@ beheer.post('/import/collectie', async (c) => {
     const { regels, overgeslagen } = await leesBestand(Buffer.from(await f.arrayBuffer()), f.name)
     if (!regels.length) return fout(c, 'Geen regels met objectnummer of titelnummer gevonden')
     return c.json(samenvatting(await analyseer(regels, f.name, overgeslagen)))
-  } catch (e: any) { return fout(c, `Bestand niet te lezen: ${e.message}`) }
+  } catch (e: any) { return fout(c, `Bestand niet te lezen: ${foutTekst(e)}`) }
 })
 
 beheer.post('/import/collectie/:token', async (c) => {
@@ -338,7 +355,7 @@ beheer.post('/import/collectie/:token', async (c) => {
     const r = await voerDoor(c.req.param('token'), categorieen ?? [], wie(c))
     await catalogusGewijzigd()
     return c.json(r)
-  } catch (e: any) { return fout(c, e.message) }
+  } catch (e: any) { return fout(c, foutTekst(e)) }
 })
 
 beheer.get('/imports', async (c) => c.json((await all<any>('SELECT * FROM imports ORDER BY id DESC LIMIT 50')).map((i) => ({ ...i, rapport: json(i.rapport, {}) }))))
@@ -380,7 +397,7 @@ beheer.post('/import/muziekweb/deel', alleenBeheerder, async (c) => {
     await verwerkRecords(records, import_id, rapport)
     await bewaarRapport(import_id, rapport)
     return c.json(rapport)
-  } catch (e: any) { return fout(c, e.message) }
+  } catch (e: any) { return fout(c, foutTekst(e)) }
 })
 
 /** Een geüploade dump (.jsonl, .jsonl.gz of zip met één deel), via de aparte opslag. */
@@ -408,7 +425,7 @@ beheer.post('/import/muziekweb/bestand', alleenBeheerder, async (c) => {
     await verwerkRecords(records, import_id, rapport)
     await bewaarRapport(import_id, rapport)
     return c.json(rapport)
-  } catch (e: any) { return fout(c, e.message) } finally { rmSync(map, { recursive: true, force: true }) }
+  } catch (e: any) { return fout(c, foutTekst(e)) } finally { rmSync(map, { recursive: true, force: true }) }
 })
 
 beheer.post('/import/muziekweb/afronden', alleenBeheerder, async (c) => {
@@ -420,7 +437,7 @@ beheer.post('/import/muziekweb/afronden', alleenBeheerder, async (c) => {
     await run('DELETE FROM taken WHERE id = ?', `mw-${import_id}`)
     await catalogusGewijzigd()
     return c.json(rapport)
-  } catch (e: any) { return fout(c, e.message) }
+  } catch (e: any) { return fout(c, foutTekst(e)) }
 })
 
 // ------------------------------------------------------------------ statistieken (verbetering 12)
@@ -549,7 +566,7 @@ beheer.post('/genreknop/:id/afbeelding', alleenBeheerder, async (c) => {
     await log(wie(c), 'afbeelding genreknop', { type: 'genreknop', id: c.req.param('id'), nieuw: url })
     wisConfigCache()
     return c.json({ afbeelding: url })
-  } catch (e: any) { return fout(c, e.message) }
+  } catch (e: any) { return fout(c, foutTekst(e)) }
 })
 
 beheer.delete('/genreknop/:id', alleenBeheerder, async (c) => {
@@ -690,8 +707,7 @@ export function accountGeldigheid(soort: string | undefined, geldigTot: string |
 
 async function stuurReset(c: Context, gebruikerId: number, email: string, welkom: boolean) {
   const token = await maakResetToken(gebruikerId)
-  const basis = process.env.FONOS_BASIS_URL ?? new URL(c.req.url).origin
-  const link = `${basis}/wachtwoord?token=${token}`
+  const link = `${basisUrl(c)}/wachtwoord?token=${token}` // nooit de Host-header (securityreview R12)
   await stuurMail(email, welkom ? 'Je account voor de Luisterbar' : 'Nieuw wachtwoord voor de Luisterbar',
     `${welkom ? 'Er is een account voor je aangemaakt in de Luisterbar-app.' : 'Er is een nieuw wachtwoord voor je aangevraagd.'}\n\nKies je wachtwoord via deze link (2 uur geldig):\n${link}`)
 }
@@ -791,10 +807,15 @@ beheer.get('/aanmeldingen.csv', alleenBeheerder, async (c) => {
 
 // ------------------------------------------------------------------ wijzigingslog (10.12)
 
+/** Wat een redacteur in het wijzigingslog ziet: alleen de catalogus en collectie, niet gebruikers, instellingen of
+ *  storingsmeldingen (securityreview R13; IT-beleid 6.1 strikte autorisatie). Beheerders zien alles. */
+const LOG_REDACTEUR = ['titel', 'exemplaar', 'selectie', 'genreknop', 'import', 'import_issue', 'album']
+
 beheer.get('/log', async (c) => {
   const q = c.req.query()
   const waar: string[] = []
   const p: any[] = []
+  if (!gebruiker(c)?.rollen.includes('beheerder')) { waar.push('record_type = ANY(?::text[])'); p.push(`{${LOG_REDACTEUR.join(',')}}`) }
   if (q.gebruiker) { waar.push('gebruiker = ?'); p.push(q.gebruiker) }
   if (q.van) { waar.push('tijd >= ?'); p.push(q.van) }
   if (q.tot) { waar.push("tijd < to_char(?::date + 1, 'YYYY-MM-DD')"); p.push(q.tot) }
@@ -807,13 +828,15 @@ beheer.get('/log', async (c) => {
     totaal: (await get<{ n: number }>(`SELECT COUNT(*) n FROM wijzigingslog ${where}`, ...p))!.n,
     pagina,
     regels: await all(`SELECT * FROM wijzigingslog ${where} ORDER BY id DESC LIMIT 100 OFFSET ?`, ...p, (pagina - 1) * 100),
-    gebruikers: (await all<any>('SELECT DISTINCT gebruiker FROM wijzigingslog ORDER BY gebruiker')).map((r) => r.gebruiker),
+    gebruikers: (await all<any>(`SELECT DISTINCT gebruiker FROM wijzigingslog ${gebruiker(c)?.rollen.includes('beheerder') ? '' : 'WHERE record_type = ANY(?::text[])'} ORDER BY gebruiker`,
+      ...(gebruiker(c)?.rollen.includes('beheerder') ? [] : [`{${LOG_REDACTEUR.join(',')}}`]))).map((r) => r.gebruiker),
   })
 })
 
 /** De oude waarde van een veld terugzetten (redacteur). */
 beheer.post('/log/:id/terugzetten', async (c) => {
   const l = await get<any>('SELECT * FROM wijzigingslog WHERE id = ?', Number(c.req.param('id')))
+  if (l && !gebruiker(c)?.rollen.includes('beheerder') && !LOG_REDACTEUR.includes(l.record_type)) return fout(c, 'Deze regel kan niet worden teruggezet')
   if (!l || !l.veld || !['veld gewijzigd', 'terug naar Muziekweb'].includes(l.actie)) return fout(c, 'Deze regel kan niet worden teruggezet')
   const oud = l.oud == null ? null : (() => { try { return JSON.parse(l.oud) } catch { return l.oud } })()
   const id = Number(l.record_id)
@@ -834,7 +857,7 @@ beheer.post('/log/:id/terugzetten', async (c) => {
       await run(`UPDATE exemplaren SET ${l.veld} = ? WHERE id = ?`, oud, id)
       await log(wie(c), 'veld gewijzigd', { type: 'exemplaar', id, label: e.objectnummer, veld: l.veld, oud: e[l.veld], nieuw: oud })
     } else return fout(c, 'Dit veld kan niet worden teruggezet')
-  } catch (e: any) { return fout(c, e.message) }
+  } catch (e: any) { return fout(c, foutTekst(e)) }
   return c.json({ ok: true })
 })
 
@@ -848,7 +871,7 @@ beheer.get('/backups', alleenBeheerder, async (c) => c.json({
 }))
 
 beheer.post('/backups', alleenBeheerder, async (c) => {
-  try { const b = await maakBackup('handmatig', wie(c)); return c.json({ id: b.id, bestand: b.bestand, omvang: b.omvang }) } catch (e: any) { return fout(c, e.message) }
+  try { const b = await maakBackup('handmatig', wie(c)); return c.json({ id: b.id, bestand: b.bestand, omvang: b.omvang }) } catch (e: any) { return fout(c, foutTekst(e)) }
 })
 
 beheer.post('/backup/download', alleenBeheerder, async (c) => {
@@ -1020,10 +1043,36 @@ beheer.get('/status', alleenBeheerder, async (c) => {
     kapotte_hoezen: (await get<any>('SELECT COUNT(*)::int AS n FROM titels WHERE hoes_kapot = 1'))!.n,
     push_apparaten: (await get<any>('SELECT COUNT(*)::int AS n FROM push_abonnementen'))!.n,
     laatste_cron: (await get<any>("SELECT datum FROM planner WHERE taak = 'cron:laatst'"))?.datum ?? null,
-    kiosks: await all("SELECT naam, laatst_gezien, pagina, laatst_gezien > nu('-2 minutes') AS online FROM kiosks ORDER BY naam"),
+    kiosks: await all(`SELECT naam, laatst_gezien, pagina, laatst_gezien > nu('-2 minutes') AS online, token_hash IS NOT NULL AS gekoppeld,
+      gekoppeld_op, gekoppeld_door, code_tot > nu() AS code_open FROM kiosks ORDER BY naam`),
+    // Waarschuwingen over de inrichting (securityreview): wat in de omgeving nog moet worden ingesteld.
+    inrichting: {
+      geheimen_versleuteld: versleutelingAan(),
+      cron_geheim: !!process.env.CRON_SECRET,
+      basis_url: !!process.env.FONOS_BASIS_URL || !!process.env.VERCEL_PROJECT_PRODUCTION_URL,
+      google_login: googleAan(),
+      mail: !!process.env.RESEND_API_KEY,
+    },
     platenspelers: await all('SELECT nummer, actief, sessie IS NOT NULL AS vastgehouden, bezet_sinds, laatst_actief FROM platenspelers ORDER BY nummer'),
     open_aanvragen: await n("SELECT COUNT(*)::int AS n FROM aanvragen WHERE status IN ('ingediend', 'uitgegeven')"),
   })
+})
+
+// ---------- Kiosktablets koppelen (securityreview R1): alleen gekoppelde tablets mogen spelers kiezen en aanvragen ----------
+beheer.post('/kiosks/koppelcode', alleenBeheerder, async (c) => {
+  const { naam } = await c.req.json<{ naam: string }>()
+  const n = String(naam ?? '').trim().slice(0, 60)
+  if (!n) return fout(c, 'Geef de tablet een naam, bijvoorbeeld "Bar links".')
+  const r = await maakKoppelcode(n, wie(c).naam ?? 'beheerder')
+  await log(wie(c), 'koppelcode voor kiosk gemaakt', { type: 'kiosk', id: n, label: n })
+  return c.json({ naam: n, code: r.code, tot: r.tot, link: `${basisUrl(c)}/?koppel=${r.code}` })
+})
+
+beheer.delete('/kiosk/:naam', alleenBeheerder, async (c) => {
+  const naam = c.req.param('naam') ?? ''
+  await ontkoppel(naam)
+  await log(wie(c), 'kiosk ontkoppeld', { type: 'kiosk', id: naam, label: naam })
+  return c.json({ ok: true })
 })
 
 /** Titelnummers uit de collectie die nog niet in de Muziekweb-data staan (verbetering 13): lijst voor de scraper. */
@@ -1050,10 +1099,10 @@ beheer.post('/terugzetten/controle', alleenBeheerder, async (c) => {
     }
     if (!b.adres) return fout(c, 'Geen bestand gekozen')
     return c.json(await vergelijk(await leesBackup(b.adres, b.naam ?? 'geüpload bestand')))
-  } catch (e: any) { return fout(c, e.message) }
+  } catch (e: any) { return fout(c, foutTekst(e)) }
 })
 
 beheer.post('/terugzetten', alleenBeheerder, async (c) => {
   const { token, bevestiging } = await c.req.json<{ token: string; bevestiging: string }>()
-  try { const r = await zetTerug(token, bevestiging, wie(c)); await catalogusGewijzigd(); return c.json(r) } catch (e: any) { return fout(c, e.message) }
+  try { const r = await zetTerug(token, bevestiging, wie(c)); await catalogusGewijzigd(); return c.json(r) } catch (e: any) { return fout(c, foutTekst(e)) }
 })

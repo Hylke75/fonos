@@ -974,3 +974,11 @@ pre.rapport { background: #07111f; border: 1px solid var(--line); border-radius:
 .instagram-blok h2 { margin: 0 0 6px; font-size: 22px; }
 .instagram-blok p { margin: 0; }
 .instagram-blok .account { margin-top: 10px; font-weight: 700; color: var(--cyan); font-size: 18px; }
+
+/* Kiosktablet koppelen (securityreview R1) */
+.koppel-form { display: flex; flex-direction: column; gap: 12px; max-width: 420px; margin: 0 auto; text-align: left; }
+.koppel-form .kiosk-veld { font-size: 26px; letter-spacing: .18em; text-align: center; font-variant-numeric: tabular-nums; }
+.koppel-form .btn { align-self: stretch; justify-content: center; }
+.koppelcode { display: flex; gap: 16px; align-items: center; margin: 12px 0; padding: 12px; border: 1px solid var(--lijn, #2a3350); border-radius: 12px; flex-wrap: wrap; }
+.koppelcode svg { width: 160px; height: 160px; background: #fff; border-radius: 8px; }
+.koppelcode .code { font-size: 28px; font-weight: 700; letter-spacing: .15em; font-variant-numeric: tabular-nums; margin: 4px 0; }

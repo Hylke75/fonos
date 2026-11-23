@@ -1,5 +1,12 @@
-// API voor de bezoekersapp. Geen login: alleen lezen van de catalogus en aanvragen aanmaken (13).
-import { Hono } from 'hono'
+// API voor de bezoekersapp. Geen login. Lezen mag iedereen; spelers kiezen, aanvragen, wachtlijst en nieuwsbrief alleen
+// een gekoppelde kiosktablet (of een ingelogde medewerker). Dat regelt toegang.ts; zie REGELS daar.
+import { Hono, type Context } from 'hono'
+import { getCookie } from 'hono/cookie'
+import { COOKIE, gebruikerBijToken } from '../auth.ts'
+import { gebruiker, kiosk as kioskVan, KIOSK_COOKIE, kioskBijToken, koppel } from '../toegang.ts'
+import { rem } from '../rem.ts'
+import { clientIp } from '../verzoek.ts'
+import { GebruikersFout } from '../fouten.ts'
 import { album, artiest, beschikbaarheid, home, keuzehulp, kioskConfig, ookLuisteren, verrasMe, zoekCatalogus } from '../catalogus.ts'
 import { meldAan as wachtAan, meldAf as wachtAf, wachtStatus } from '../wachtlijst.ts'
 import { stuurPush } from '../push.ts'
@@ -11,16 +18,35 @@ import { EMAIL_RE, meldAan } from '../nieuwsbrief.ts'
 
 export const kiosk = new Hono()
 
-/** De bezoeker in het log, met de naam van de tablet als die bekend is (verbetering 19). */
-const bezoeker = (c: any) => {
-  let t = ''
-  try { t = decodeURIComponent(c.req.header('x-fonos-tablet') ?? '') } catch { /* niets */ }
-  return t ? { ...BEZOEKER, naam: `${BEZOEKER.naam} (${t.slice(0, 60)})` } : BEZOEKER
+/** De bezoeker in het log, met de naam van de gekoppelde tablet (verbetering 19). De naam komt uit de koppeling,
+ *  niet uit een header die iedereen kan invullen. */
+const bezoeker = (c: Context) => {
+  const t = kioskVan(c)?.naam ?? (gebruiker(c) ? `via ${gebruiker(c)!.naam}` : '')
+  return t ? { ...BEZOEKER, naam: `${BEZOEKER.naam} (${t})` } : BEZOEKER
+}
+
+/** Rem per kiosk (of per ingelogde gebruiker): een tablet die op hol slaat, kan de bar niet platleggen. */
+async function remKiosk(c: Context, soort: string, max: number, minuten: number) {
+  const wie = kioskVan(c)?.naam ?? `gebruiker:${gebruiker(c)?.id}`
+  if (!(await rem(`${soort}:${wie}`, max, minuten))) throw new GebruikersFout('Even rustig aan: probeer het over een paar minuten opnieuw.', 429)
 }
 
 const num = (v?: string) => (v && /^\d+$/.test(v) ? Number(v) : undefined)
 
-kiosk.get('/config', async (c) => c.json(await kioskConfig()))
+kiosk.get('/config', async (c) => {
+  // Is deze tablet gekoppeld (of is er een medewerker ingelogd)? Zo niet, dan vraagt de kiosk om een koppelcode.
+  const k = await kioskBijToken(getCookie(c, KIOSK_COOKIE))
+  const gekoppeld = !!k || !!(await gebruikerBijToken(getCookie(c, COOKIE)))
+  return c.json({ ...(await kioskConfig()), gekoppeld, kiosk_naam: k?.naam ?? null })
+})
+
+/** Een tablet koppelen met de eenmalige code uit Beheer → Status. Met een rem tegen raden. */
+kiosk.post('/koppelen', async (c) => {
+  if (!(await rem(`koppelen:${clientIp(c) ?? 'onbekend'}`, 10, 15))) return c.json({ fout: 'Te veel pogingen. Probeer het over een kwartier opnieuw.' }, 429)
+  const { code } = await c.req.json<{ code: string }>()
+  const naam = await koppel(c, String(code ?? ''))
+  return naam ? c.json({ naam }) : c.json({ fout: 'Deze code klopt niet of is verlopen. Vraag een nieuwe code in Beheer → Status.' }, 400)
+})
 kiosk.get('/home', async (c) => c.json(await home()))
 kiosk.get('/suggesties', async (c) => c.json(await suggesties(c.req.query('q') ?? '')))
 
@@ -58,6 +84,7 @@ kiosk.post('/beschikbaarheid', async (c) => {
 })
 
 kiosk.post('/aanvraag', async (c) => {
+  await remKiosk(c, 'aanvraag', 30, 10)
   const body = await c.req.json<any>()
   try {
     const r = await dienAanvraagIn({
@@ -77,6 +104,7 @@ kiosk.post('/aanvraag', async (c) => {
 
 // Platenspeler kiezen (eerste stap), vasthouden tijdens gebruik en vrijgeven na gebruik.
 kiosk.post('/speler', async (c) => {
+  await remKiosk(c, 'speler', 60, 10)
   const { platenspeler, wachtlijst } = await c.req.json<{ platenspeler: number; wachtlijst?: string }>()
   try {
     return c.json({ platenspeler: Number(platenspeler), sessie: await kiesSpeler(Number(platenspeler), bezoeker(c), wachtlijst ? String(wachtlijst) : null) })
@@ -99,13 +127,14 @@ kiosk.post('/speler/vrijgeven', async (c) => {
 
 // Wachtlijst als alle platenspelers bezet zijn (verbetering 8).
 kiosk.post('/wachtlijst', async (c) => {
-  const tablet = (() => { try { return decodeURIComponent(c.req.header('x-fonos-tablet') ?? '') || null } catch { return null } })()
-  return c.json(await wachtAan(tablet))
+  await remKiosk(c, 'wachtlijst', 30, 10)
+  return c.json(await wachtAan(kioskVan(c)?.naam ?? null))
 })
 kiosk.get('/wachtlijst/:token', async (c) => c.json(await wachtStatus(c.req.param('token'))))
 kiosk.delete('/wachtlijst/:token', async (c) => { await wachtAf(c.req.param('token')); return c.json({ ok: true }) })
 
 kiosk.post('/nieuwsbrief', async (c) => {
+  await remKiosk(c, 'nieuwsbrief', 20, 60)
   const { email, naam } = await c.req.json<{ email: string; naam?: string }>()
   if (!email || !EMAIL_RE.test(email.trim())) return c.json({ fout: 'Vul een geldig e-mailadres in.' }, 400)
   // Niet opslaan: direct doorsturen naar het nieuwsbriefsysteem (11).

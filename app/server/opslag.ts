@@ -4,6 +4,7 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync, unlinkSync, readdir
 import { join, basename, dirname } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { DATA_DIR } from './db.ts'
+import { haal } from './naarbuiten.ts'
 
 export const OPSLAG_DIR = process.env.FONOS_OPSLAG_DIR ?? join(DATA_DIR, 'opslag')
 const blob = () => !!process.env.BLOB_READ_WRITE_TOKEN
@@ -38,7 +39,8 @@ export async function lees(adres: string): Promise<Buffer> {
     return Buffer.from(await new Response(r.stream as any).arrayBuffer())
   }
   if (/^https?:\/\//.test(adres)) {
-    const r = await fetch(adres)
+    // Alleen onze eigen Blob-store; nooit een willekeurig (intern) adres ophalen (securityreview R9).
+    const r = await haal('opslag', adres)
     if (!r.ok) throw new Error(`Bestand niet te lezen (${r.status})`)
     return Buffer.from(await r.arrayBuffer())
   }

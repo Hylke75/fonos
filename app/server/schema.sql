@@ -375,6 +375,26 @@ CREATE TABLE IF NOT EXISTS kiosks (
   pagina        text
 );
 
+-- Securityreview R1: alleen gekoppelde kiosktablets mogen spelers kiezen, aanvragen doen en fouten melden.
+-- Een beheerder maakt een eenmalige koppelcode; de tablet ruilt die in voor een cookie. Beide staan hier alleen als hash.
+ALTER TABLE kiosks ADD COLUMN IF NOT EXISTS token_hash text;
+ALTER TABLE kiosks ADD COLUMN IF NOT EXISTS code_hash text;
+ALTER TABLE kiosks ADD COLUMN IF NOT EXISTS code_tot text;
+ALTER TABLE kiosks ADD COLUMN IF NOT EXISTS gekoppeld_op text;
+ALTER TABLE kiosks ADD COLUMN IF NOT EXISTS gekoppeld_door text;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_kiosks_token ON kiosks (token_hash);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_kiosks_code ON kiosks (code_hash);
+
+-- Rem op misbruik (securityreview R15), gedeeld door alle serverinstanties: aantal verzoeken per sleutel per tijdvak.
+CREATE TABLE IF NOT EXISTS remmen (
+  sleutel text PRIMARY KEY,
+  venster text NOT NULL,
+  n       integer NOT NULL DEFAULT 0
+);
+
+-- Securitybeleid 2.1.1: de laatste 24 wachtwoorden (als hash) mogen niet opnieuw gebruikt worden.
+ALTER TABLE gebruikers ADD COLUMN IF NOT EXISTS wachtwoord_historie text NOT NULL DEFAULT '[]';
+
 -- Kortlevende status van imports en back-ups die meerdere verzoeken beslaan.
 CREATE TABLE IF NOT EXISTS taken (
   id     text PRIMARY KEY,
@@ -389,7 +409,7 @@ DECLARE t text;
 BEGIN
   FOREACH t IN ARRAY ARRAY['titels','zoekwoorden','mw_dump','exemplaren','import_issues','platenspelers','aanvragen',
     'aanvraag_items','genreknoppen','genre_koppelingen','selecties','selectie_titels','instellingen','gebruikers','sessies',
-    'wijzigingslog','imports','backups','versies','planner','nieuwsbrief_wachtrij','nieuwsbrief_aanmeldingen','kiosks','taken','aanmeldingen','wachtlijst','push_abonnementen','geheimen','browserfouten'] LOOP
+    'wijzigingslog','imports','backups','versies','planner','nieuwsbrief_wachtrij','nieuwsbrief_aanmeldingen','kiosks','taken','aanmeldingen','wachtlijst','push_abonnementen','geheimen','browserfouten','remmen'] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
   END LOOP;
 END $$;

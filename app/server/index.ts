@@ -11,7 +11,15 @@ import { tik } from './planner.ts'
 
 await db()
 
-app.use('/uploads/*', serveStatic({ root: relative(process.cwd(), OPSLAG_DIR) || '.', rewriteRequestPath: (p) => p.replace(/^\/uploads/, '') }))
+// Geüploade bestanden (on-prem). Wie wat mag, staat in toegang.ts: hoezen voor iedereen, de rest alleen beheerders.
+// Hoezen alleen als afbeelding; back-ups en imports altijd als download (securityreview R2).
+const uploads = serveStatic({ root: relative(process.cwd(), OPSLAG_DIR) || '.', rewriteRequestPath: (p) => p.replace(/^\/uploads/, '') })
+app.use('/uploads/*', async (c, next) => {
+  if (c.req.path.startsWith('/uploads/hoezen/') && !/\.(jpe?g|png|webp)$/i.test(c.req.path)) return c.json({ fout: 'Niet gevonden' }, 404)
+  await next()
+  c.header('X-Content-Type-Options', 'nosniff')
+  if (!c.req.path.startsWith('/uploads/hoezen/')) { c.header('Content-Disposition', 'attachment'); c.header('Content-Type', 'application/octet-stream') }
+}, uploads)
 
 const dist = join(ROOT, 'dist')
 if (existsSync(dist)) {

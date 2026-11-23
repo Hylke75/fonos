@@ -2,6 +2,8 @@
 // Aan zodra GOOGLE_CLIENT_ID en GOOGLE_CLIENT_SECRET zijn gezet (OAuth-client van het type "Webtoepassing",
 // redirect-URI <basis>/api/auth/google/terug). Alleen adressen uit FONOS_GOOGLE_DOMEIN (standaard beeldengeluid.nl).
 import type { Context } from 'hono'
+import { haal } from './naarbuiten.ts'
+import { basisUrl } from './verzoek.ts'
 
 const AUTH = 'https://accounts.google.com/o/oauth2/v2/auth'
 const TOKEN = 'https://oauth2.googleapis.com/token'
@@ -9,7 +11,8 @@ const TOKEN = 'https://oauth2.googleapis.com/token'
 export const googleAan = () => !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
 export const googleDomein = () => (process.env.FONOS_GOOGLE_DOMEIN ?? 'beeldengeluid.nl').toLowerCase()
 
-const terugAdres = (c: Context) => `${process.env.FONOS_BASIS_URL ?? new URL(c.req.url).origin}/api/auth/google/terug`
+// Nooit uit de Host-header (securityreview R12).
+const terugAdres = (c: Context) => `${basisUrl(c)}/api/auth/google/terug`
 
 export function googleInlogAdres(c: Context, state: string, nonce: string) {
   const q = new URLSearchParams({
@@ -41,7 +44,7 @@ export function controleerClaims(cl: Record<string, any>, nonce: string, nu = Da
 }
 
 export async function googleTerug(c: Context, code: string, nonce: string): Promise<{ email: string } | { fout: string; email?: string }> {
-  const r = await fetch(TOKEN, {
+  const r = await haal('google', TOKEN, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({

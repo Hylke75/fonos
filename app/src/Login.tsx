@@ -179,8 +179,8 @@ export function Wachtwoord() {
           </>
         ) : (
           <>
-            <p>Minstens 10 tekens.</p>
-            <label className="veld"><span>Nieuw wachtwoord</span><input type="password" value={ww} onChange={(e) => setWw(e.target.value)} autoComplete="new-password" minLength={10} required /></label>
+            <p>Minstens 12 tekens, met drie van: kleine letters, hoofdletters, cijfers en leestekens. Niet je naam of e-mailadres, en geen wachtwoord dat je eerder gebruikte.</p>
+            <label className="veld"><span>Nieuw wachtwoord</span><input type="password" value={ww} onChange={(e) => setWw(e.target.value)} autoComplete="new-password" minLength={12} required /></label>
             <label className="veld"><span>Nog een keer</span><input type="password" value={ww2} onChange={(e) => setWw2(e.target.value)} autoComplete="new-password" required /></label>
             {fout && <div className="melding-blok fout">{fout}</div>}
             <button className="btn btn-pink btn-block" type="submit">Opslaan</button>

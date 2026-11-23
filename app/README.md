@@ -17,14 +17,17 @@ functioneel ontwerp v1.0 (6 oktober 2026) en de vormgeving uit de bijlage.
   de vulling (`scripts/vercel-vul.ts`): schema, `fonotheek.db.gz` (alle albums met Muziekweb-gegevens en de
   gebruikscollectie) en de eerste beheerder. Alles idempotent; de database wordt alleen ingelezen als het bestand veranderd is.
   Bestaat er al een collectie, dan komen alleen nieuwe exemplaren mét titelnummer erbij; wijzigen en afvoeren gaat via de bulkimport.
-  Een GitHub Action (`.github/workflows/exports.yml`) haalt elk uur de nieuwste `fonotheek.db.gz` van de scraper-branch naar `main`.
+  Een GitHub Action (`.github/workflows/exports.yml`) zet elk uur een nieuwe `fonotheek.db.gz` van de scraper-branch klaar in een
+  pull request naar `main` (branch `data/fonotheek-db`); een mens voegt die samen.
 - **Bestanden:** geüploade hoezen en back-ups in Vercel Blob (`BLOB_READ_WRITE_TOKEN`), los van de database. De store is privé;
   bestanden gaan via `/api/bestand/…` (hoezen openbaar, back-ups alleen voor beheerders). `FONOS_BLOB_ACCESS=public` voor een openbare store.
 - **Planner:** Vercel Cron roept elke nacht `/api/cron` aan (back-up, sluitingstijd); daarnaast loopt de planner mee met verzoeken.
 - **Realtime:** kiosk en medewerkersscherm vragen elke paar seconden `/api/versies` op.
 
 Omgevingsvariabelen in Vercel: `DATABASE_URL` (mag meerdere adressen bevatten, gescheiden door spaties),
-`FONOS_BEHEERDER_EMAIL`, `FONOS_START_WACHTWOORD`, `CRON_SECRET`, en `BLOB_READ_WRITE_TOKEN` (via de Blob-koppeling).
+`FONOS_BEHEERDER_EMAIL`, `FONOS_START_WACHTWOORD`, `CRON_SECRET` (verplicht: zonder geheim weigert `/api/cron` elk verzoek),
+`FONOS_GEHEIM_SLEUTEL` (versleutelt TOTP- en VAPID-geheimen in de database), `FONOS_BASIS_URL` (aanbevolen) en
+`BLOB_READ_WRITE_TOKEN` (via de Blob-koppeling). Beheer → Status toont wat nog ontbreekt.
 Optioneel voor inloggen via Google Workspace: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` en `FONOS_GOOGLE_DOMEIN`
 (standaard `beeldengeluid.nl`); redirect-URI van de OAuth-client: `https://<domein>/api/auth/google/terug`.
 
@@ -92,7 +95,7 @@ npm run import:muziekweb -- ../exports
 npm run demo        # demo-exemplaren (objectnummer 9xxxxxxxx, bron "demo") en drie demogebruikers
 ```
 
-Demogebruikers (wachtwoord `fonos-demo`): `beheerder@fonos.demo`, `redacteur@fonos.demo`, `medewerker@fonos.demo`.
+Demogebruikers: `beheerder@fonos.demo`, `redacteur@fonos.demo`, `medewerker@fonos.demo`. Het script maakt voor elk een willekeurig wachtwoord en toont dat één keer.
 Gebruik de demovulling niet in productie.
 
 ## Configuratie (omgevingsvariabelen)
@@ -104,13 +107,21 @@ Gebruik de demovulling niet in productie.
 | `DATABASE_URL` | – | Postgres; zonder: PGlite in `$FONOS_DATA_DIR/pglite` |
 | `FONOS_OPSLAG_DIR` | `$FONOS_DATA_DIR/opslag` | hoezen en back-ups zonder Vercel Blob |
 | `FONOS_DUMP_DIR` | `../exports` | exportmap van de Muziekweb-scraper |
-| `FONOS_BASIS_URL` | adres van het verzoek | basis voor links in e-mails (wachtwoord-reset) |
+| `FONOS_BASIS_URL` | op Vercel het productieadres; lokaal `localhost` | basis voor links in e-mails en voor Google; on-prem verplicht (nooit de Host-header) |
+| `FONOS_GEHEIM_SLEUTEL` | – | sleutel voor geheimen in de database (TOTP, VAPID); zonder: leesbaar opgeslagen en een waarschuwing in Status |
+| `CRON_SECRET` | – | geheim voor `/api/cron`; zonder geheim is de route dicht |
+| `FONOS_VERTROUWDE_PROXY` | – | `1` als een eigen reverse proxy `X-Forwarded-For` zet (on-prem); anders telt het verbindingsadres |
+| `FONOS_HTTPS` | aan in productie | `0` zet `Secure`-cookies en HSTS uit (alleen voor tests over http) |
 | `RESEND_API_KEY` | – | e-mail via Resend; zonder sleutel komen mails alleen in het serverlog |
 | `FONOS_MAIL_AFZENDER` | `Fonotheek <fonotheek@fonos.nl>` | afzender |
 | `TZ` | `Europe/Amsterdam` | tijdzone (lokaal; op Vercel niet nodig, de planner rekent zelf in Europe/Amsterdam) |
 
 ## Kiosktablet
 
+- **Koppelen (eenmalig per tablet):** alleen gekoppelde tablets kunnen een draaitafel kiezen en platen aanvragen.
+  Een beheerder maakt in *Beheer → Status → Kiosktablets* een koppelcode (30 minuten geldig, één keer te gebruiken) en
+  opent de link of QR-code op de tablet, of typt de code in op het scherm "Kies je draaitafel". De tablet krijgt een
+  cookie dat 400 dagen geldig is; ontkoppelen kan op dezelfde plek. Zonder koppeling kan een tablet alleen bladeren.
 - Open `/` in de kioskbrowser (bijvoorbeeld Fully Kiosk Browser) op de tablet, liggend.
 - Toegestane adressen: de app zelf, de fonos.nl-pagina's uit *Instellingen → Toegestane fonos.nl-pagina's*,
   de privacyverklaring en `media.cdr.nl` (hoezen van Muziekweb).
@@ -141,7 +152,10 @@ app/
 
 ## Beveiliging
 
-- Beheer en medewerkersscherm alleen na inloggen (persoonlijk account, wachtwoord met scrypt, sessiecookie httpOnly).
-- Elke API-route controleert de rol; de bezoekersapp kan alleen de catalogus lezen en aanvragen aanmaken.
+Zie [BEVEILIGING.md](BEVEILIGING.md) voor het beveiligingsmodel en de regels voor wijzigingen (ook met AI).
+
+- Beheer en medewerkersscherm alleen na inloggen (persoonlijk account, wachtwoord met scrypt, sessiecookie httpOnly en SameSite=Strict).
+- Elke route staat in de toegangsmodule (`server/toegang.ts`); een route zonder regel is dicht. De bezoekersapp kan de catalogus
+  lezen; spelers kiezen en aanvragen kan alleen een gekoppelde kiosktablet.
 - Row level security staat aan op alle tabellen, zonder policies: de publieke Supabase-API kan niets lezen of schrijven; alleen de server (rol `fonos_app`, eigenaar van de tabellen) heeft toegang.
 - Aanvragen bevatten geen persoonsgegevens; nieuwsbriefgegevens worden niet opgeslagen.

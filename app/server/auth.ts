@@ -5,6 +5,8 @@ import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import { get, run, insert, json } from './db.ts'
 import type { Rol } from '../shared/velden.ts'
 import type { Wie } from './log.ts'
+import { hashToken, nieuwToken } from './geheimen.ts'
+import { isHttps } from './verzoek.ts'
 
 const SESSIE_UREN = 12
 export const COOKIE = 'fonos_sessie'
@@ -14,8 +16,12 @@ export function hashWachtwoord(w: string): string {
   return `scrypt:${zout.toString('hex')}:${scryptSync(w, zout, 64).toString('hex')}`
 }
 
+/** Een vaste hash om tegen te rekenen als het account niet bestaat: dan duurt "onbekend" even lang als "fout wachtwoord"
+ *  en verraadt de responstijd niet welke adressen een account hebben (securityreview R11a). */
+const NEP_HASH = hashWachtwoord(randomBytes(16).toString('hex'))
+
 export function controleerWachtwoord(w: string, hash: string | null): boolean {
-  if (!hash) return false
+  if (!hash) { controleerWachtwoord(w, NEP_HASH); return false }
   const [, zout, h] = hash.split(':')
   const a = scryptSync(w, Buffer.from(zout, 'hex'), 64)
   const b = Buffer.from(h, 'hex')
@@ -44,10 +50,11 @@ export function tweestapsNodig(g: { rollen: string; totp_aan?: number }, instell
   return instelling === 'beheerders' && json<string[]>(g.rollen, []).includes('beheerder')
 }
 
+/** Sessietokens staan alleen als hash in de database (securityreview R3): een dump geeft geen werkende sessies. */
 export async function maakSessie(gebruikerId: number, bevestigd = true): Promise<string> {
-  const token = randomBytes(32).toString('hex')
+  const token = nieuwToken()
   await run('INSERT INTO sessies (token, gebruiker_id, verloopt, bevestigd) VALUES (?, ?, nu(?::interval), ?)',
-    token, gebruikerId, bevestigd ? `${SESSIE_UREN} hours` : '10 minutes', bevestigd ? 1 : 0)
+    hashToken(token), gebruikerId, bevestigd ? `${SESSIE_UREN} hours` : '10 minutes', bevestigd ? 1 : 0)
   await run('DELETE FROM sessies WHERE verloopt < nu()')
   return token
 }
@@ -55,7 +62,7 @@ export async function maakSessie(gebruikerId: number, bevestigd = true): Promise
 /** Controleert e-mail en wachtwoord. Geeft de gebruikersrij of de reden van weigeren. */
 export async function controleerInlog(email: string, wachtwoord: string): Promise<{ g: any } | { reden: 'onbekend' | 'wachtwoord' | 'inactief' | 'verlopen'; g?: any }> {
   const g = await get<any>('SELECT * FROM gebruikers WHERE lower(email) = lower(?)', email.trim())
-  if (!g) return { reden: 'onbekend' }
+  if (!g) { controleerWachtwoord(wachtwoord, null); return { reden: 'onbekend' } }
   if (!controleerWachtwoord(wachtwoord, g.wachtwoord)) return { reden: 'wachtwoord', g }
   if (!g.actief) return { reden: 'inactief', g }
   if (isVerlopen(g)) return { reden: 'verlopen', g }
@@ -72,7 +79,7 @@ export async function login(email: string, wachtwoord: string): Promise<{ token:
 export async function gebruikerBijToken(token?: string): Promise<Gebruiker | null> {
   if (!token) return null
   const g = await get<any>(`SELECT g.* FROM sessies s JOIN gebruikers g ON g.id = s.gebruiker_id
-    WHERE s.token = ? AND s.verloopt > nu() AND s.bevestigd = 1 AND s.vergrendeld = 0 AND ${GELDIG_SQL}`, token)
+    WHERE s.token = ? AND s.verloopt > nu() AND s.bevestigd = 1 AND s.vergrendeld = 0 AND ${GELDIG_SQL}`, hashToken(token))
   return g ? alsGebruiker(g) : null
 }
 
@@ -80,19 +87,22 @@ export async function gebruikerBijToken(token?: string): Promise<Gebruiker | nul
 export async function vergrendeldeSessie(token?: string): Promise<any | null> {
   if (!token) return null
   return get<any>(`SELECT g.* FROM sessies s JOIN gebruikers g ON g.id = s.gebruiker_id
-    WHERE s.token = ? AND s.verloopt > nu() AND s.bevestigd = 1 AND s.vergrendeld = 1 AND ${GELDIG_SQL}`, token)
+    WHERE s.token = ? AND s.verloopt > nu() AND s.bevestigd = 1 AND s.vergrendeld = 1 AND ${GELDIG_SQL}`, hashToken(token))
 }
 
-/** Sessie die nog op de tweede stap wacht. */
-export async function voorlopigeSessie(token?: string): Promise<{ sessie: any; g: any } | null> {
+/** Sessie die nog op de tweede stap wacht. sessie.token is het token uit het cookie, sessie.sleutel de hash in de database. */
+export async function voorlopigeSessie(token?: string): Promise<{ sessie: { token: string; sleutel: string; pogingen: number }; g: any } | null> {
   if (!token) return null
-  const r = await get<any>(`SELECT s.token, s.pogingen, g.* FROM sessies s JOIN gebruikers g ON g.id = s.gebruiker_id
-    WHERE s.token = ? AND s.verloopt > nu() AND s.bevestigd = 0 AND ${GELDIG_SQL}`, token)
-  return r ? { sessie: { token: r.token, pogingen: r.pogingen }, g: r } : null
+  const r = await get<any>(`SELECT s.token AS sleutel, s.pogingen, g.* FROM sessies s JOIN gebruikers g ON g.id = s.gebruiker_id
+    WHERE s.token = ? AND s.verloopt > nu() AND s.bevestigd = 0 AND ${GELDIG_SQL}`, hashToken(token))
+  return r ? { sessie: { token, sleutel: r.sleutel, pogingen: r.pogingen }, g: r } : null
 }
+
+/** De sleutel van een sessie in de database (de hash van het token). */
+export const sessieSleutel = hashToken
 
 export async function bevestigSessie(token: string) {
-  await run('UPDATE sessies SET bevestigd = 1, verloopt = nu(?::interval) WHERE token = ?', `${SESSIE_UREN} hours`, token)
+  await run('UPDATE sessies SET bevestigd = 1, verloopt = nu(?::interval) WHERE token = ?', `${SESSIE_UREN} hours`, hashToken(token))
 }
 
 export type Aanmelding = { email?: string | null; gebruikerId?: number | null; gelukt: boolean; methode: string; reden?: string | null; ip?: string | null; apparaat?: string | null }
@@ -114,19 +124,21 @@ export async function mislukteAanmeldingen(email: string, minuten = 15): Promise
 export const gebruikerUitRij = alsGebruiker
 
 export function zetSessieCookie(c: Context, token: string) {
-  setCookie(c, COOKIE, token, { httpOnly: true, sameSite: 'Lax', path: '/', maxAge: SESSIE_UREN * 3600, secure: (process.env.NODE_ENV === 'production' || !!process.env.VERCEL) && process.env.FONOS_HTTPS !== '0' })
+  // Strict: het cookie gaat nooit mee met een verzoek dat van een andere site komt (securityreview R10).
+  setCookie(c, COOKIE, token, { httpOnly: true, sameSite: 'Strict', path: '/', maxAge: SESSIE_UREN * 3600, secure: isHttps() })
 }
 
 export async function logout(c: Context) {
   const t = getCookie(c, COOKIE)
-  if (t) await run('DELETE FROM sessies WHERE token = ?', t)
+  if (t) await run('DELETE FROM sessies WHERE token = ?', hashToken(t))
   deleteCookie(c, COOKIE, { path: '/' })
 }
 
 /** Middleware: alleen door met een van de opgegeven rollen. Beheerder mag alles van redacteur. */
 export function vereist(...rollen: Rol[]) {
   return async (c: Context, next: Next) => {
-    const g = await gebruikerBijToken(getCookie(c, COOKIE))
+    // De toegangsmodule (toegang.ts) heeft de gebruiker meestal al opgezocht.
+    const g = (c.get('gebruiker' as never) as Gebruiker | undefined) ?? await gebruikerBijToken(getCookie(c, COOKIE))
     if (!g) return c.json({ fout: 'Niet ingelogd' }, 401)
     const effectief = new Set<Rol>(g.rollen)
     if (effectief.has('beheerder')) effectief.add('redacteur')
@@ -141,16 +153,44 @@ export const wie = (c: Context): Wie => {
   return { id: g.id, naam: g.naam }
 }
 
+/** Het token gaat alleen in de mail; in de database staat de hash (securityreview R3). */
 export async function maakResetToken(gebruikerId: number): Promise<string> {
-  const token = randomBytes(24).toString('hex')
-  await run("UPDATE gebruikers SET reset_token = ?, reset_tot = nu('2 hours') WHERE id = ?", token, gebruikerId)
+  const token = nieuwToken()
+  await run("UPDATE gebruikers SET reset_token = ?, reset_tot = nu('2 hours') WHERE id = ?", hashToken(token), gebruikerId)
   return token
 }
 
-export async function resetWachtwoord(token: string, wachtwoord: string): Promise<boolean> {
-  const g = await get<any>(`SELECT g.id FROM gebruikers g WHERE g.reset_token = ? AND g.reset_tot > nu() AND ${GELDIG_SQL}`, token)
-  if (!g) return false
-  await run('UPDATE gebruikers SET wachtwoord = ?, reset_token = NULL, reset_tot = NULL WHERE id = ?', hashWachtwoord(wachtwoord), g.id)
+/** Securitybeleid 2.1.1: minstens 12 tekens, 3 van de 4 tekensoorten, geen deel van de naam of het e-mailadres. */
+export function wachtwoordFout(ww: string, g: { email: string; naam?: string | null }): string | null {
+  if (!ww || ww.length < 12) return 'Kies een wachtwoord van minstens 12 tekens.'
+  if (ww.length > 200) return 'Dit wachtwoord is te lang.'
+  const soorten = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter((r) => r.test(ww)).length
+  if (soorten < 3) return 'Gebruik minstens drie van: kleine letters, hoofdletters, cijfers en leestekens.'
+  const klein = ww.toLowerCase()
+  const delen = [...g.email.split('@')[0].split(/[._+-]/), ...String(g.naam ?? '').split(/\s+/)].map((d) => d.toLowerCase())
+  if (delen.some((d) => d.length >= 3 && klein.includes(d))) return 'Het wachtwoord mag geen deel van je naam of e-mailadres bevatten.'
+  return null
+}
+
+const HISTORIE = 24 // Securitybeleid 2.1.1: de laatste 24 wachtwoorden niet opnieuw
+
+/** Zet een nieuw wachtwoord na de controles van het beleid. Geeft een foutmelding of null. Sessies vervallen. */
+export async function zetWachtwoord(gebruikerId: number, wachtwoord: string): Promise<string | null> {
+  const g = await get<any>('SELECT id, email, naam, wachtwoord, wachtwoord_historie FROM gebruikers WHERE id = ?', gebruikerId)
+  if (!g) return 'Onbekend account'
+  const fout = wachtwoordFout(wachtwoord, g)
+  if (fout) return fout
+  const eerder: string[] = [g.wachtwoord, ...json<string[]>(g.wachtwoord_historie, [])].filter(Boolean).slice(0, HISTORIE)
+  if (eerder.some((h) => controleerWachtwoord(wachtwoord, h))) return 'Dit wachtwoord heb je eerder gebruikt. Kies een nieuw wachtwoord.'
+  await run('UPDATE gebruikers SET wachtwoord = ?, wachtwoord_historie = ?, reset_token = NULL, reset_tot = NULL WHERE id = ?',
+    hashWachtwoord(wachtwoord), JSON.stringify(eerder), g.id)
   await run('DELETE FROM sessies WHERE gebruiker_id = ?', g.id)
-  return true
+  return null
+}
+
+export async function resetWachtwoord(token: string, wachtwoord: string): Promise<{ ok: true } | { fout: string }> {
+  const g = await get<any>(`SELECT g.id FROM gebruikers g WHERE g.reset_token = ? AND g.reset_tot > nu() AND ${GELDIG_SQL}`, hashToken(String(token ?? '')))
+  if (!g) return { fout: 'Deze link is verlopen of al gebruikt.' }
+  const fout = await zetWachtwoord(g.id, wachtwoord)
+  return fout ? { fout } : { ok: true }
 }

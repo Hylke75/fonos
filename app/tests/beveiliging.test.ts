@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 process.env.NODE_ENV = 'test'
+process.env.FONOS_VERTROUWDE_PROXY = '1' // de tests zetten X-Forwarded-For zoals een eigen proxy dat doet
 process.env.FONOS_OPSLAG_DIR = mkdtempSync(join(tmpdir(), 'fonos-test-opslag-'))
 delete process.env.DATABASE_URL
 

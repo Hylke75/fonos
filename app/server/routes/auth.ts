@@ -6,7 +6,11 @@ import { randomBytes } from 'node:crypto'
 import {
   COOKIE, bevestigSessie, controleerInlog, gebruikerBijToken, gebruikerUitRij, isVerlopen, logout, maakResetToken, maakSessie,
   mislukteAanmeldingen, registreerAanmelding, resetWachtwoord, tweestapsNodig, vergrendeldeSessie, voorlopigeSessie, zetSessieCookie, controleerWachtwoord,
+  sessieSleutel,
 } from '../auth.ts'
+import { gelijk, moetVersleuteld, ontsleutel, versleutel } from '../geheimen.ts'
+import { basisUrl, clientIp, isHttps } from '../verzoek.ts'
+import { rem } from '../rem.ts'
 import { get, instellingen, run } from '../db.ts'
 import { stuurMail } from '../mail.ts'
 import { meld } from '../meldingen.ts'
@@ -18,10 +22,14 @@ export const auth = new Hono()
 const MAX_POGINGEN = 10 // per adres per kwartier (IT-beleid 6.1: rem op het raden van wachtwoorden)
 const MAX_CODES = 5 // foute codes per voorlopige sessie
 
-export const herkomst = (c: Context) => ({
-  ip: (c.req.header('x-forwarded-for') ?? c.req.header('x-real-ip') ?? '').split(',')[0].trim() || null,
-  apparaat: c.req.header('user-agent') ?? null,
-})
+// Het IP-adres uit de verzoekcontext, niet uit een header die de client zelf invult (securityreview R11b).
+export const herkomst = (c: Context) => ({ ip: clientIp(c), apparaat: c.req.header('user-agent') ?? null })
+
+/** TOTP-geheim lezen; een nog leesbaar opgeslagen geheim wordt meteen versleuteld (securityreview R3). */
+async function totpGeheim(g: any): Promise<string> {
+  if (moetVersleuteld(g.totp_geheim)) await run('UPDATE gebruikers SET totp_geheim = ? WHERE id = ?', versleutel(g.totp_geheim), g.id)
+  return ontsleutel(g.totp_geheim)
+}
 
 auth.get('/methoden', async (c) => {
   const inst = await instellingen()
@@ -35,6 +43,8 @@ auth.post('/login', async (c) => {
   const h = herkomst(c)
   const inst = await instellingen()
   if (googleAan() && inst.wachtwoord_inloggen === false) return c.json({ fout: 'Log in met je Google-account van Beeld & Geluid.' }, 403)
+  // Rem per IP-adres, naast de blokkade per account hieronder (wachtwoorden raden over veel accounts).
+  if (!(await rem(`login:${h.ip ?? 'onbekend'}`, 30, 15))) return c.json({ fout: 'Te veel pogingen. Probeer het over een kwartier opnieuw.' }, 429)
   if (adres && (await mislukteAanmeldingen(adres)) >= MAX_POGINGEN) {
     await registreerAanmelding({ email: adres, gelukt: false, methode: 'wachtwoord', reden: 'geblokkeerd', ...h })
     return c.json({ fout: 'Te veel pogingen. Probeer het over een kwartier opnieuw.' }, 429)
@@ -59,7 +69,7 @@ auth.post('/login', async (c) => {
   zetSessieCookie(c, await maakSessie(g.id, false))
   if (g.totp_aan && g.totp_geheim) return c.json({ stap: 'code' })
   const geheim = nieuwGeheim()
-  await run('UPDATE gebruikers SET totp_geheim = ?, totp_aan = 0, totp_laatste_stap = NULL WHERE id = ?', geheim, g.id)
+  await run('UPDATE gebruikers SET totp_geheim = ?, totp_aan = 0, totp_laatste_stap = NULL WHERE id = ?', versleutel(geheim), g.id)
   return c.json({ stap: 'koppelen', geheim, otpauth: otpauthUrl(geheim, g.email) })
 })
 
@@ -69,15 +79,15 @@ auth.post('/code', async (c) => {
   const v = await voorlopigeSessie(getCookie(c, COOKIE))
   if (!v) return c.json({ fout: 'Je sessie is verlopen. Log opnieuw in.' }, 401)
   const { g, sessie } = v
-  const stap = g.totp_geheim ? controleer(g.totp_geheim, code, Date.now(), g.totp_laatste_stap) : null
+  const stap = g.totp_geheim ? controleer(await totpGeheim(g), String(code ?? ''), Date.now(), g.totp_laatste_stap) : null
   if (stap == null) {
     await registreerAanmelding({ email: g.email, gebruikerId: g.id, gelukt: false, methode: 'tweede_stap', reden: 'code', ...h })
     if (sessie.pogingen + 1 >= MAX_CODES) {
-      await run('DELETE FROM sessies WHERE token = ?', sessie.token)
+      await run('DELETE FROM sessies WHERE token = ?', sessie.sleutel)
       deleteCookie(c, COOKIE, { path: '/' })
       return c.json({ fout: 'Te vaak een verkeerde code. Log opnieuw in.' }, 401)
     }
-    await run('UPDATE sessies SET pogingen = pogingen + 1 WHERE token = ?', sessie.token)
+    await run('UPDATE sessies SET pogingen = pogingen + 1 WHERE token = ?', sessie.sleutel)
     return c.json({ fout: 'Deze code klopt niet. Kijk of de tijd op je telefoon goed staat.' }, 400)
   }
   await run('UPDATE gebruikers SET totp_aan = 1, totp_laatste_stap = ? WHERE id = ?', stap, g.id)
@@ -98,7 +108,7 @@ auth.get('/google', async (c) => {
   const nonce = randomBytes(24).toString('hex')
   const terug = veiligTerug(c.req.query('terug'))
   setCookie(c, OIDC_COOKIE, JSON.stringify({ state, nonce, terug }), {
-    httpOnly: true, sameSite: 'Lax', path: '/api/auth', maxAge: 600, secure: new URL(c.req.url).protocol === 'https:',
+    httpOnly: true, sameSite: 'Lax', path: '/api/auth', maxAge: 600, secure: isHttps(), // Lax: moet mee terugkomen van Google
   })
   return c.redirect(googleInlogAdres(c, state, nonce))
 })
@@ -110,7 +120,7 @@ auth.get('/google/terug', async (c) => {
   deleteCookie(c, OIDC_COOKIE, { path: '/api/auth' })
   const terug = veiligTerug(opgeslagen?.terug)
   const fout = (tekst: string) => c.redirect(`${terug}${terug.includes('?') ? '&' : '?'}login_fout=${encodeURIComponent(tekst)}`)
-  if (!opgeslagen || c.req.query('state') !== opgeslagen.state) return fout('Het inloggen via Google is verlopen. Probeer het opnieuw.')
+  if (!opgeslagen || !gelijk(c.req.query('state') ?? '', opgeslagen.state)) return fout('Het inloggen via Google is verlopen. Probeer het opnieuw.')
   if (c.req.query('error') || !c.req.query('code')) return fout('Inloggen via Google is afgebroken.')
   const r = await googleTerug(c, c.req.query('code')!, opgeslagen.nonce).catch((e) => ({ fout: String(e?.message ?? e) }))
   if ('fout' in r) {
@@ -152,7 +162,7 @@ auth.get('/ik', async (c) => {
 // Vergrendelen na inactiviteit (IT-beleid 8.5) en ontgrendelen met de code of het wachtwoord.
 auth.post('/vergrendel', async (c) => {
   const token = getCookie(c, COOKIE)
-  if (token) await run('UPDATE sessies SET vergrendeld = 1 WHERE token = ? AND bevestigd = 1', token)
+  if (token) await run('UPDATE sessies SET vergrendeld = 1 WHERE token = ? AND bevestigd = 1', sessieSleutel(token))
   return c.json({ ok: true })
 })
 auth.post('/ontgrendel', async (c) => {
@@ -164,21 +174,25 @@ auth.post('/ontgrendel', async (c) => {
   if ((await mislukteAanmeldingen(g.email)) >= MAX_POGINGEN) return c.json({ fout: 'Te veel pogingen. Log over een kwartier opnieuw in.' }, 429)
   let ok = false
   if (g.totp_aan && g.totp_geheim) {
-    const stap = controleer(g.totp_geheim, code ?? '', Date.now(), g.totp_laatste_stap)
+    const stap = controleer(await totpGeheim(g), String(code ?? ''), Date.now(), g.totp_laatste_stap)
     if (stap != null) { ok = true; await run('UPDATE gebruikers SET totp_laatste_stap = ? WHERE id = ?', stap, g.id) }
   } else ok = controleerWachtwoord(wachtwoord ?? '', g.wachtwoord)
   await registreerAanmelding({ email: g.email, gebruikerId: g.id, gelukt: ok, methode: 'ontgrendelen', reden: ok ? null : g.totp_aan ? 'code' : 'wachtwoord', ...h })
   if (!ok) return c.json({ fout: g.totp_aan ? 'Deze code klopt niet.' : 'Dit wachtwoord klopt niet.' }, 400)
-  await run('UPDATE sessies SET vergrendeld = 0 WHERE token = ?', token)
+  await run('UPDATE sessies SET vergrendeld = 0 WHERE token = ?', sessieSleutel(token))
   return c.json(gebruikerUitRij(g))
 })
 
 auth.post('/reset-aanvraag', async (c) => {
   const { email } = await c.req.json<{ email: string }>()
-  const g = await get<any>('SELECT * FROM gebruikers WHERE lower(email) = lower(?) AND actief = 1', (email ?? '').trim())
+  const adres = String(email ?? '').trim().slice(0, 200)
+  // Rem (securityreview R15): per IP-adres en per e-mailadres, zodat niemand een mailbox kan bestoken.
+  const ip = clientIp(c) ?? 'onbekend'
+  if (!(await rem(`reset-ip:${ip}`, 10, 60)) || !(await rem(`reset-mail:${adres.toLowerCase()}`, 3, 60))) return c.json({ ok: true })
+  const g = await get<any>('SELECT * FROM gebruikers WHERE lower(email) = lower(?) AND actief = 1', adres)
   if (g && !isVerlopen(g)) {
     const token = await maakResetToken(g.id)
-    const basis = process.env.FONOS_BASIS_URL ?? new URL(c.req.url).origin
+    const basis = basisUrl(c) // nooit de Host-header (securityreview R12)
     await stuurMail(g.email, 'Nieuw wachtwoord voor de Luisterbar', `Kies een nieuw wachtwoord via deze link (2 uur geldig):\n${basis}/wachtwoord?token=${token}`).catch((e) => console.error(e))
   }
   // Altijd hetzelfde antwoord: verraad niet welke adressen bestaan.
@@ -187,6 +201,7 @@ auth.post('/reset-aanvraag', async (c) => {
 
 auth.post('/reset', async (c) => {
   const { token, wachtwoord } = await c.req.json<{ token: string; wachtwoord: string }>()
-  if (!wachtwoord || wachtwoord.length < 10) return c.json({ fout: 'Kies een wachtwoord van minstens 10 tekens.' }, 400)
-  return await resetWachtwoord(token ?? '', wachtwoord) ? c.json({ ok: true }) : c.json({ fout: 'Deze link is verlopen of al gebruikt.' }, 400)
+  if (!(await rem(`reset-token:${clientIp(c) ?? 'onbekend'}`, 20, 60))) return c.json({ fout: 'Te veel pogingen. Probeer het over een uur opnieuw.' }, 429)
+  const r = await resetWachtwoord(String(token ?? ''), String(wachtwoord ?? ''))
+  return 'ok' in r ? c.json({ ok: true }) : c.json({ fout: r.fout }, 400)
 })
