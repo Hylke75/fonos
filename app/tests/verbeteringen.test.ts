@@ -129,10 +129,14 @@ test('statistieken over een periode', async () => {
 test('hoescontrole: Muziekweb-vervangplaatje en 404 tellen als kapot, netwerkfout niet', async () => {
   const goed = await titel('HC001', { titel: 'Goed', hoes_voor: 'https://media.cdr.nl/COVER/MEDIUM/FRONT/HC001/a.jpg' })
   const gif = await titel('HC002', { titel: 'Gif', hoes_voor: 'https://media.cdr.nl/COVER/MEDIUM/FRONT/HC002/a.jpg' })
-  const weg = await titel('HC003', { titel: 'Weg', hoes_voor: 'https://elders.example/weg.jpg' })
-  const stuk = await titel('HC004', { titel: 'Stuk', hoes_voor: 'https://elders.example/time-out.jpg' })
+  const weg = await titel('HC003', { titel: 'Weg', hoes_voor: 'https://media.cdr.nl/COVER/MEDIUM/FRONT/HC003/weg.jpg' })
+  const stuk = await titel('HC004', { titel: 'Stuk', hoes_voor: 'https://media.cdr.nl/COVER/MEDIUM/FRONT/HC004/time-out.jpg' })
+  // Een adres op een andere host (door een redacteur ingevuld) wordt niet opgehaald (securityreview R14).
+  const elders = await titel('HC005', { titel: 'Elders', hoes_voor: 'http://intern.example/geheim' })
+  const gevraagd: string[] = []
   const echt = globalThis.fetch
   globalThis.fetch = (async (u: string) => {
+    gevraagd.push(String(u))
     if (u.includes('HC001')) return new Response(null, { status: 200, headers: { 'content-type': 'image/jpeg' } })
     if (u.includes('HC002')) return new Response(null, { status: 200, headers: { 'content-type': 'image/gif' } })
     if (u.includes('weg')) return new Response(null, { status: 404 })
@@ -144,18 +148,26 @@ test('hoescontrole: Muziekweb-vervangplaatje en 404 tellen als kapot, netwerkfou
   assert.equal((await k(gif)).hoes_kapot, 1)
   assert.equal((await k(weg)).hoes_kapot, 1)
   assert.equal((await k(stuk)).hoes_gecontroleerd_op, null)
+  assert.equal((await k(elders)).hoes_gecontroleerd_op, null)
+  assert.ok(!gevraagd.some((u) => u.includes('intern.example')))
   // De kiosk krijgt dan geen hoesadres meer (vervangende afbeelding).
   const z = await zoekCatalogus({ q: 'Gif' })
   assert.equal(z.titels.find((t) => t.id === gif)?.hoes, null)
 })
 
-test('browserfouten: opgeslagen, en na 5 keer dezelfde fout een storingsmelding', async () => {
-  for (let i = 0; i < 5; i++) {
-    const r = await app.request('/api/fout', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Fonos-Tablet': 'Bar%20links' }, body: JSON.stringify({ bericht: 'TypeError: x is undefined', pagina: '/album/1' }) })
-    assert.equal(r.status, 200)
-  }
+test('browserfouten: alleen van een gekoppelde kiosk; na 5 keer dezelfde fout een storingsmelding zonder de tekst', async () => {
+  const { maakKoppelcode } = await import('../server/toegang.ts')
+  const fout = (cookie?: string) => app.request('/api/fout', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
+    body: JSON.stringify({ bericht: 'Klik hier: https://phishing.example/login', pagina: '/album/1' }) })
+  assert.equal((await fout()).status, 401) // niet gekoppeld: geen toegang
+  const { code } = await maakKoppelcode('Bar links', 'test')
+  const k = await app.request('/api/kiosk/koppelen', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) })
+  const cookie = /fonos_kiosk=[^;]+/.exec(k.headers.get('set-cookie') ?? '')![0]
+  for (let i = 0; i < 5; i++) assert.equal((await fout(cookie)).status, 200)
   assert.equal((await all('SELECT * FROM browserfouten WHERE tablet = ?', 'Bar links')).length, 5)
-  assert.ok(await get("SELECT 1 FROM wijzigingslog WHERE actie = 'storingsmelding' AND record_id LIKE 'browserfout:%'"))
+  const m = await get<any>("SELECT * FROM wijzigingslog WHERE actie = 'storingsmelding' AND record_id = 'browserfouten'")
+  assert.ok(m)
+  assert.ok(!String(m.nieuw).includes('phishing'), 'tekst uit de browser komt niet in de e-mail')
 })
 
 test('cd-speler: soort per speler, en geen cd op een platenspeler (of plaat op de cd-speler)', async () => {

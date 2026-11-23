@@ -4,11 +4,11 @@ export class ApiFout extends Error {
   constructor(public status: number, bericht: string, public data: any = {}) { super(bericht) }
 }
 
-/** Naam van deze kiosktablet (eenmalig in te stellen met ?tablet=Bar%20links), voor de statuspagina en het log. */
+/** Naam van deze kiosktablet: komt uit de koppeling (Beheer → Status → Kiosks), alleen voor weergave. */
 export function tabletNaam(): string | null { try { return localStorage.getItem('fonos-tablet') } catch { return null } }
+/** De pagina waar de kiosk staat, voor de statuspagina. De server weet zelf welke tablet het is (kioskcookie). */
 export function tabletKop(): Record<string, string> {
-  const n = tabletNaam()
-  return n ? { 'X-Fonos-Tablet': encodeURIComponent(n), 'X-Fonos-Pagina': encodeURIComponent(location.pathname) } : {}
+  return tabletNaam() ? { 'X-Fonos-Pagina': encodeURIComponent(location.pathname) } : {}
 }
 
 // Verbinding met de server (verbetering 7): false zodra een verzoek het netwerk niet haalt, true bij het eerstvolgende antwoord.

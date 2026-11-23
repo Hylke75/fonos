@@ -3,6 +3,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import { createHmac } from 'node:crypto'
+import { alsKiosk } from './kiosk'
 
 const ALFABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
 function totp(geheim: string) {
@@ -22,7 +23,20 @@ async function toegankelijk(page: Page, naam: string) {
   expect(ernstig.map((v) => `${naam}: ${v.id} (${v.nodes.length}×) ${v.help} – ${v.nodes.slice(0, 3).map((n) => `${n.target.join(' ')}: ${(n.failureSummary ?? '').split('\n').slice(1, 2).join('')}`).join(' | ')}`)).toEqual([])
 }
 
+test('kiosk koppelen: een niet-gekoppelde tablet kan bladeren, maar pas na de koppelcode een draaitafel kiezen', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Begin met zoeken' }).click()
+  await expect(page.getByRole('heading', { name: 'Deze tablet is nog niet gekoppeld' })).toBeVisible()
+  await toegankelijk(page, 'koppelen')
+  await page.getByLabel('Koppelcode (voor medewerkers)').fill('e2ekappa')
+  await page.getByRole('button', { name: 'Tablet koppelen' }).click()
+  await expect(page.getByRole('heading', { name: 'Kies je draaitafel' })).toBeVisible()
+  expect((await page.context().cookies()).some((c) => c.name === 'fonos_kiosk' && c.httpOnly)).toBe(true)
+})
+
 test.describe.serial('Fonotheek', () => {
+  test.beforeEach(async ({ context }) => { await alsKiosk(context) })
+
   test('kiosk: speler kiezen, zoeken met reden, aanvragen en vrijgeven', async ({ page }) => {
     const fouten: string[] = []
     page.on('pageerror', (e) => fouten.push(e.message))

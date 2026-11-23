@@ -7,29 +7,22 @@ import { beheer } from './routes/beheer.ts'
 import { auth } from './routes/auth.ts'
 import { versies } from './events.ts'
 import { COOKIE, gebruikerBijToken } from './auth.ts'
+import { gebruiker, kiosk as kioskVan, toegang } from './toegang.ts'
+import { GebruikersFout, referentie } from './fouten.ts'
+import { rem } from './rem.ts'
+import { csrf } from 'hono/csrf'
+import { HTTPException } from 'hono/http-exception'
 import { tik, tikTerloops } from './planner.ts'
 import { openBlob } from './opslag.ts'
 import { get, run } from './db.ts'
+import { haal } from './naarbuiten.ts'
 import { meld } from './meldingen.ts'
 import BEVEILIGING from '../shared/beveiligingsheaders.json' with { type: 'json' }
 
 export const app = new Hono()
 
-/** Kiosktablets met een naam (header X-Fonos-Tablet): hooguit eens per 30 s "laatst gezien" bijwerken. */
-const gezien = new Map<string, number>()
-function kioskGezien(naam: string | undefined, pagina: string | undefined) {
-  if (!naam) return
-  const n = naam.trim().slice(0, 60)
-  if (!n || Date.now() - (gezien.get(n) ?? 0) < 30_000) return
-  gezien.set(n, Date.now())
-  run('INSERT INTO kiosks (naam, laatst_gezien, pagina) VALUES (?, nu(), ?) ON CONFLICT (naam) DO UPDATE SET laatst_gezien = nu(), pagina = excluded.pagina',
-    n, pagina?.slice(0, 120) ?? null).catch(() => {})
-}
-
 app.use('*', async (c, next) => {
   await tikTerloops()
-  const dec = (v?: string) => { try { return v ? decodeURIComponent(v) : undefined } catch { return undefined } }
-  kioskGezien(dec(c.req.header('x-fonos-tablet')), dec(c.req.header('x-fonos-pagina')))
   await next()
   // Beveiligingsheaders (IT-beleid 5.6); op Vercel zet scripts/bouw-vercel.mjs dezelfde voor de statische bestanden.
   // Lokaal (http) geen HSTS en geen upgrade-insecure-requests.
@@ -41,33 +34,44 @@ app.use('*', async (c, next) => {
   if (c.req.path.startsWith('/api/') && !c.res.headers.get('Cache-Control')) c.header('Cache-Control', 'no-store')
 })
 
+// CSRF (securityreview R10): formulieren en tekstverzoeken alleen van ons eigen adres. JSON-verzoeken van een ander
+// adres kunnen niet zonder CORS, dat we niet toestaan. Daarna de toegangsmodule: elke route heeft een regel, anders dicht.
+app.use('/api/*', csrf())
+app.use('*', toegang)
+
 app.onError(async (e, c) => {
-  console.error(e)
-  // IT-beleid 6.2: beheerders krijgen hooguit één melding per dag over serverfouten. Afwachten: op Vercel stopt de functie na het antwoord.
-  await meld('serverfout', 'Fout in de Luisterbar-server', `${c.req.method} ${c.req.path}\n\n${e?.stack ?? e?.message ?? e}`).catch(() => {})
+  if (e instanceof HTTPException) return e.getResponse()
+  if (e instanceof GebruikersFout) return c.json({ fout: e.message, ...(e.code ? { code: e.code } : {}) }, e.status)
+  // Kapotte JSON van buiten is geen serverfout: geen storingsmelding (securityreview R16).
+  if (e instanceof SyntaxError) return c.json({ fout: 'Ongeldig verzoek' }, 400)
   // Wachten op het platenspeler-slot duurde te lang (lock_timeout): een begrijpelijke melding in plaats van de databasefout.
   if ((e as any)?.code === '55P03') return c.json({ fout: 'Het lukt even niet. Probeer het zo nog eens.', code: 'druk' }, 503)
-  return c.json({ fout: e.message || 'Er ging iets mis' }, 500)
+  const ref = referentie()
+  console.error(`[fout ${ref}]`, e)
+  // IT-beleid 6.2: beheerders krijgen hooguit één melding per dag over serverfouten. Afwachten: op Vercel stopt de functie na het antwoord.
+  await meld('serverfout', 'Fout in de Luisterbar-server', `${c.req.method} ${c.req.path} (referentie ${ref})\n\n${e?.stack ?? e?.message ?? e}`).catch(() => {})
+  // Nooit de interne fouttekst naar buiten (securityreview R8): de referentie verwijst naar het serverlog.
+  return c.json({ fout: `Er ging iets mis (referentie ${ref}).` }, 500)
 })
 
-/** Fouten uit de browser (verbetering 20). Geen login nodig (kiosk); begrensd en zonder persoonsgegevens. */
-let foutenDitUur = { uur: '', n: 0 }
+/** Fouten uit de browser (verbetering 20). Alleen van gekoppelde kiosks en ingelogde gebruikers (toegang.ts), begrensd.
+ *  De tekst komt uit de browser en is dus niet te vertrouwen: hij gaat naar Beheer → Status, nooit in een e-mail. */
 app.post('/api/fout', async (c) => {
-  const uur = new Date().toISOString().slice(0, 13)
-  if (foutenDitUur.uur !== uur) foutenDitUur = { uur, n: 0 }
-  if (++foutenDitUur.n > 200) return c.json({ ok: false }, 429)
+  const k = kioskVan(c), g = gebruiker(c)
+  const bron = k ? `kiosk:${k.naam}` : `gebruiker:${g?.id}`
+  if (!(await rem(`fout:${bron}`, 60, 60))) return c.json({ ok: false }, 429)
   const b = await c.req.json<{ bericht?: string; bron?: string; stack?: string; pagina?: string }>().catch(() => ({} as any))
   const bericht = String(b.bericht ?? '').slice(0, 500)
   if (!bericht) return c.json({ ok: false }, 400)
-  const dec = (v?: string) => { try { return v ? decodeURIComponent(v) : null } catch { return null } }
-  const tablet = dec(c.req.header('x-fonos-tablet'))?.slice(0, 60) ?? null
-  console.error(`[browser] ${tablet ?? 'onbekend apparaat'} ${b.pagina ?? ''}: ${bericht}`)
+  const tablet = k?.naam ?? g?.naam ?? null
+  console.error(`[browser] ${tablet ?? 'onbekend apparaat'} ${String(b.pagina ?? '').slice(0, 200)}: ${bericht}`)
   await run('INSERT INTO browserfouten (tablet, pagina, bericht, bron, stack, apparaat) VALUES (?, ?, ?, ?, ?, ?)',
     tablet, String(b.pagina ?? '').slice(0, 200), bericht, String(b.bron ?? '').slice(0, 300), String(b.stack ?? '').slice(0, 3000), (c.req.header('user-agent') ?? '').slice(0, 200))
   await run("DELETE FROM browserfouten WHERE tijd < nu('-30 days')")
-  // Komt dezelfde fout vaak voor (5× in een uur), dan een storingsmelding (hooguit één per dag per fout).
+  // Komt dezelfde fout vaak voor (5× in een uur), dan een storingsmelding met een vaste tekst (hooguit één per dag).
   const n = (await get<{ n: number }>("SELECT COUNT(*)::int AS n FROM browserfouten WHERE bericht = ? AND tijd > nu('-1 hour')", bericht))!.n
-  if (n >= 5) await meld(`browserfout:${bericht.slice(0, 80)}`, 'Herhaalde fout in de browser', `Deze fout trad het afgelopen uur ${n} keer op${tablet ? ` (laatst op ${tablet})` : ''}:\n\n${bericht}\n${b.bron ?? ''}\n\n${String(b.stack ?? '').slice(0, 1500)}`)
+  if (n >= 5) await meld('browserfouten', 'Herhaalde fouten in de browser',
+    'Er treden herhaaldelijk fouten op in de browser van een kiosk of de beheeromgeving. Bekijk de details in Beheer → Status.')
   return c.json({ ok: true })
 })
 
@@ -99,10 +103,9 @@ app.get('/api/versies', async (c) => {
   return c.json(v)
 })
 
-/** Vercel Cron: sluitingstijd en nachtelijke back-up. */
+/** Vercel Cron (alleen met CRON_SECRET): sluitingstijd en nachtelijke back-up. */
 app.get('/api/cron', async (c) => {
-  const geheim = process.env.CRON_SECRET
-  if (geheim && c.req.header('authorization') !== `Bearer ${geheim}`) return c.json({ fout: 'Niet toegestaan' }, 401)
+  // CRON_SECRET wordt gecontroleerd in toegang.ts (fail-closed: zonder geheim mag niemand).
   await run("INSERT INTO planner (taak, datum) VALUES ('cron:laatst', nu()) ON CONFLICT (taak) DO UPDATE SET datum = excluded.datum")
   await tik({ backup: true, cron: true })
   return c.json({ ok: true })
@@ -120,7 +123,7 @@ app.get('/api/hoes', async (c) => {
   const ac = new AbortController()
   const t = setTimeout(() => ac.abort(), 10_000)
   try {
-    const r = await fetch(url, { signal: ac.signal, redirect: 'follow' })
+    const r = await haal('hoezen', url, { signal: ac.signal })
     const type = r.headers.get('content-type') ?? ''
     if (!r.ok || !type.startsWith('image/')) return c.json({ fout: 'Hoes niet gevonden' }, 404, { 'Cache-Control': 'public, max-age=3600, s-maxage=3600' })
     return new Response(r.body, { headers: {
@@ -136,17 +139,16 @@ app.get('/api/hoes', async (c) => {
 app.get('/api/bestand/*', async (c) => {
   const pad = decodeURIComponent(c.req.path.slice('/api/bestand/'.length))
   if (pad.includes('..') || !/^(hoezen|backups|uploads)\//.test(pad)) return c.json({ fout: 'Niet gevonden' }, 404)
-  if (!pad.startsWith('hoezen/')) {
-    const g = await gebruikerBijToken(getCookie(c, COOKIE))
-    if (!g?.rollen.includes('beheerder')) return c.json({ fout: 'Geen rechten' }, 403)
-  }
+  if (!pad.startsWith('hoezen/') && !gebruiker(c)?.rollen.includes('beheerder')) return c.json({ fout: 'Geen rechten' }, 403) // ook al in toegang.ts
   const r = await openBlob(pad)
   if (!r || r.statusCode !== 200) return c.json({ fout: 'Niet gevonden' }, 404)
+  // Een "hoes" die geen afbeelding is, wordt nooit op ons eigen adres getoond (securityreview R2).
+  if (pad.startsWith('hoezen/') && !/^image\/(jpeg|png|webp|gif)$/.test(r.blob.contentType ?? '')) return c.json({ fout: 'Niet gevonden' }, 404)
   return new Response(r.stream as any, { headers: {
     'Content-Type': r.blob.contentType ?? 'application/octet-stream',
     'Cache-Control': pad.startsWith('hoezen/') ? 'public, max-age=86400' : 'private, no-store',
+    'X-Content-Type-Options': 'nosniff',
     ...(pad.startsWith('hoezen/') ? {} : { 'Content-Disposition': `attachment; filename="${pad.split('/').pop()}"` }),
   } })
 })
 
-app.get('/api/gezond', (c) => c.json({ ok: true }))

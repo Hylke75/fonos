@@ -1,5 +1,6 @@
-# Elk uur de nieuwste fonotheek.db.gz van de scraper-branch naar main halen, zodat de volgende build hem inleest.
-# Alleen dat ene bestand; andere wijzigingen op de scraper-branch worden niet overgenomen.
+# Elk uur kijken of de scraper-branch een nieuwe fonotheek.db.gz heeft. Zo ja, dan komt die in een pull request naar
+# main (branch data/fonotheek-db); een mens voegt hem samen, waarna de volgende build hem inleest. Nooit rechtstreeks
+# naar main (securityreview R5 / OTAP). Alleen dat ene bestand; andere wijzigingen op de scraper-branch niet.
 name: fonotheek.db naar main
 
 on:
@@ -9,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 env:
   BRON: claude/bold-cori-74kzz2
@@ -28,4 +30,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "Nieuwe fonotheek.db.gz van $BRON overnemen ($(git rev-parse --short "origin/$BRON"))"
-          git push origin HEAD:main
+          git push --force origin HEAD:refs/heads/data/fonotheek-db
+          if [ -z "$(gh pr list --head data/fonotheek-db --base main --state open --json number --jq '.[].number')" ]; then
+            gh pr create --head data/fonotheek-db --base main --title "Nieuwe fonotheek.db.gz" \
+              --body "Automatisch klaargezet vanaf $BRON. Controleer en voeg samen; de volgende build leest hem in."
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}

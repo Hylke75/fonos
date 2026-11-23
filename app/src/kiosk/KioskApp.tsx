@@ -24,10 +24,15 @@ export type Config = {
   knoppen: Knop[]
   instellingen: { max_titels: number; inactiviteit_sec: number; waarschuwing_sec: number; bevestiging_sec: number; speler_inactief_min: number; speler_reactie_min: number; fonos_paginas: { naam: string; url: string }[]; privacy_tekst: string; privacy_tekst_en?: string; privacy_url: string; nl_weergave: string; bumper_video_url: string; instagram_url?: string; redactie_titel?: string; redactie_tekst?: string; redactie_titel_en?: string; redactie_tekst_en?: string; nieuwsbrief: boolean; nieuwsbrief_bevestigingsmail: boolean; vindcode_label: string }
   platenspelers: { nummer: number; actief: boolean; bezet: boolean; soort?: 'lp' | 'cd' }[]
+  /** Is deze tablet gekoppeld als kiosk (of is er een medewerker ingelogd)? Anders kan hij alleen bladeren. */
+  gekoppeld?: boolean
+  kiosk_naam?: string | null
 }
 
 type Ctx = {
   config: Config
+  /** Config opnieuw laden (bijvoorbeeld na het koppelen van de tablet). */
+  laadConfig: () => Promise<void>
   mand: Item[]
   beschikbaar: Record<number, { beschikbaar: boolean; vindcode: string | null }>
   voegToe: (i: Item) => boolean
@@ -102,8 +107,19 @@ export function KioskApp() {
     if (t != null) try { t ? localStorage.setItem('fonos-tablet', t) : localStorage.removeItem('fonos-tablet') } catch { /* niets */ }
   }, [])
   const [onbereikbaar, setOnbereikbaar] = useState(false)
-  const laadConfig = useCallback(() => api<Config>('/kiosk/config').then((c) => { setConfig(c); setOnbereikbaar(false) }).catch(() => setOnbereikbaar(true)), [])
-  useEffect(() => { laadConfig() }, [laadConfig])
+  const laadConfig = useCallback(() => api<Config>('/kiosk/config').then((c) => {
+    setConfig(c); setOnbereikbaar(false)
+    if (c.kiosk_naam) try { localStorage.setItem('fonos-tablet', c.kiosk_naam) } catch { /* niets */ }
+  }).catch(() => setOnbereikbaar(true)), [])
+  // Koppelen met een link uit Beheer → Status (?koppel=CODE): eerst koppelen, dan de rest laden.
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get('koppel')
+    if (!code) { laadConfig(); return }
+    const zonder = new URL(window.location.href)
+    zonder.searchParams.delete('koppel')
+    window.history.replaceState(null, '', zonder.pathname + zonder.search)
+    api('/kiosk/koppelen', { body: { code } }).catch((e) => setMelding((e as Error).message)).finally(laadConfig)
+  }, [laadConfig])
   // Lukt de eerste keer laden niet, dan elke 10 seconden opnieuw proberen.
   useEffect(() => {
     if (config || !onbereikbaar) return
@@ -218,7 +234,7 @@ export function KioskApp() {
   useEffect(() => { laatste.current = Date.now() }, [loc.pathname])
 
   const ctx = useMemo<Ctx | null>(() => config && {
-    config, mand, beschikbaar, versie, toast, wisSessie, speler, mijnAanvraag,
+    config, laadConfig, mand, beschikbaar, versie, toast, wisSessie, speler, mijnAanvraag,
     spelerSoort: speler ? config.platenspelers.find((p) => p.nummer === speler.nummer)?.soort ?? 'lp' : null, bewaard, taal, kiesTaal, groot, zetGroot: setGroot, wacht, zetWacht, mandOpen, zetMandOpen,
     bewaar: (i) => { setBewaard((b) => (b.some((x) => x.titel_id === i.titel_id) ? b : [...b, i])); toast(t('{titel} bewaard voor later', { titel: i.titel })) },
     vergeet: (id) => setBewaard((b) => b.filter((x) => x.titel_id !== id)),

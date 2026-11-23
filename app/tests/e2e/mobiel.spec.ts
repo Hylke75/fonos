@@ -1,6 +1,7 @@
 // Browsertest: de kiosk en het inlogscherm op twee telefoons en een iPad (staand en liggend).
 // Niets mag buiten beeld vallen: de pagina wordt niet breder dan het scherm en de knoppen in de kop staan in beeld.
 import { devices, expect, test, type Page } from '@playwright/test'
+import { alsKiosk } from './kiosk'
 
 const TOESTELLEN = {
   telefoon: devices['iPhone 13'],
@@ -27,6 +28,7 @@ async function pastInBeeld(page: Page, naam: string) {
 for (const [toestel, { defaultBrowserType: _, ...instellingen }] of Object.entries(TOESTELLEN)) {
   test(`past op ${toestel}`, async ({ browser }) => {
     const ctx = await browser.newContext({ ...instellingen, baseURL: test.info().project.use.baseURL })
+    await alsKiosk(ctx, test.info().project.use.baseURL)
     const page = await ctx.newPage()
     await page.goto('/?tablet=E2E-mobiel')
     await pastInBeeld(page, 'rustscherm')

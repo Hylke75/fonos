@@ -5,6 +5,7 @@
 // Bij een storing blijft de aanmelding maximaal 24 uur in een wachtrij; daarna vervalt ze (gelogd zonder persoonsgegevens).
 import { all, insert, instellingen, run } from './db.ts'
 import { log, SYSTEEM } from './log.ts'
+import { haal } from './naarbuiten.ts'
 
 export type Aanmelding = { email: string; naam?: string | null }
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
@@ -22,12 +23,12 @@ const koppelingen: Record<string, (a: Aanmelding) => Promise<void>> = {
   webhook: async (a) => {
     const inst = await instellingen()
     if (!inst.nieuwsbrief_url) throw new Error('Geen webhook-adres ingesteld')
-    const r = await fetch(inst.nieuwsbrief_url, {
+    const r = await haal('nieuwsbrief', inst.nieuwsbrief_url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       // Het nieuwsbriefsysteem verstuurt zelf de bevestigingsmail (double opt-in).
       body: JSON.stringify({ email: a.email, naam: a.naam ?? null, bron: inst.nieuwsbrief_bron }),
-      signal: AbortSignal.timeout(8000),
+      timeoutMs: 8000,
     })
     if (!r.ok) throw new Error(`Nieuwsbriefsysteem antwoordde ${r.status}`)
   },

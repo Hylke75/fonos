@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { QrCode, X } from 'lucide-react'
-import { ApiFout } from '../api'
+import { api, ApiFout } from '../api'
 import { Logo } from '../components/Logo'
 import { useKiosk } from './KioskApp'
 import { t } from './taal'
@@ -32,6 +32,7 @@ export function SpelerKiezen() {
   }
   const kanScannen = typeof window !== 'undefined' && 'BarcodeDetector' in window && !!navigator.mediaDevices?.getUserMedia
   const vrij = spelers.filter((p) => p.actief && !p.bezet).length
+  if (config.gekoppeld === false) return <Koppelen />
   return (
     <div className="kiosk-scherm">
       <header className="kiosk-header">
@@ -68,6 +69,38 @@ export function SpelerKiezen() {
         </div>
       </main>
       {scannen && <Scanner onCode={(n) => { setScannen(false); kies(n) }} onSluit={() => setScannen(false)} />}
+    </div>
+  )
+}
+
+/** Nog niet gekoppelde tablet: alleen een medewerker kan hem koppelen, met de code uit Beheer → Status. */
+function Koppelen() {
+  const { laadConfig } = useKiosk()
+  const [code, setCode] = useState('')
+  const [fout, setFout] = useState<string | null>(null)
+  const [bezig, setBezig] = useState(false)
+  const koppel = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setBezig(true); setFout(null)
+    try { await api('/kiosk/koppelen', { body: { code } }); await laadConfig() } catch (x) { setFout((x as Error).message) } finally { setBezig(false) }
+  }
+  return (
+    <div className="kiosk-scherm">
+      <header className="kiosk-header">
+        <Link to="/" aria-label={t('Naar het beginscherm')}><Logo /></Link>
+        <div className="rechts"><TekstKnop /><TaalKnop /></div>
+      </header>
+      <main className="kiosk-inhoud speler-kiezen">
+        <h1>{t('Deze tablet is nog niet gekoppeld')}</h1>
+        <p className="muted">{t('Je kunt de collectie bekijken, maar nog geen draaitafel kiezen of platen aanvragen. Vraag een medewerker om de tablet te koppelen.')}</p>
+        <form className="card spelers-paneel koppel-form" onSubmit={koppel}>
+          <label htmlFor="koppelcode">{t('Koppelcode (voor medewerkers)')}</label>
+          <input id="koppelcode" className="kiosk-veld" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} autoComplete="off" autoCapitalize="characters" spellCheck={false} maxLength={12} placeholder="ABCD2345" />
+          {fout && <p className="fout-tekst" role="alert">{fout}</p>}
+          <button className="btn btn-pink btn-l" disabled={bezig || code.replace(/[^A-Z0-9]/g, '').length !== 8}>{t('Tablet koppelen')}</button>
+          <p className="muted tekst-klein">{t('Een beheerder maakt de code in Beheer → Status → Kiosks.')}</p>
+        </form>
+      </main>
     </div>
   )
 }
